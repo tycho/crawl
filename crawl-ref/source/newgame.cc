@@ -1671,6 +1671,8 @@ static void _jobs_stat_init(job_type which_job)
 
 void give_basic_mutations(species_type speci)
 {
+    you.mutation[MUT_TELEPORT_CONTROL] = 1; // //
+
     // We should switch over to a size-based system
     // for the fast/slow metabolism when we get around to it.
     switch (speci)
@@ -3720,6 +3722,8 @@ wand_done:
 
 bool _give_items_skills()
 {
+    you.exp_available = 120; // //
+
     char keyn;
     int weap_skill = 0;
     int choice;                 // used for third-screen choices

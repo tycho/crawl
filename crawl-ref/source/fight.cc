@@ -4084,7 +4084,7 @@ bool melee_attack::mons_attack_mons()
     // If an enemy attacked a friend, set the pet target if it isn't set
     // already, but not if sanctuary is in effect (pet target must be
     // set explicitly by the player during sanctuary).
-    if (perceived_attack && attacker->alive()
+    if (attacker->alive()
         && mons_friendly(defender_as_monster())
         && !mons_wont_attack(attacker_as_monster())
         && you.pet_target == MHITNOT

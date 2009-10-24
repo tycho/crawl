@@ -898,6 +898,36 @@ static void _center_cursor()
 #endif
 }
 
+void bosses_check()
+{
+    if ((you.num_turns + 1) % CYCLE_LENGTH == 0)
+    {
+        int urinecounter = 0;
+        int mon = -1;
+        while (urinecounter++ < 100 && mon == -1)
+	{
+            mgen_data mg(BOSS_MONSTER, BEH_SEEK, 0, 0, coord_def(), MHITYOU); // //
+            mg.proximity = PROX_NEAR_STAIRS;
+            mon = mons_place( mg );
+            if (mon > -1)
+	    {
+	        mpr( "You sense that a powerful threat has arrived." , MSGCH_DANGER );
+	        if ((((you.num_turns + 1)/CYCLE_LENGTH) % FREQUENCY_OF_RUNES) == 0)
+                {
+                    int urinaryitempointer = items( 1, OBJ_MISCELLANY, MISC_RUNE_OF_ZOT, true, retarded_rune_counting_function( ((you.num_turns + 1)/CYCLE_LENGTH) % FREQUENCY_OF_RUNES ), retarded_rune_counting_function( ((you.num_turns + 1)/CYCLE_LENGTH) % FREQUENCY_OF_RUNES )); // //
+	            int *const item_made = &urinaryitempointer; // //
+                    if (*item_made != NON_ITEM && *item_made != -1)
+                    {
+                        move_item_to_grid( item_made, menv[mon].pos() );
+                    }
+	        }
+	    }
+            // // else
+	    // // mpr("mon = -1");
+        }
+    }
+}
+
 //
 //  This function handles the player's input. It's called from main(),
 //  from inside an endless loop.
@@ -933,6 +963,7 @@ static void _input()
     update_monsters_in_view();
 
     you.turn_is_over = false;
+
     _prep_input();
 
     const bool player_feels_safe = i_feel_safe();
@@ -2722,18 +2753,25 @@ void world_reacts()
     }
     else
     {
-        const long old_synch_time = you.synch_time;
+        // // const long old_synch_time = you.synch_time;
         you.synch_time -= you.time_taken;
 
         // Call spawn_random_monsters() more often than the rest of
         // handle_time() so the spawning rates work out correctly.
-        if (old_synch_time >= 150 && you.synch_time < 150
-            || old_synch_time >= 100 && you.synch_time < 100
-            || old_synch_time >= 50 && you.synch_time < 50)
-        {
-            spawn_random_monsters();
-        }
+
+	// //        if (old_synch_time >= 150 && you.synch_time < 150
+        // //    || old_synch_time >= 100 && you.synch_time < 100
+        // //    || old_synch_time >= 50 && you.synch_time < 50)
+        // // {
+	    // // }
     }
+
+            if (you.num_turns > 100)
+            {
+                bosses_check(); // //
+                for (int pisscounter = 0; pisscounter < SPAWN_SIZE; pisscounter++)
+                    spawn_random_monsters();
+            }
 
     manage_clouds();
 

@@ -1494,6 +1494,16 @@ int move_item_to_player(int obj, int quant_got, bool quiet,
         return (1);
     }
 
+    if (mitm[obj].base_type == OBJ_ORBS)
+    {
+        std::vector<int> runes;
+        if (runes_in_pack(runes) < 15)
+        {
+            mpr("You must possess at least fifteen runes to touch the sacred Orb which you defend.");
+            return (1);
+        }
+    }
+
     int retval = quant_got;
 
     // Gold has no mass, so we handle it first.
@@ -1674,17 +1684,17 @@ int move_item_to_player(int obj, int quant_got, bool quiet,
             learned_something_new(TUT_SEEN_RANDART);
     }
 
-    if (item.base_type == OBJ_ORBS
-        && you.char_direction == GDT_DESCENDING)
-    {
+    // //    if (item.base_type == OBJ_ORBS
+    // //    && you.char_direction == GDT_DESCENDING)
+    // // {
         // Take a note!
-        _check_note_item(item);
-
-        if (!quiet)
-            mpr("Now all you have to do is get back out of the dungeon!");
-        you.char_direction = GDT_ASCENDING;
-        xom_is_stimulated(255, XM_INTRIGUED);
-    }
+    // //    _check_note_item(item);
+// //
+     // //   if (!quiet)
+    // //        mpr("Now all you have to do is get back out of the dungeon!");
+    // //    you.char_direction = GDT_ASCENDING;
+    // //    xom_is_stimulated(255, XM_INTRIGUED);
+    // //}
 
     if (item.base_type == OBJ_ORBS && you.level_type == LEVEL_DUNGEON)
         unset_branch_flags(BFLAG_HAS_ORB);

@@ -1779,6 +1779,12 @@ bool cast_apportation(int pow, const coord_def& where)
         return (false);
     }
 
+    if (where == find_floor_item(OBJ_ORBS,ORB_ZOT)->pos)
+    {
+        mpr( "You cannot apport the sacred Orb." );
+        return(0);
+    }
+
     // Let's look at the top item in that square...
     const int item_idx = igrd(where);
     if (item_idx == NON_ITEM)

@@ -2499,6 +2499,22 @@ bool orange_statue_effects(monsters *mons)
         return (true);
     }
 
+    // // this is new
+    if (mons->attitude == ATT_FRIENDLY)
+    {
+        for (int stupidcounter = 0; stupidcounter < 20; stupidcounter++)
+	{
+            int randomindex = random_range(1,MAX_MONSTERS-1);
+            if ((grid_distance(menv[randomindex].pos(), mons->pos()) < 8) && ((mons_class_is_confusable(menv[randomindex].type)) && menv[randomindex].attitude == ATT_HOSTILE))
+	    {
+	      if (menv[randomindex].add_ench( mon_enchant(ENCH_CONFUSION, 10)) && mons_near(mons))
+	      {
+                  simple_monster_message( &menv[randomindex], " appears confused.");
+              }
+	    }
+
+	}
+    }
     return (false);
 }
 

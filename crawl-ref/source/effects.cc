@@ -3589,8 +3589,6 @@ void handle_time(long time_delta)
     // the floor.
     update_corpses(time_delta);
 
-    spawn_random_monsters();
-
     if (crawl_state.arena)
         return;
 

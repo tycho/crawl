@@ -116,9 +116,6 @@ static builder_rc_type _builder_basic(int level_number);
 static void _builder_extras(int level_number, int level_type);
 static void _builder_items(int level_number, char level_type, int items_wanted);
 static void _builder_monsters(int level_number, char level_type, int mon_wanted);
-static void _place_specific_stair(dungeon_feature_type stair,
-                                  const std::string &tag = "",
-                                  int dl = 0, bool vault_only = false);
 static void _place_branch_entrances(int dlevel, char level_type);
 static void _place_extra_vaults();
 static void _place_minivaults(const std::string &tag = "",
@@ -294,8 +291,8 @@ bool builder(int level_number, int level_type)
 
         // If we're getting low on available retries, disable random vaults
         // and minivaults (special levels will still be placed).
-        if (tries < 5)
-            use_random_maps = false;
+        // // if (tries < 5)
+        // //    use_random_maps = false;
 
         _build_dungeon_level(level_number, level_type);
         _dgn_set_floor_colours();
@@ -305,7 +302,7 @@ bool builder(int level_number, int level_type)
             mapgen_report_map_veto();
 #endif
 
-        if (!dgn_level_vetoed && _valid_dungeon_level(level_number, level_type))
+        if (true)
         {
 #if DEBUG_MONS_SCAN
             // If debug_mons_scan() finds a problem while Generating_Level is
@@ -1653,9 +1650,9 @@ static void _build_dungeon_level(int level_number, int level_type)
     // Try to place minivaults that really badly want to be placed. Still
     // no guarantees, seeing this is a minivault.
 
-    _place_minivaults();
-    _place_branch_entrances( level_number, level_type );
-    _place_extra_vaults();
+    // // _place_minivaults();
+    // // _place_branch_entrances( level_number, level_type );
+    // // _place_extra_vaults();
 
     // Place shops, if appropriate. This must be protected by the connectivity
     // check.
@@ -1663,21 +1660,21 @@ static void _build_dungeon_level(int level_number, int level_type)
         _place_shops(level_number);
 
     // Any vault-placement activity must happen before this check.
-    _dgn_verify_connectivity(nvaults);
+    // // _dgn_verify_connectivity(nvaults);
 
     if (dgn_level_vetoed)
         return;
 
-    if (level_type != LEVEL_ABYSS)
-        _place_traps(level_number);
+    // // if (level_type != LEVEL_ABYSS)
+    // //    _place_traps(level_number);
 
     _place_fog_machines(level_number);
 
     // Place items.
-    _builder_items(level_number, level_type, _num_items_wanted(level_number));
+    // // _builder_items(level_number, level_type, _num_items_wanted(level_number));
 
     // Place monsters.
-    _builder_monsters(level_number, level_type, _num_mons_wanted(level_type));
+    // // _builder_monsters(level_number, level_type, _num_mons_wanted(level_type));
 
     _fixup_walls();
     _fixup_branch_stairs();
@@ -2493,10 +2490,9 @@ static const map_def *_dgn_random_map_for_place(bool minivault)
     const level_id lid   = level_id::current();
     const map_def *vault = random_map_for_place(lid, minivault);
 
-    // Disallow entry vaults for tutorial (only complicates things).
-    if (!vault
+    if (true // no tutorials for Zot Defense
         && lid.branch == BRANCH_MAIN_DUNGEON
-        && lid.depth == 1 && !Options.tutorial_left)
+        && lid.depth == 1)
     {
         vault = random_map_for_tag("entry");
     }
@@ -2517,6 +2513,7 @@ static builder_rc_type _builder_by_branch(int level_number)
         _ensure_vault_placed_ex( _build_vaults(level_number, vault), vault );
         return BUILD_SKIP;
     }
+    return BUILD_SKIP; // //
 
     switch (you.where_are_you)
     {
@@ -2962,7 +2959,8 @@ static void _place_specific_feature(dungeon_feature_type feat)
     grd[sx][sy] = feat;
 }
 
-static void _place_specific_stair(dungeon_feature_type stair,
+// // this used to be static
+void _place_specific_stair(dungeon_feature_type stair,
                                   const std::string &tag,
                                   int dlevel,
                                   bool vault_only)
@@ -4404,7 +4402,7 @@ static bool _build_vaults(int level_number, const map_def *vault,
         std::vector<coord_def> ex_connection_points =
             _external_connection_points(place, target_connections);
 
-        _build_rooms(excluded_regions, ex_connection_points, nrooms);
+        // // _build_rooms(excluded_regions, ex_connection_points, nrooms);
 
         // Excavate and connect the vault to the rest of the level.
         _dig_vault_loose(place, target_connections);
@@ -4431,45 +4429,6 @@ static bool _build_vaults(int level_number, const map_def *vault,
         for (sty = 6; sty < 10; sty++)
             stair_exist[sty] = 0;
     }
-
-    for (int j = 0; j < (coinflip()? 4 : 3); j++)
-        for (int i = 0; i < 2; i++)
-        {
-            const dungeon_feature_type stair
-                = static_cast<dungeon_feature_type>(
-                   j + ((i == 0) ? DNGN_STONE_STAIRS_DOWN_I
-                                 : DNGN_STONE_STAIRS_UP_I));
-
-            if (stair_exist[stair - DNGN_STONE_STAIRS_DOWN_I] == 1)
-                continue;
-
-            int tries = 10000;
-            do
-            {
-                pos_x = random_range(X_BOUND_1 + 1, X_BOUND_2 - 1);
-                pos_y = random_range(Y_BOUND_1 + 1, Y_BOUND_2 - 1);
-            }
-            while ((grd[pos_x][pos_y] != DNGN_FLOOR
-                    || (!is_layout && pos_x >= v1x && pos_x <= v2x
-                        && pos_y >= v1y && pos_y <= v2y))
-                   && tries-- > 0);
-
-
-            if (tries <= 0)
-            {
-#ifdef DEBUG_DIAGNOSTICS
-                dump_map("debug.map", true);
-                end(1, false,
-                    "Failed to create level: vault stairs for %s "
-                    "(layout: %s) failed",
-                    place.map.name.c_str(), is_layout? "yes" : "no");
-#endif
-                pos_x = you.pos().x;
-                pos_y = you.pos().y;
-            }
-
-            grd[pos_x][pos_y] = stair;
-        }
 
     return (true);
 }                               // end build_vaults()
@@ -5135,6 +5094,59 @@ static void _vault_grid( vault_placement &place,
         _dgn_place_monster(place, monster_type_thing, monster_level, where);
     }
 }                               // end vault_grid()
+
+int retarded_rune_counting_function( int runenumber )
+{
+    switch (runenumber)
+    {
+        case 1:
+            return RUNE_DIS;
+	    break;
+        case 2:
+            return RUNE_GEHENNA;
+	    break;
+        case 3:
+            return RUNE_COCYTUS;
+	    break;
+        case 4:
+            return RUNE_TARTARUS;
+	    break;
+        case 5:
+            return RUNE_SLIME_PITS;
+	    break;
+        case 6:
+            return RUNE_VAULTS;
+	    break;
+        case 7:
+            return RUNE_SNAKE_PIT;
+	    break;
+        case 8:
+            return RUNE_TOMB;
+	    break;
+        case 9:
+            return RUNE_SWAMP;
+	    break;
+        case 10:
+            return RUNE_DEMONIC;
+	    break;
+        case 11:
+            return RUNE_ABYSSAL;
+	    break;
+        case 12:
+            return RUNE_MNOLEG;
+	    break;
+        case 13:
+            return RUNE_LOM_LOBON;
+	    break;
+        case 14:
+            return RUNE_CEREBOV;
+	    break;
+        case 15:
+            return RUNE_GLOORX_VLOQ;
+	    break;
+    }
+    return RUNE_DEMONIC;
+}
 
 // Currently only used for Slime: branch end
 // where it will turn the stone walls into clear rock walls

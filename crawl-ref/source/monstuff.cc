@@ -538,7 +538,7 @@ static void _give_adjusted_experience(monsters *monster, killer_type killer,
         if (old_lev == you.experience_level)
             need_xp_msg = true;
     }
-    else if (pet_kill && !already_got_half_xp)
+    else  // // if (pet_kill && !already_got_half_xp)
     {
         int old_lev = you.experience_level;
         gain_exp( experience / 2 + 1, exp_gain, avail_gain );
@@ -3357,28 +3357,6 @@ static bool _choose_random_patrol_target_grid(monsters *mon)
 static void _check_lava_water_in_sight()
 {
     you.lava_in_sight = you.water_in_sight = 0;
-    for (radius_iterator ri(you.pos(), LOS_RADIUS); ri; ++ri)
-    {
-        // XXX: remove explicit coordinate translation.
-        const coord_def ep = *ri - you.pos() + coord_def(ENV_SHOW_OFFSET,
-                                                         ENV_SHOW_OFFSET);
-        if (env.show(ep))
-        {
-            const dungeon_feature_type feat = grd(*ri);
-            if (feat == DNGN_LAVA)
-            {
-                you.lava_in_sight = 1;
-                if (you.water_in_sight > 0)
-                    break;
-            }
-            else if (feat == DNGN_DEEP_WATER)
-            {
-                you.water_in_sight = 1;
-                if (you.lava_in_sight > 0)
-                    break;
-            }
-        }
-    }
 }
 
 // If a monster can see but not directly reach the target, and then fails to
@@ -3610,7 +3588,7 @@ static bool _try_pathfind(monsters *mon, const dungeon_feature_type can_move,
     // is already adjacent to you.
     if (potentially_blocking && mons_intel(mon) >= I_NORMAL
            && !mons_friendly(mon) && mons_has_los_ability(mon->type)
-        || grid_distance(mon->pos(), you.pos()) == 1)
+        || grid_distance(mon->pos(), find_floor_item(OBJ_ORBS,ORB_ZOT)->pos) == 1)
     {
         potentially_blocking = false;
     }
@@ -3642,7 +3620,7 @@ static bool _try_pathfind(monsters *mon, const dungeon_feature_type can_move,
     }
 
     if (!potentially_blocking
-        || can_go_straight(mon->pos(), you.pos(), can_move))
+        || can_go_straight(mon->pos(), find_floor_item(OBJ_ORBS,ORB_ZOT)->pos, can_move))
     {
         // The player is easily reachable.
         // Clear travel path and target, if necessary.
@@ -3671,7 +3649,7 @@ static bool _try_pathfind(monsters *mon, const dungeon_feature_type can_move,
             const coord_def targ = mon->travel_path[len - 1];
 
             // Current target still valid?
-            if (can_go_straight(targ, you.pos(), can_move))
+            if (can_go_straight(targ, find_floor_item(OBJ_ORBS,ORB_ZOT)->pos, can_move))
             {
                 // Did we reach the target?
                 if (mon->pos() == mon->travel_path[0])
@@ -3695,7 +3673,7 @@ static bool _try_pathfind(monsters *mon, const dungeon_feature_type can_move,
         }
 
         // Use pathfinding to find a (new) path to the player.
-        const int dist = grid_distance(mon->pos(), you.pos());
+        const int dist = grid_distance(mon->pos(), find_floor_item(OBJ_ORBS,ORB_ZOT)->pos);
 
 #ifdef DEBUG_PATHFIND
         mprf("Need to calculate a path... (dist = %d)", dist);
@@ -3713,13 +3691,13 @@ static bool _try_pathfind(monsters *mon, const dungeon_feature_type can_move,
 
 #ifdef DEBUG_PATHFIND
         mprf("Need a path for %s from (%d, %d) to (%d, %d), max. dist = %d",
-             mon->name(DESC_PLAIN).c_str(), mon->pos(), you.pos(), range);
+             mon->name(DESC_PLAIN).c_str(), mon->pos(), find_floor_item(OBJ_ORBS,ORB_ZOT)->pos, range);
 #endif
         monster_pathfind mp;
         if (range > 0)
             mp.set_range(range);
 
-        if (mp.init_pathfind(mon, you.pos()))
+        if (mp.init_pathfind(mon, find_floor_item(OBJ_ORBS,ORB_ZOT)->pos))
         {
             mon->travel_path = mp.calc_waypoints();
             if (!mon->travel_path.empty())
@@ -4331,6 +4309,13 @@ static void _handle_behaviour(monsters *mon)
     static std::vector<level_exit> e;
     static int                     e_index = -1;
 
+    if ((!isFriendly && !isNeutral) && (find_floor_item(OBJ_ORBS,ORB_ZOT)->pos == mon->pos()))
+    {
+        mpr("Your flesh rots away as the Orb of Zot is desecrated.", MSGCH_DANGER );
+        rot_hp(random_range(1,1));
+        ouch(1,0,KILLED_BY_ROTTING);
+    }
+
     // Check for confusion -- early out.
     if (mon->has_ench(ENCH_CONFUSION))
     {
@@ -4397,7 +4382,7 @@ static void _handle_behaviour(monsters *mon)
         const int intel = mons_intel(mon);
         // Now, the corollary to that is that sometimes, if a
         // player is right next to a monster, they will 'see'.
-        if (grid_distance( you.pos(), mon->pos() ) == 1
+        if (grid_distance( find_floor_item(OBJ_ORBS,ORB_ZOT)->pos, mon->pos() ) == 1
             && one_chance_in(3))
         {
             proxPlayer = true;
@@ -4420,7 +4405,24 @@ static void _handle_behaviour(monsters *mon)
         && !mon->has_ench(ENCH_BERSERK)
         && mon->mons_species() != MONS_GIANT_SPORE )
     {
-        mon->foe = you.pet_target;
+        if (proxPlayer)
+        {
+	  // //            mpr("setting pet target (proxPlayer)"); // //
+            mon->foe = you.pet_target;
+        }
+        else
+	{
+	    // // this is all new, for out-of-sight friendlies to do something useful
+	    for (int uticounter = 0; uticounter < NUM_MONSTERS; uticounter++)
+            {
+                if (mon->can_see(&menv[uticounter]))
+		{
+                    mon->foe = uticounter;
+		    // //                    mpr("setting pet target (!proxPlayer)"); // //
+                    break;
+		}
+            }
+	}
     }
 
     // Instead, berserkers attack nearest monsters.
@@ -4463,7 +4465,7 @@ static void _handle_behaviour(monsters *mon)
     if (!isFriendly && !isNeutral
         && mon->foe != MHITYOU && mon->foe != MHITNOT
         && proxPlayer && !(mon->has_ench(ENCH_BERSERK)) && isHealthy
-        && !one_chance_in(3))
+        && one_chance_in(4))  // // 2/3 chance of retargeting changed to 1/4
     {
         mon->foe = MHITYOU;
     }
@@ -4480,19 +4482,19 @@ static void _handle_behaviour(monsters *mon)
 
     while (changed)
     {
-        coord_def foepos = you.pos();
+        coord_def foepos = find_floor_item(OBJ_ORBS,ORB_ZOT)->pos;
 
         // Evaluate these each time; they may change.
         if (mon->foe == MHITNOT)
             proxFoe = false;
         else
         {
-            if (mon->foe == MHITYOU)
+            if (mon->foe == MHITYOU && !isFriendly)
             {
-                foepos = you.pos();
+                foepos = find_floor_item(OBJ_ORBS,ORB_ZOT)->pos;
                 proxFoe = proxPlayer;   // Take invis into account.
             }
-            else
+            else if (mon->foe != MHITYOU)
             {
                 proxFoe = mons_near(mon, mon->foe);
 
@@ -4526,12 +4528,12 @@ static void _handle_behaviour(monsters *mon)
                 else
                 {
                     new_foe = MHITYOU;
-                    mon->target = you.pos();
+                    mon->target = find_floor_item(OBJ_ORBS,ORB_ZOT)->pos;
                 }
                 break;
             }
 
-            // Foe gone out of LOS?
+            /* // Foe gone out of LOS?
             if (!proxFoe)
             {
                 if (mon->travel_target == MTRAV_SIREN)
@@ -4560,9 +4562,9 @@ static void _handle_behaviour(monsters *mon)
                         new_foe = MHITYOU;
                         mon->target = foepos;
                     }
-                    break;
+                    break; // //
                 }
-
+		
                 if (mon->foe_memory > 0 && mon->foe != MHITNOT)
                 {
                     // If we've arrived at our target x,y
@@ -4572,7 +4574,7 @@ static void _handle_behaviour(monsters *mon)
                     // but only for a few moves (smell and
                     // intuition only go so far).
 
-                    if (mon->pos() == mon->target)
+                    if (mon->pos() == mon->target && !isFriendly)
                     {
                         if (mon->foe == MHITYOU)
                         {
@@ -4620,7 +4622,7 @@ static void _handle_behaviour(monsters *mon)
 
                 mon->foe_memory = memory;
                 break;  // switch/case BEH_SEEK
-            }
+	    } */
 
             // Monster can see foe: continue 'tracking'
             // by updating target x,y.
@@ -4650,7 +4652,7 @@ static void _handle_behaviour(monsters *mon)
                 }
                 else
                 {
-                    mon->target = you.pos();
+                    mon->target = find_floor_item(OBJ_ORBS,ORB_ZOT)->pos;
                 }
             }
             else
@@ -5870,7 +5872,7 @@ static bool _handle_special_ability(monsters *monster, bolt & beem)
                                   ? draco_subspecies( monster )
                                   : static_cast<monster_type>( monster->type );
 
-    if (!mons_near(monster)
+    if (true  // // removed !mons_near(monster) check
         || mons_is_sleeping(monster)
         || mons_is_submerged(monster))
     {
@@ -6928,8 +6930,8 @@ static bool _handle_spell(monsters *monster, bolt &beem)
                     }
                 }
             }
-            else if (monster->foe == MHITYOU && !monsterNearby)
-                return (false);
+            // // else if (monster->foe == MHITYOU && !monsterNearby)
+            // //    return (false);
         }
 
         // Monsters caught in a net try to get away.
@@ -7165,7 +7167,7 @@ static bool _handle_spell(monsters *monster, bolt &beem)
         {
             if (spell_needs_foe(spell_cast))
                 _make_mons_stop_fleeing(monster);
-
+	    // //            mpr("monster casting"); // //
             mons_cast(monster, beem, spell_cast);
             mmov.reset();
             monster->lose_energy(EUT_SPELL);
@@ -7955,6 +7957,7 @@ static void _handle_monster_move(monsters *monster)
                 // Figure out if they fight.
                 else if (monsters_fight(monster, targ))
                 {
+		  // //		    if (!mons_friendly(monster)) mpr("hostile vs ally monsters_fight returned true"); else mpr("ally vs hostile monsters_fight returned true"); // //
                     if (mons_is_batty(monster))
                     {
                         monster->behaviour = BEH_WANDER;

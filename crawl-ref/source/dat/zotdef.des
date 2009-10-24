@@ -1,0 +1,66 @@
+###############################################################################
+# zotdef.des - the entry (and only) vault for D:1.
+###############################################################################
+
+
+##############################################################################
+# hall_of_Zot_5
+
+NAME:    zotvault
+TAGS:    entry no_monster_gen encompass
+ORIENT:  north
+LFLOORCOL: magenta
+LROCKCOL:  lightmagenta
+LFLAGS:  no_magic_map
+KITEM:   Z = Orb of Zot
+MARKER:  Z = lua:item_pickup_change_flags { \
+            level_flags="!no_magic_map", item="Orb of Zot" \
+         }
+MAP
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxXXXXXXXXXXXXXXXxxxxxxxxxxxxxxxxxxxxxxxXXXXXXXXXXXXXXXxxxxxxxxxxxxx
+xxxxxxxxxxxXXXX.............XXXXxxxxx|||||||xxxxxXXXX.............XXXXxxxxxxxxxx
+xxxxxxxxxxXX...................XXXxxx|X|X|X|xxxXXX...................XXxxxxxxxxx
+xxxxxxxxxXX......................XXxx|||||||xxXX......................XXxxxxxxxx
+xxxxxxxxxX........................XXXXXXXXXXXXX........................Xxxxxxxxx
+xxxxxxxxxX........................XXX.......XXX........................Xxxxxxxxx
+xxxxxxxxxXX.......................XX.........XX.......................XXxxxxxxxx
+xxxxxxxxxxXX......................X...........X......................XXxxxxxxxxx
+xxxxxxxxxxxXX...........................Z...........................XXxxxxxxxxxx
+xxxxxxxxxxXX......................X...........X......................XXxxxxxxxxx
+xxxxxxxxxXX.......................XX.........XX.......................XXxxxxxxxx
+xxxxxxxxxX........................XXX.......XXX........................Xxxxxxxxx
+xxxxxxxxxX........................cXXXXXXXXXXXc........................Xxxxxxxxx
+xxxxxxxxxXX......................ccccccccccccccc......................XXxxxxxxxx
+xxxxxxxxxxXX...................ccccccccccccccccccc...................XXxxxxxxxxx
+xxxxxxxxxxxXX...............ccccccccccccccccccccccccc...............XXxxxxxxxxxx
+xxxxxxxxxxxxXX.....ccccccccccccccccccccccccccccccccccccccccccc.....XXxxxxxxxxxxx
+xxxxxxxxxxxcc...................ccccccccccccccccc...................ccxxxxxxxxxx
+xxxxxxxxxxcc................cc....ccccccccccccc....cc................ccxxxxxxxxx
+xxxxxxxxxcc..................ccc...ccccccccccc...ccc..................ccxxxxxxxx
+xxxxxxxxxc....................ccc...............ccc....................cxxxxxxxx
+xxxxxxxxxc....................cxcc.............ccxc....................cxxxxxxxx
+xxxxxxxxxc....................cxxc.............cxxc....................cxxxxxxxx
+xxxxxxxxxc....................cxxcc...........ccxxc....................cxxxxxxxx
+xxxxxxxxxc....................cxxxc...........cxxxc....................cxxxxxxxx
+xxxxxxxxxc....................cxxcc...........ccxxc....................cxxxxxxxx
+xxxxxxxxxcc..................ccxxc.............cxxcc..................ccxxxxxxxx
+xxxxxxxxxxcc................ccxxcc.............ccxxcc................ccxxxxxxxxx
+xxxxxxxxxxxcc..............ccxxxc......(.{......cxxxcc..............ccxxxxxxxxxx
+xxxxxxxxxxx|ccccccccccccccccxxxxcccccccc[ccccccccxxxxcccccccccccccccc|xxxxxxxxxx
+xxxxxxxxxx|||xxxxxxxxxxxxxxxxxxxxx*xxxxxxxxxxx*xxxxxxxxxxxxxxxxxxxxx|||xxxxxxxxx
+xxxxxxxxxxx|xxxxxxxxxxxxxxxxxxxxx*|*xxxxxxxxx*|*xxxxxxxxxxxxxxxxxxxxx|xxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*xxxxxxxxxxx*xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ENDMAP

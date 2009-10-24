@@ -168,6 +168,12 @@ extern std::set<std::string> Level_Unique_Tags;
 extern std::vector<vault_placement> Level_Vaults;
 extern std::vector<vault_placement> Temp_Vaults;
 
+// // this used to be static
+void _place_specific_stair(dungeon_feature_type stair,
+                                  const std::string &tag = "",
+                                  int dl = 0, bool vault_only = false);
+
+
 //////////////////////////////////////////////////////////////////////////
 template <typename fgrd, typename bound_check>
 class flood_find : public travel_pathfind
@@ -423,6 +429,8 @@ inline int count_neighbours(const coord_def& p, dungeon_feature_type feat)
 {
   return count_neighbours(p.x, p.y, feat);
 }
+
+int retarded_rune_counting_function( int runenumber );
 
 void remember_vault_placement(std::string key, vault_placement &place);
 
