@@ -496,6 +496,7 @@ static void _do_wizard_command(int wiz_command, bool silent_fail)
     case CONTROL('I'): debug_item_statistics(); break;
     case CONTROL('L'): wizard_set_xl(); break;
     case CONTROL('T'): debug_terp_dlua(); break;
+    case CONTROL('B'): you.teleport(true, false, true); break;
 
     case 'O': debug_test_explore();                  break;
     case 'S': wizard_set_skill_level();              break;
@@ -528,13 +529,13 @@ static void _do_wizard_command(int wiz_command, bool silent_fail)
     case 'L': debug_place_map();                     break;
     case 'i': wizard_identify_pack();                break;
     case 'I': wizard_unidentify_pack();              break;
+    case 'Z':
     case 'z': wizard_cast_spec_spell();              break;
-    case 'Z': wizard_cast_spec_spell_name();         break;
     case '(': wizard_create_feature_number();        break;
     case ')': wizard_create_feature_name();          break;
     case ':': wizard_list_branches();                break;
     case '{': wizard_map_level();                    break;
-	case '}': wizard_reveal_traps();                 break;
+    case '}': wizard_reveal_traps();                 break;
     case '@': wizard_set_stats();                    break;
     case '^': wizard_gain_piety();                   break;
     case '_': wizard_get_religion();                 break;
