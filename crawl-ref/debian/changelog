@@ -1,3 +1,9 @@
+crawl (2:0.6.0~a1-1286-g1c5c56c-1) unstable; urgency=low
+
+  * Allow clean building from git.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Wed, 02 Dec 2009 13:49:46 +0100
+
 crawl (2:0.6.0~a1-1261-g8343625-1) unstable; urgency=low
 
   * New upstream git release.

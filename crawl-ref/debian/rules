@@ -35,6 +35,8 @@ clean:
 	rm -f build-stamp tree-stamp
 	rm -rf build-console build-tiles
 
+	git clean -dfX || true
+
 	dh_clean
 
 install: build
