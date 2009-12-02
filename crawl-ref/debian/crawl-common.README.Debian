@@ -1,0 +1,21 @@
+This is not the original version of Linley Henzell's Dungeon Crawl, but the
+Stone Soup version. The reason why I've decided to use the Stone Soup version
+as the upstream source is best described by this quote from the new upstream's
+website:
+
+"Dungeon Crawl was created in 1995 by Linley Henzell. Crawl rapidly gained
+popularity because of Linley's many innovative gameplay concepts.
+
+After releasing version 3.3, Linley eventually retired from Crawl development,
+leaving Crawl in the hands of a development team; this development team
+continued developing Crawl until early 2003 when version 4.0.0 beta 26 was
+released. After that, Crawl development went into something close to
+hibernation with only Brent Ross working on it, and development largely
+invisible to the public.
+
+The Dungeon Crawl Reference project was formed to pull Crawl out of ensorcelled
+hibernation. Dungeon Crawl Reference is a reference version of Crawl 4.0 beta
+26; Stone Soup is a branch of Dungeon Crawl Reference."
+
+ -- Guus Sliepen <guus@debian.org>  Mon, 16 Apr 2007 11:00:00 +0200
+

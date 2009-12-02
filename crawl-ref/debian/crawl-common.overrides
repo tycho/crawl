@@ -1,0 +1,1 @@
+crawl-common: non-standard-dir-perm var/games/crawl/ 2775 != 0755

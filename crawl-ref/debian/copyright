@@ -1,0 +1,267 @@
+This package was debianized by Guus Sliepen <guus@debian.org> on
+Sat, 10 Mar 2001 17:40:09 +0100
+
+It was downloaded from http://crawl-ref.sourceforge.net/
+
+Upstream Author: the Stone Soup team <crawl-ref-discuss@lists.sourceforge.net>
+
+
+The following license applies to most of the code:
+
+                        Crawl General Public Licence
+                                      
+                               Linley Henzell
+                    (Copyright 1997-1999 Linley Henzell)
+   
+     Yes, this is an almost exact copy of the Nethack Licence, but has
+     obviously been adapted for Crawl (under the 'terms for other
+     programs' portion of paragraph one). Crawl contains no code from
+     Nethack in any shape or form.
+     
+                Based on the NETHACK GENERAL PUBLIC LICENCE
+                       (Copyright 1989 M. Stephenson)
+   
+                 Based on the BISON GENERAL PUBLIC LICENCE
+                    (Copyright 1988 Richard M. Stallman)
+   
+     Everyone is permitted to copy and distribute verbatim copies of
+     this licence, but changing it is not allowed. You can also use this
+     wording to make the terms for other programs.
+     
+     The licence agreements of most software companies keep you at the
+     mercy of those companies. By contrast, our general public licence
+     is intended to give everyone the right to share Crawl. To make sure
+     that you get the rights we want you to have, we need to make
+     restrictions that forbid anyone to deny you these rights or to ask
+     you to surrender the rights. Hence this licence agreement.
+     
+     Specifically, we want to make sure that you have the right to give
+     away copies of Crawl, that you receive source code or else can get
+     it if you want it, that you can change Crawl or use pieces of it in
+     new free programs, and that you know you can do these things.
+     
+     To make sure that everyone has such rights, we have to forbid you
+     to deprive anyone else of these rights. For example, if you
+     distribute copies of Crawl, you must give the recipients all the
+     rights that you have. You must make sure that they, too, receive or
+     can get the source code. And you must tell them their rights.
+     
+     Also, for our own protection, we must make certain that everyone
+     finds out that there is no warranty for Crawl. If Crawl is modified
+     by someone else and passed on, we want its recipients to know that
+     what they have is not what we distributed.
+     
+     Therefore I (Linley Henzell, the copyright holder of Crawl) make
+     the following terms which say what you must do to be allowed to
+     distribute or change Crawl.
+     
+                              COPYING POLICIES
+   
+    1. You may copy and distribute verbatim copies of Crawl source code
+       as you receive it, in any medium, provided that you keep intact
+       the notices on all files that refer to copyrights, to this Licence
+       Agreement, and to the absence of any warranty; and give any other
+       recipients of the Crawl program a copy of this Licence Agreement
+       along with the program.
+    2. You may modify your copy or copies of Crawl or any portion of it,
+       and copy and distribute such modifications under the terms of
+       Paragraph 1 above (including distributing this Licence Agreement),
+       provided that you also do the following:
+         a. cause the modified files to carry prominent notices stating
+            that you changed the files and the date of any change; and
+         b. cause the whole of any work that you distribute or publish,
+            that in whole or in part contains or is a derivative of Crawl
+            or any part thereof, to be licensed at no charge to all third
+            parties on terms identical to those contained in this Licence
+            Agreement (except that you may choose to grant more extensive
+            warranty protection to some or all third parties, at your
+            option)
+         c. You may charge a distribution fee for the physical act of
+            transferring a copy, and you may at your option offer
+            warranty protection in exchange for a fee.
+    3. You may copy and distribute Crawl (or a portion or derivative of
+       it, under Paragraph 2) in object code or executable form under the
+       terms of Paragraphs 1 and 2 above provided that you also do one of
+       the following:
+         a. accompany it with the complete machine-readable source code,
+            which must be distributed under the terms of Paragraphs 1 and
+            2 above; or,
+         b. accompany it with full information as to how to obtain the
+            complete machine-readable source code from an appropriate
+            archive site. (This alternative is allowed only for
+            noncommercial distribution.)
+       For these purposes, complete source code means either the full
+       source distribution as available from my web site or updated
+       copies of the files in this distribution used to create the object
+       code or executable.
+    4. You may not copy, sublicence, distribute or transfer Crawl except
+       as expressly provided under this Licence Agreement. Any attempt
+       otherwise to copy, sublicence, distribute or transfer Crawl is
+       void and your rights to use the program under this Licence
+       agreement shall be automatically terminated. However, parties who
+       have received computer software programs from you with this
+       Licence Agreement will not have their licences terminated so long
+       as such parties remain in full compliance.
+       
+     Stated plainly: You are prohibited by the terms of this Licence
+     Agreement from using Crawl for gainful purposes. You are permitted
+     to modify Crawl, or otherwise use parts of Crawl, provided that you
+     comply with the conditions specified above; in particular, your
+     modified Crawl or program containing parts of Crawl must remain
+     freely available as provided in this Licence Agreement. In other
+     words, go ahead and share Crawl, but don't try to stop anyone else
+     from sharing it farther.
+
+
+The following license applies to parts copied from Lua:
+
+Lua License
+-----------
+
+Lua is licensed under the terms of the MIT license reproduced below.
+This means that Lua is free software and can be used for both academic
+and commercial purposes at absolutely no cost.
+
+For details and rationale, see http://www.lua.org/license.html .
+
+===============================================================================
+
+Copyright (C) 1994-2006 Lua.org, PUC-Rio.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+===============================================================================
+
+(end of COPYRIGHT)
+
+
+The following applies to the MT19937 random number generator used in crawl:
+
+A C-program for MT19937, with initialization improved 2002/1/26.
+Coded by Takuji Nishimura and Makoto Matsumoto.
+
+Before using, initialize the state by using init_genrand(seed)  
+or init_by_array(init_key, key_length).
+
+Copyright (C) 1997 - 2002, Makoto Matsumoto and Takuji Nishimura,
+All rights reserved.                          
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+  3. The names of its contributors may not be used to endorse or promote 
+     products derived from this software without specific prior written 
+     permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+Any feedback is very welcome.
+http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
+email: m-mat @ math.sci.hiroshima-u.ac.jp (remove space)
+
+
+The following applies to PCRE code used in crawl:
+
+PCRE LICENCE
+------------
+
+PCRE is a library of functions to support regular expressions whose syntax
+and semantics are as close as possible to those of the Perl 5 language.
+
+Release 6 of PCRE is distributed under the terms of the "BSD" licence, as
+specified below. The documentation for PCRE, supplied in the "doc"
+directory, is distributed under the same terms as the software itself.
+
+The basic library functions are written in C and are freestanding. Also
+included in the distribution is a set of C++ wrapper functions.
+
+
+THE BASIC LIBRARY FUNCTIONS
+---------------------------
+
+Written by:       Philip Hazel
+Email local part: ph10
+Email domain:     cam.ac.uk
+
+University of Cambridge Computing Service,
+Cambridge, England. Phone: +44 1223 334714.
+
+Copyright (c) 1997-2006 University of Cambridge
+All rights reserved.
+
+
+THE C++ WRAPPER FUNCTIONS
+-------------------------
+
+Contributed by:   Google Inc.
+
+Copyright (c) 2006, Google Inc.
+All rights reserved.
+
+
+THE "BSD" LICENCE
+-----------------
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+    * Neither the name of the University of Cambridge nor the name of Google
+      Inc. nor the names of their contributors may be used to endorse or
+      promote products derived from this software without specific prior
+      written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+End

@@ -1,0 +1,101 @@
+#!/usr/bin/make -f
+
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	MAKEFLAGS += -j$(NUMJOBS)
+endif
+
+tree-stamp:
+	dh_testdir
+	rm -rf build-console
+	mkdir -p build-console
+	tar cf - docs settings source --exclude contrib --exclude rltiles|tar xf - -C build-console
+	rm -rf build-tiles
+	mkdir -p build-tiles
+	tar cf - docs settings source --exclude contrib|tar xf - -C build-tiles
+	touch tree-stamp
+
+# The makefile is unorthodox, requiring all options to be specified on every invocation.
+ARGS_CONSOLE = prefix=/usr
+ARGS_TILES   = prefix=/usr TILES=y GAME=crawl-tiles
+
+build: build-stamp
+build-stamp: tree-stamp
+	dh_testdir
+
+	cd build-console/source && $(MAKE) $(ARGS_CONSOLE)
+	cd build-tiles/source && $(MAKE) $(ARGS_TILES)
+
+	touch build-stamp
+
+clean:
+	dh_testdir
+	dh_testroot
+
+	rm -f build-stamp tree-stamp
+	rm -rf build-console build-tiles
+
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_prep
+	dh_installdirs
+
+	cd build-console/source && $(MAKE) $(ARGS_CONSOLE) install DESTDIR=../../debian/crawl-common
+	cd debian/crawl-common/usr/share && mkdir -p doc/crawl-common && \
+		mv crawl/docs/* doc/crawl-common && rmdir crawl/docs
+	cd debian/crawl-common/usr/share/doc/crawl-common/license && \
+		rm -f lgpl.txt libpng-LICENSE.txt lualicense.txt pcre_license.txt
+	mkdir -p debian/crawl/usr/
+	mv debian/crawl-common/usr/games debian/crawl/usr/games
+	cd build-tiles/source && $(MAKE) $(ARGS_TILES) install DESTDIR=../../debian/crawl-tiles
+	rm -rf debian/crawl-tiles/var
+	cd debian/crawl-tiles/usr/share/crawl/ && rm -rf docs settings
+	cd debian/crawl-tiles/usr/share/crawl/dat && rm -rf *.des clua database descript lua
+	
+	mkdir -p debian/crawl/usr/share/man/man6
+	cp docs/crawl.6 debian/crawl/usr/share/man/man6/
+	mkdir -p debian/crawl-tiles/usr/share/man/man6
+	cp docs/crawl.6 debian/crawl-tiles/usr/share/man/man6/crawl-tiles.6
+	mkdir -p debian/crawl-common/usr/share/lintian/overrides
+	cp debian/crawl-common.overrides debian/crawl-common/usr/share/lintian/overrides/crawl-common
+	mkdir -p debian/crawl-common/usr/share/doc/crawl-common/examples
+	cp settings/init.txt debian/crawl-common/usr/share/doc/crawl-common/examples/crawlrc
+	ln -sf /usr/share/games/crawl-common/docs/crawl_manual.txt debian/crawl-common/usr/share/doc/crawl-common/
+
+	mkdir -p debian/crawl/usr/share/doc
+	ln -sf crawl-common debian/crawl/usr/share/doc/crawl
+	mkdir -p debian/crawl-tiles/usr/share/doc
+	ln -sf crawl-common debian/crawl-tiles/usr/share/doc/crawl-tiles
+
+# Build architecture-independent files here.
+binary-indep:
+# We have nothing to do by default.
+
+# Build architecture-dependent files here.
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installdocs -pcrawl-common
+	dh_installchangelogs -pcrawl-common docs/changelog.txt
+	dh_installmenu
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	chgrp games debian/crawl/usr/games/crawl
+	chmod g+s debian/crawl/usr/games/crawl
+	chgrp games debian/crawl-tiles/usr/games/crawl-tiles
+	chmod g+s debian/crawl-tiles/usr/games/crawl-tiles
+	chgrp -R games debian/crawl-common/var/games/crawl
+	chmod -R g+ws debian/crawl-common/var/games/crawl
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary install
