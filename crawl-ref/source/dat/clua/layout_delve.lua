@@ -9,6 +9,12 @@ local function is_floor_ngb(p, i)
     and dgn.mapgrd_table(g_dgn_curr_map)[q.x][q.y] == '.'
 end
 
+local function is_wall_ngb(p, i)
+  local q = dgn.point(p.x + compass[i][1], p.y + compass[i][2])
+  return dgn.in_bounds(q.x, q.y)
+    and dgn.mapgrd_table(g_dgn_curr_map)[q.x][q.y] == 'x'
+end
+
 local function ngbcount(p)
   local c = 0
   local i
@@ -20,28 +26,71 @@ local function ngbcount(p)
   return c
 end
 
-local function ngbgroups(p)
+local function digcell(p, store)
+  dgn.mapgrd_table(g_dgn_curr_map)[p.x][p.y] = '.'
   local i
-  local groups = 0
   for i = 1, 8 do
-    if is_floor_ngb(p, i) and not is_floor_ngb(p, i+1) then
-      groups = groups + 1
-    end
-  end
-  if groups == 0 and is_floor_ngb(p, 1) then
-    return 1
-  else
-    return groups
+    local q = dgn.point(p.x + compass[i][1], p.y + compass[i][2])
+    store(q)
   end
 end
 
-local function digcell(p, store)
-  dgn.mapgrd_table(g_dgn_curr_map)[p.x][p.y] = '.'
-  for q in iter.adjacent_iterator(false, nil, p) do
-    if feat.is_wall(q) then
-      store(q)
+local function is_diag(i)
+  local dx = compass[i][1]
+  local dy = compass[i][2]
+  return dx ~= 0 and dy ~= 0
+end  
+
+local function calc_disconn(ngbs)
+  local i
+  local wall = 0
+  for i = 1, 8 do
+    if not is_diag(i) and not ngbs[i] then
+      wall = i
+      break
     end
   end
+  if wall == 0 then return false end
+  local last_floor = 0
+  for i = 1, 7 do
+    local j = wall + i
+    local jx = (j - 1) % 8 + 1
+    if ngbs[jx] then
+      if last_floor == 0 or
+         last_floor == j - 1 or
+         last_floor == j - 2 and not is_diag(jx) then
+        last_floor = j
+      else
+        return true
+      end
+    end
+  end
+  return false
+end
+
+layout.disconn = calc_disconn
+
+local disconn_tab = {}
+
+local function disconn(ngbs)
+  if disconn_tab[ngbs] == nil then
+    disconn_tab[ngbs] = calc_disconn(ngbs)
+  end
+  return disconn_tab[ngbs]
+end
+
+local function disconnecting(p)
+  local i
+  local ngbs = {}
+  for i = 1,8 do
+    table.insert(ngbs, is_floor_ngb(p, i))
+  end
+  return disconn(ngbs)
+end
+
+local function connect_check(p, connchance)
+  if crawl.random2(100) < connchance then return true end
+  return not disconnecting(p)
 end
 
 local function seed(scount, orig, ngb_max, connchance, count, get, store)
@@ -49,9 +98,8 @@ local function seed(scount, orig, ngb_max, connchance, count, get, store)
     local p = get()
     if p == nil then break end
     local n = ngbcount(p)
-    local ngps = ngbgroups(p)
     if math.abs(p.x - orig.x) < 2 and math.abs(p.y - orig.y) < 2 and
-       n <= ngb_max and (ngps <= 1 or crawl.random2(100) < connchance) then
+       n <= ngb_max and connect_check(p, connchance) then
       digcell(p, store)
       count = count - 1
       scount = scount - 1
@@ -65,9 +113,7 @@ local function delveon(ngb_min, ngb_max, connchance, count, get, store)
     local p = get()
     if p == nil then return end
     local n = ngbcount(p)
-    local ngps = ngbgroups(p)
-    if n >= ngb_min and n <= ngb_max and
-       (ngps <= 1 or crawl.random2(100) < connchance) then
+    if n >= ngb_min and n <= ngb_max and connect_check(p, connchance) then
       digcell(p, store)
       count = count - 1
     end
@@ -81,7 +127,7 @@ local function add_to_store(p, store, done)
   end
 end
 
-local function get_random(store, done)
+local function get_random(store)
   if #store == 0 then return nil end
   local i = crawl.random2(#store) + 1
   local p = store[i]
@@ -94,7 +140,7 @@ function layout.cavern(orig, ngb_min, ngb_max, connchance, count)
   cellstore = { orig }
   done = {}
   done[orig] = true
-  get = function() return get_random(cellstore, done) end
+  get = function() return get_random(cellstore) end
   store = function(p) add_to_store(p, cellstore, done) end
 
   count = seed(2 * ngb_min, orig, ngb_max, connchance, count, get, store)
