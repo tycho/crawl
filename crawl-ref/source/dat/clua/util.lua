@@ -56,7 +56,7 @@ end
 -- Returns a list of the keys in the given map.
 function util.keys(map)
   local keys = { }
-  for key, _ in pairs(ziggurat_builder_map) do
+  for key, _ in pairs(map) do
     table.insert(keys, key)
   end
   return keys
@@ -65,7 +65,7 @@ end
 -- Returns a list of the values in the given map.
 function util.values(map)
   local values = { }
-  for _, value in pairs(ziggurat_builder_map) do
+  for _, value in pairs(map) do
     table.insert(values, value)
   end
   return values
