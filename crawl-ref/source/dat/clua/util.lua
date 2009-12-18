@@ -53,6 +53,11 @@ function util.curry(fn, ...)
   end
 end
 
+-- Returns whether the given map has any entries.
+function util.empty(map)
+  return next(map) == nil
+end
+
 -- Returns a list of the keys in the given map.
 function util.keys(map)
   local keys = { }
