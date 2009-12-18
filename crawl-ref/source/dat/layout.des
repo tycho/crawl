@@ -395,105 +395,11 @@ NAME: layout_delve
 ORIENT: encompass
 TAGS: layout allow_dup
 {{
-  local compass = {
-    {1, 0}, {1, -1}, {0, -1}, {-1, -1},
-    {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}
-  }
-  function is_floor_ngb(p, i)
-    local q = dgn.point(p.x + compass[i][1], p.y + compass[i][2])
-    return dgn.in_bounds(q.x, q.y) and mapgrd[q.x][q.y] == '.'
-  end
-  function ngbcount(p)
-    local c = 0
-    local i
-    for i = 1, 8 do
-      if is_floor_ngb(p, i) then
-        c = c + 1
-      end
-    end
-    return c
-  end
-  function ngbgroups(p)
-    local i
-    local groups = 0
-    for i = 1, 8 do
-      if is_floor_ngb(p, i) and not is_floor_ngb(p, i+1) then
-        groups = groups + 1
-      end
-    end
-    if groups == 0 and is_floor_ngb(p, 1) then
-      return 1
-    else
-      return groups
-    end
-  end
-
-  local store = {}
-  local done = {}
-
-  function add_to_store(p)
-    if not done[p] then
-      done[p] = true
-      table.insert(store, p)
-    end
-  end
-
-  function get_random()
-    local i = crawl.random2(#store) + 1
-    local p = store[i]
-    store[i] = store[#store]
-    store[#store] = nil
-    return p
-  end
-
-  function digcell(p)
-    mapgrd[p.x][p.y] = '.'
-    for q in iter.adjacent_iterator(false, nil, p) do
-      if feat.is_wall(q) then
-        add_to_store(q)
-      end
-    end
-  end
-
-  function delveon(ngb_min, ngb_max, connchance, count)
-    while count > 0 and #store > 0 do
-      local p = get_random()
-      local n = ngbcount(p)
-      local ngps = ngbgroups(p)
-      if n >= ngb_min and n <= ngb_max and
-         (ngps <= 1 or crawl.random2(100) < connchance) then
-        digcell(p)
-        count = count - 1
-      end
-    end
-  end
-
-  function cavern(orig, ngb_min, ngb_max, connchance, count)
-    store = { orig }
-    done = {}
-    done[orig] = true    
-    local x = 2 * ngb_min
-    while x > 0 and count > 0 and #store > 0 do
-      local p = get_random()
-      local n = ngbcount(p)
-      local ngps = ngbgroups(p)
-      if math.abs(p.x - orig.x) < 2 and math.abs(p.y - orig.y) < 2 and
-         n <= ngb_max and (ngps <= 1 or crawl.random2(100) < connchance) then
-        digcell(p)
-        count = count - 1
-        x = x - 1
-      end
-    end
-    if count > 0 then
-      delveon(ngb_min, ngb_max, connchance, count)
-    end
-  end
-
   local gxm, gym = dgn.max_bounds()
   extend_map{width = gxm, height = gym, fill = 'x'}
   fill_area{fill = 'x'}
   local orig = dgn.point(gxm/2, gym/2)
-  cavern(orig, 2, 3, 0, gxm*gym/5)
+  layout.cavern(orig, 2, 3, 0, gxm*gym/5)
 }}
 MAP
 ENDMAP
