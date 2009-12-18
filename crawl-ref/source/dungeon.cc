@@ -6340,7 +6340,7 @@ static bool _plan_3(int level_number)
     dgn_Build_Method += " plan_3";
     dgn_Layout_Type   = "rooms";
 
-    const map_def *vault = find_map_by_name("layout_rooms");
+    const map_def *vault = find_map_by_name("layout_delve");
     ASSERT(vault);
 
     bool success = _build_vaults(level_number, vault);
