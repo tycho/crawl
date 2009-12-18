@@ -203,6 +203,10 @@ function util.random_from(list)
   return list[ crawl.random2(#list) + 1 ]
 end
 
+function util.random_from_set(set)
+  return util.random_from(util.keys(set))
+end
+
 function util.random_weighted_from(weightfn, list)
   if type(weightfn) ~= "function" then
     local weightkey = weightfn
