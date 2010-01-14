@@ -3,6 +3,8 @@
 #             Vaults system, including Vaults:8, Hall of Blades. Crypt and
 #             Tomb maps go to crypt.des.
 #
+#             Vault generation takes place in vault_gen.des.
+#
 # Note the regular (mini)vaults are no longer in vaults.des, they have been
 # moved to mini.des, float.des and large.des. Portal vaults live in portal.des.
 ###############################################################################

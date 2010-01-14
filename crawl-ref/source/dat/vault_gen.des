@@ -1,0 +1,112 @@
+###############################################################################
+# vault_gen.des: Generation of the actual Vaults branch.
+#
+# Note that Vaults vaults, entry, branch ends and Hall of Blades belond in
+# vaults.des.
+###############################################################################
+
+NAME: subvault_test
+TAGS: vaults_subvault allow_dup
+{{
+if not is_subvault() then
+  return
+end
+
+local width, height = subvault_size()
+
+extend_map { width=width, height=height, fill = 'w' }
+fill_area { x1=1, y1=1, x2=width-1, y2=height-1, fill = 'w' }
+make_box_doors {x1=0, y1=0, x2=width, y2=height, number=3 }
+
+}}
+MAP
+ENDMAP
+
+NAME: layout_vaults
+ORIENT: encompass
+TAGS: layout allow_dup
+{{
+    local gxm, gym = dgn.max_bounds()
+
+    extend_map{width = gxm, height = gym, fill = 'x'}
+    fill_area{fill = 'x'}
+
+    local temp_rand = crawl.random2(8)
+    local wall_type_room
+    local wall_type
+    local rooms = {}
+
+    local xs = 0
+    local ys = 0
+    local ax1 = 0
+    local bx2 = 0
+    local ay1 = 0
+    local by2 = 0
+    local i, j
+
+    if temp_rand > 4 then
+        wall_type = 'x'
+    elseif temp_rand  > 2 then
+        wall_type = 'c'
+    else
+        wall_type = 'v'
+    end
+
+    if crawl.one_chance_in(100) then
+        wall_type = 'b'
+    end
+
+    fill_area { x1=8, y1=8, x2=gxm-9, y2=gym-9, fill="." }
+
+    for i = 0, 5 do
+        for j = 0, 4 do
+            xs = 8 + (i * 13)
+            ys = 8 + (j * 14)
+            a1 = xs + crawl.random2avg(5, 2);
+            a2 = ys + crawl.random2avg(5, 2);
+            b1 = xs + 11 - crawl.random2avg(5, 2);
+            b2 = ys + 11 - crawl.random2avg(5, 2);
+
+            temp_rand = crawl.random2(280);
+
+            if temp_rand > 39 and is_valid_coord {x=a1, y=a2} and is_valid_coord{x=b1, y=b2} then
+                if temp_rand > 63 then
+                    wall_type_room = wall_type
+                elseif temp_rand > 54 then
+                    wall_type_room = "c"
+                elseif temp_rand > 45 then
+                    wall_type_room = "x"
+                else
+                    wall_type_room = "v"
+                end
+
+                if crawl.one_chance_in(250) then
+                    wall_type_room = "b"
+                end
+
+                table.insert(rooms, {a1, a2, b1, b2})
+                make_box { x1=a1, y1=a2, x2=b1, y2=b2, wall=wall_type_room }
+            end
+        end
+    end
+
+    for _, room in ipairs(rooms) do
+        local doors = 1 + crawl.random2(5) - crawl.random2(3)
+        if doors < 1 then
+            doors = 1
+        end
+
+        if doors > 3 and crawl.one_chance_in(3) then
+            doors = 2
+        end
+
+        make_box_doors {x1=room[1], y1=room[2], x2=room[3], y2=room[4], number=doors}
+    end
+
+    for _, room in ipairs(rooms) do
+        fill_area {x1 = room[1]+1, y1=room[2]+1, x2=room[3]-1, y2=room[4]-1, fill="X"}
+    end
+}}
+SUBVAULT: X : vaults_subvault
+MAP
+ENDMAP
