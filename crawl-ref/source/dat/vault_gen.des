@@ -23,16 +23,13 @@ ENDMAP
 NAME: subvault_stairs1
 TAGS: vaults_stairvault allow_dup
 {{
-if not is_subvault() then
+local width, height = subvault_size()
+if width == 0 then
   return
 end
 
-local width, height = subvault_size()
-
 extend_map { width=width, height=height, fill = '.' }
-fill_area {fill="."}
-mapgrd[1][1] = "G"
-crawl.mpr(mapgrd[1][1])
+mapgrd[crawl.random2(width)][crawl.random2(height)] = " "
 }}
 MAP
 ENDMAP
@@ -41,6 +38,11 @@ NAME: layout_vaults
 ORIENT: encompass
 TAGS: layout allow_dup
 {{
+    function get_stair (count)
+        stairs = {"{", "(", "[", "}", ")", "]"}
+        return stairs[count+1]
+    end
+
     local gxm, gym = dgn.max_bounds()
 
     extend_map{width = gxm, height = gym, fill = 'x'}
@@ -119,18 +121,20 @@ TAGS: layout allow_dup
         make_box_doors {x1=room[1], y1=room[2], x2=room[3], y2=room[4], number=doors}
     end
 
+    for stair = 0, 5 do
+        index = crawl.random2(#rooms) + 1
+        room = rooms[index]
+        table.remove(rooms, index)
+        fill_area {x1 = room[1]+1, y1=room[2]+1, x2=room[3]-1, y2=room[4]-1, fill="D"}
+        subvault("D : vaults_stairvault")
+        nsubst("D = 1:" .. get_stair(stair) .. " / *:.")
+
+    end
+
     for _, room in ipairs(rooms) do
-        local fill
-        if stair_count < 6 then
-            stair_count = stair_count + 1
-            fill = "D"
-        else
-            fill = "X"
-        end
-        fill_area {x1 = room[1]+1, y1=room[2]+1, x2=room[3]-1, y2=room[4]-1, fill=fill}
+        fill_area {x1 = room[1]+1, y1=room[2]+1, x2=room[3]-1, y2=room[4]-1, fill="X"}
+        subvault("X : vaults_subvault")
     end
 }}
-SUBVAULT: D : vaults_stairvault
-NSUBST: D = 1:{ / 1:( / 1:[ / 1:} / 1:) / 1:] / *:.
 MAP
 ENDMAP
