@@ -15,9 +15,24 @@ end
 local width, height = subvault_size()
 
 extend_map { width=width, height=height, fill = 'w' }
-fill_area { x1=1, y1=1, x2=width-1, y2=height-1, fill = 'w' }
-make_box_doors {x1=0, y1=0, x2=width, y2=height, number=3 }
 
+}}
+MAP
+ENDMAP
+
+NAME: subvault_stairs1
+TAGS: vaults_stairvault allow_dup
+{{
+if not is_subvault() then
+  return
+end
+
+local width, height = subvault_size()
+
+extend_map { width=width, height=height, fill = '.' }
+fill_area {fill="."}
+mapgrd[1][1] = "G"
+crawl.mpr(mapgrd[1][1])
 }}
 MAP
 ENDMAP
@@ -34,6 +49,7 @@ TAGS: layout allow_dup
     local temp_rand = crawl.random2(8)
     local wall_type_room
     local wall_type
+    local stair_count = 0
     local rooms = {}
 
     local xs = 0
@@ -104,9 +120,17 @@ TAGS: layout allow_dup
     end
 
     for _, room in ipairs(rooms) do
-        fill_area {x1 = room[1]+1, y1=room[2]+1, x2=room[3]-1, y2=room[4]-1, fill="X"}
+        local fill
+        if stair_count < 6 then
+            stair_count = stair_count + 1
+            fill = "D"
+        else
+            fill = "X"
+        end
+        fill_area {x1 = room[1]+1, y1=room[2]+1, x2=room[3]-1, y2=room[4]-1, fill=fill}
     end
 }}
-SUBVAULT: X : vaults_subvault
+SUBVAULT: D : vaults_stairvault
+NSUBST: D = 1:{ / 1:( / 1:[ / 1:} / 1:) / 1:] / *:.
 MAP
 ENDMAP
