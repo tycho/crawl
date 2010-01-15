@@ -173,6 +173,7 @@ static void _box_room(int bx1, int bx2, int by1, int by2,
                       dungeon_feature_type wall_type);
 static int  _box_room_doors( int bx1, int bx2, int by1, int by2, int new_doors);
 static void _city_level(int level_number);
+static void _vaults_level(int level_number);
 static void _diamond_rooms(int level_number);
 
 static void _pick_float_exits(vault_placement &place,
@@ -2560,10 +2561,7 @@ static builder_rc_type _builder_normal(int level_number, char level_type,
 
     if (player_in_branch( BRANCH_VAULTS ))
     {
-        if (one_chance_in(3))
-            _city_level(level_number);
-        else
-            _plan_main(level_number, 4);
+        _vaults_level(level_number);
         return BUILD_SKIP;
     }
 
@@ -7133,6 +7131,19 @@ static void _city_level(int level_number)
     bool success = _build_vaults(level_number, vault);
     dgn_ensure_vault_placed(success, false);
 }
+
+static void _vaults_level(int level_number)
+{
+    dgn_Build_Method += make_stringf(" vaults_level [%d]", level_number);
+    dgn_Layout_Type   = "vaults";
+
+    const map_def *vault = find_map_by_name("layout_vaults");
+    ASSERT(vault);
+
+    bool success = _build_vaults(level_number, vault);
+    dgn_ensure_vault_placed(success, false);
+}
+
 
 static bool _treasure_area(int level_number, unsigned char ta1_x,
                            unsigned char ta2_x, unsigned char ta1_y,
