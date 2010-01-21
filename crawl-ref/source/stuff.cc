@@ -16,6 +16,7 @@
 #include "database.h"
 #include "directn.h"
 #include "env.h"
+#include "libutil.h"
 #include "los.h"
 #include "message.h"
 #include "misc.h"
@@ -432,8 +433,7 @@ void redraw_screen(void)
 
     print_stats();
 
-    if (Options.delay_message_clear)
-        mesclr(true);
+    display_message_window();
 
     bool note_status = notes_are_active();
     activate_notes(false);

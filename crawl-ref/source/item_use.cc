@@ -1300,7 +1300,7 @@ void fire_target_behaviour::message_ammo_prompt(const std::string* pre_text)
             << "</" << colour << ">";
     }
 
-    formatted_message_history(tagged_string_substr(msg.str(),
+    mpr(tagged_string_substr(msg.str(),
                                                    0, crawl_view.msgsz.x),
                               MSGCH_PROMPT);
 }
@@ -1716,7 +1716,7 @@ static bool _item_penetrates_victim(const bolt &beam, const actor *victim,
 static bool _silver_damages_victim(bolt &beam, actor* victim, int &dmg,
                                    std::string &dmg_msg)
 {
-    if (victim->undead_or_demonic() || victim->is_chaotic())
+    if (victim->holiness() == MH_UNDEAD || victim->is_chaotic())
     {
         dmg *= 2;
 
@@ -3612,7 +3612,7 @@ static int _prompt_ring_to_remove(int new_ring)
          "You're wearing two rings. Remove which one? (%c/%c/<</>/Esc)",
          lslot, rslot);
 
-    mprf(" < or %s", left->name(DESC_INVENTORY).c_str());
+    mprf(" << or %s", left->name(DESC_INVENTORY).c_str());
     mprf(" > or %s", right->name(DESC_INVENTORY).c_str());
 
     // Deactivate choice from tile inventory.

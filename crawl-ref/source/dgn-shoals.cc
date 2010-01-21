@@ -1,6 +1,7 @@
 #include "AppHdr.h"
 
 #include "branch.h"
+#include "cio.h"
 #include "colour.h"
 #include "coord.h"
 #include "coordit.h"
@@ -11,7 +12,10 @@
 #include "flood_find.h"
 #include "fprop.h"
 #include "items.h"
+#include "libutil.h"
+#include "mapmark.h"
 #include "maps.h"
+#include "message.h"
 #include "mgen_data.h"
 #include "mon-iter.h"
 #include "mon-place.h"
@@ -36,10 +40,10 @@ const int SHOALS_ISLAND_COLLIDE_DIST2 = 5 * 5;
 // The raw tide height / TIDE_MULTIPLIER is the actual tide height. The higher
 // the tide multiplier, the slower the tide advances and recedes. A multiplier
 // of X implies that the tide will advance visibly about once in X turns.
-const int TIDE_MULTIPLIER = 30;
+int TIDE_MULTIPLIER = 30;
 
-const int LOW_TIDE = -18 * TIDE_MULTIPLIER;
-const int HIGH_TIDE = 25 * TIDE_MULTIPLIER;
+int LOW_TIDE = -18 * TIDE_MULTIPLIER;
+int HIGH_TIDE = 25 * TIDE_MULTIPLIER;
 
 // The highest a tide can be called by a tide caller such as Ilsuiw.
 const int HIGH_CALLED_TIDE = 50;
@@ -700,6 +704,10 @@ void shoals_postprocess_level()
         if (!(dgn_Map_Mask(c) & MMT_VAULT))
             continue;
 
+        // Don't mess with tide immune squares at all.
+        if (is_tide_immune(c))
+            continue;
+
         const dungeon_feature_type feat(grd(c));
         if (!_shoals_tide_susceptible_feat(feat))
             continue;
@@ -885,6 +893,11 @@ static int _shoals_tide_at(coord_def pos, int base_tide)
     return (base_tide + std::max(0, tide_called_peak - distance * 3));
 }
 
+static std::vector<coord_def> _shoals_extra_tide_seeds()
+{
+    return find_marker_positions_by_prop("tide_seed");
+}
+
 static void _shoals_apply_tide(int tide)
 {
     std::vector<coord_def> pages[2];
@@ -895,6 +908,11 @@ static void _shoals_apply_tide(int tide)
     pages[current_page].push_back(coord_def(GXM - 2, 1));
     pages[current_page].push_back(coord_def(1, GYM - 2));
     pages[current_page].push_back(coord_def(GXM - 2, GYM - 2));
+
+    // Find any extra seeds -- markers with tide_seed="y".
+    const std::vector<coord_def> extra_seeds(_shoals_extra_tide_seeds());
+    pages[current_page].insert(pages[current_page].end(),
+                               extra_seeds.begin(), extra_seeds.end());
 
     FixedArray<bool, GXM, GYM> seen_points(false);
 
@@ -1022,3 +1040,62 @@ void shoals_release_tide(monsters *mons)
         shoals_apply_tides(0, true);
     }
 }
+
+#ifdef WIZARD
+static void _shoals_change_tide_granularity(int newval)
+{
+    LOW_TIDE        = LOW_TIDE * newval / TIDE_MULTIPLIER;
+    HIGH_TIDE       = HIGH_TIDE * newval / TIDE_MULTIPLIER;
+    TIDE_MULTIPLIER = newval;
+}
+
+static int _tidemod_keyfilter(int &c)
+{
+    return (c == '+' || c == '-'? -1 : 1);
+}
+
+static void _shoals_force_tide(int increment)
+{
+    int tide = env.properties[ENVP_SHOALS_TIDE_KEY].get_short();
+    tide += increment * TIDE_MULTIPLIER;
+    tide = std::min(HIGH_TIDE, std::max(LOW_TIDE, tide));
+    env.properties[ENVP_SHOALS_TIDE_KEY] = short(tide);
+    _shoals_tide_direction = increment > 0 ? TIDE_RISING : TIDE_FALLING;
+    _shoals_apply_tide(tide / TIDE_MULTIPLIER);
+}
+
+void wizard_mod_tide()
+{
+    if (!player_in_branch(BRANCH_SHOALS) || !env.heightmap.get())
+    {
+        mprf(MSGCH_WARN, "Not in Shoals or no heightmap; tide not available.");
+        return;
+    }
+
+    char buf[80];
+    while (true)
+    {
+        mprf(MSGCH_PROMPT,
+             "Tide inertia: %d. New value "
+             "(smaller = faster tide) or use +/- to change tide: ",
+             TIDE_MULTIPLIER);
+        mpr("");
+        const int res =
+            cancelable_get_line(buf, sizeof buf, NULL, _tidemod_keyfilter);
+        mesclr(true);
+        if (res == ESCAPE)
+            break;
+        if (!res)
+        {
+            const int newgran = atoi(buf);
+            if (newgran > 0 && newgran < 3000)
+                _shoals_change_tide_granularity(newgran);
+        }
+        if (res == '+' || res == '-')
+        {
+            _shoals_force_tide(res == '+'? 2 : -2);
+            viewwindow(false, true);
+        }
+    }
+}
+#endif

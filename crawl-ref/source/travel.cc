@@ -29,6 +29,7 @@
 #include "itemname.h"
 #include "itemprop.h"
 #include "items.h"
+#include "libutil.h"
 #include "macro.h"
 #include "message.h"
 #include "misc.h"
@@ -2196,8 +2197,7 @@ static travel_target _prompt_travel_depth(const level_id &id,
 
         char buf[100];
         const int response =
-            cancelable_get_line( buf, sizeof buf, get_number_of_cols(),
-                                 NULL, _travel_depth_keyfilter );
+            cancelable_get_line(buf, sizeof buf, NULL, _travel_depth_keyfilter);
 
         if (!response)
             return _parse_travel_target(buf, target);

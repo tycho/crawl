@@ -41,6 +41,7 @@
 #include "itemprop.h"
 #include "items.h"
 #include "l_defs.h"
+#include "libutil.h"
 #include "makeitem.h"
 #include "mapdef.h"
 #include "mapmark.h"
@@ -4284,7 +4285,9 @@ bool dgn_place_map(const map_def *mdef,
                 for (int i = 0, size = markers.size(); i < size; ++i)
                 {
                     markers[i]->activate();
-                    if (markers[i]->property("post_activate_remove") != "")
+                    const std::string prop =
+                        markers[i]->property("post_activate_remove");
+                    if (!prop.empty())
                         to_remove.push_back(markers[i]);
                 }
                 for (unsigned int i = 0; i < to_remove.size(); i++)
@@ -4582,11 +4585,8 @@ static void _dgn_place_item_explicit(const item_spec &spec,
         }
     }
 
-    // Modify dungeon to ensure that the item is not on an invalid feature.
-    if (grd(where) == DNGN_DEEP_WATER)
-        grd(where) = DNGN_SHALLOW_WATER;
-    else if (grd(where) <= DNGN_MINMOVE || grd(where) == DNGN_LAVA)
-        grd(where) = DNGN_FLOOR;
+    // [ds] Don't modify dungeon to accommodate items - vault
+    // designers need more flexibility here.
 }
 
 void dgn_place_multiple_items(item_list &list,
@@ -4711,8 +4711,11 @@ static void _dgn_give_mon_spec_items(mons_spec &mspec,
     }
 
     // Pre-wield ranged weapons.
-    if (mon.inv[MSLOT_WEAPON] == NON_ITEM && mon.inv[MSLOT_ALT_WEAPON] != NON_ITEM)
+    if (mon.inv[MSLOT_WEAPON] == NON_ITEM
+        && mon.inv[MSLOT_ALT_WEAPON] != NON_ITEM)
+    {
         mon.swap_weapons(false);
+    }
 }
 
 
@@ -4858,7 +4861,8 @@ int dgn_place_monster(mons_spec &mspec,
             if (mspec.explicit_spells)
                 mons.spells = mspec.spells;
             if (mspec.props.exists("monster_tile"))
-                mons.props["monster_tile"] = mspec.props["monster_tile"].get_short();
+                mons.props["monster_tile"] =
+                    mspec.props["monster_tile"].get_short();
             // These are applied earlier to prevent issues with renamed monsters
             // and "<monster> comes into view" (see delay.cc:_monster_warning).
             //mons.flags |= mspec.extra_monster_flags;
