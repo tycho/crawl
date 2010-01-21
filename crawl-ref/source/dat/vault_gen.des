@@ -93,7 +93,7 @@ ENDMAP
 # The actual builders
 NAME: layout_vaults
 ORIENT: encompass
-TAGS: layout allow_dup no_monster_gen no_item_gen
+TAGS: layout allow_dup no_item_gen
 {{
     function get_stair (count)
         stairs = {"{", "(", "[", "}", ")", "]"}
@@ -206,5 +206,6 @@ TAGS: layout allow_dup no_monster_gen no_item_gen
         subvault("X : vaults_subvault")
     end
 }}
+KMASK: . = no_monster_gen
 MAP
 ENDMAP
