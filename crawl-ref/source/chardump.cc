@@ -26,6 +26,7 @@
 #include "debug.h"
 #include "describe.h"
 #include "dungeon.h"
+#include "godprayer.h"
 #include "hiscores.h"
 #include "initfile.h"
 #include "itemprop.h"
@@ -1350,7 +1351,8 @@ static bool write_dump( const std::string &fname, dump_params &par)
 
 void display_notes()
 {
-    Menu scr;
+    formatted_scroller scr;
+    scr.set_flags(MF_START_AT_END);
     scr.set_tag("notes");
     scr.set_title(new MenuEntry("Turn   | Place   | Note"));
     for (unsigned int i = 0; i < note_list.size(); ++i)

@@ -307,7 +307,7 @@ std::vector<MenuEntry *> Menu::show(bool reuse_selections)
 #endif
 
     if (is_set(MF_START_AT_END))
-        while(page_down());
+        first_entry = std::max((int)items.size() - pagesize, 0);
 
     do_menu();
 
@@ -1890,13 +1890,6 @@ std::string get_linebreak_string(const std::string& s, int maxcol)
     std::string r = s;
     linebreak_string2(r, maxcol);
     return r;
-}
-
-// Takes a (possibly tagged) string, breaks it into lines and
-// prints it into the given message channel.
-void print_formatted_paragraph(std::string &s, msg_channel_type channel)
-{
-    mpr(s, channel);
 }
 
 bool formatted_scroller::jump_to( int i )
