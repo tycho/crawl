@@ -2720,8 +2720,14 @@ void yell(bool force)
             }
         }
 
-        mpr("Gang up on whom?", MSGCH_PROMPT);
-        direction(targ, DIR_TARGET, TARG_HOSTILE, -1, false, false);
+        {
+            direction_chooser_args args;
+            args.restricts = DIR_TARGET;
+            args.mode = TARG_HOSTILE;
+            args.needs_path = false;
+            args.top_prompt = "Gang up on whom?";
+            direction(targ, args);
+        }
 
         if (targ.isCancel)
         {

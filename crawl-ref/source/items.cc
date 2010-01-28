@@ -43,6 +43,7 @@
 #include "message.h"
 #include "misc.h"
 #include "mon-util.h"
+#include "mon-stuff.h"
 #include "mutation.h"
 #include "notes.h"
 #include "options.h"
@@ -1926,6 +1927,36 @@ bool move_top_item( const coord_def &pos, const coord_def &dest )
     return (true);
 }
 
+const item_def* top_item_at(const coord_def& where, bool allow_mimic_item)
+{
+    if (allow_mimic_item)
+    {
+        const monsters* mon = monster_at(where);
+        if (mon && mons_is_unknown_mimic(mon))
+            return &get_mimic_item(mon);
+    }
+
+    const int link = igrd(where);
+    return (link == NON_ITEM) ? NULL : &mitm[link];
+}
+
+bool multiple_items_at(const coord_def& where, bool allow_mimic_item)
+{
+    int found_count = 0;
+
+    if (allow_mimic_item)
+    {
+        const monsters* mon = monster_at(where);
+        if (mon && mons_is_unknown_mimic(mon))
+            ++found_count;
+    }
+
+    for (stack_iterator si(where); si && found_count < 2; ++si)
+        ++found_count;
+
+    return (found_count > 1);
+}
+
 bool drop_item( int item_dropped, int quant_drop, bool try_offer )
 {
     if (quant_drop < 0 || quant_drop > you.inv[item_dropped].quantity)
@@ -1955,7 +1986,7 @@ bool drop_item( int item_dropped, int quant_drop, bool try_offer )
         return (false);
     }
 
-    for (int i = EQ_CLOAK; i <= EQ_BODY_ARMOUR; i++)
+    for (int i = EQ_MIN_ARMOUR; i <= EQ_MAX_ARMOUR; i++)
     {
         if (item_dropped == you.equip[i] && you.equip[i] != -1)
         {

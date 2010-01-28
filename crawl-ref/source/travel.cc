@@ -223,6 +223,13 @@ inline bool _is_safe_trap (const coord_def& c)
         return (true);
     }
 
+    // Known shafts can be side-stepped and thus are safe for auto-travel.
+    if (trap == TRAP_SHAFT)
+    {
+        trap_def* shaft = find_trap(c);
+        return (shaft->is_known());
+    }
+
     return (false);
 }
 
@@ -309,12 +316,12 @@ unsigned char is_waypoint(const coord_def &p)
     return curr_waypoints[p.x][p.y];
 }
 
-inline bool is_stash(const LevelStashes *ls, int x, int y)
+inline bool is_stash(const LevelStashes *ls, const coord_def& p)
 {
     if (!ls)
         return (false);
 
-    const Stash *s = ls->find_stash(x, y);
+    const Stash *s = ls->find_stash(p);
     return s && s->enabled;
 }
 
@@ -1095,7 +1102,7 @@ travel_pathfind::~travel_pathfind()
 static bool _is_greed_inducing_square(const LevelStashes *ls,
                                       const coord_def &c)
 {
-    if (ls && ls->needs_visit(c.x, c.y))
+    if (ls && ls->needs_visit(c))
         return (true);
 
     if (const monsters *mons = monster_at(c))
@@ -1346,17 +1353,17 @@ void travel_pathfind::get_features()
 
     memset(point_distance, 0, sizeof(travel_distance_grid_t));
 
-    for (int x = X_BOUND_1; x <= X_BOUND_2; ++x)
-        for (int y = Y_BOUND_1; y <= Y_BOUND_2; ++y)
+    coord_def dc;
+    for (dc.x = X_BOUND_1; dc.x <= X_BOUND_2; ++dc.x)
+        for (dc.y = Y_BOUND_1; dc.y <= Y_BOUND_2; ++dc.y)
         {
-            coord_def dc(x,y);
-            dungeon_feature_type feature = env.map_knowledge(dc).feat();
+            const dungeon_feature_type feature = env.map_knowledge(dc).feat();
 
             if ((feature != DNGN_FLOOR
                     && !feat_is_water(feature)
                     && feature != DNGN_LAVA)
                 || is_waypoint(dc)
-                || is_stash(ls, dc.x, dc.y)
+                || is_stash(ls, dc)
                 || is_trap(dc))
             {
                 features->push_back(dc);
@@ -1528,7 +1535,7 @@ bool travel_pathfind::path_flood(const coord_def &c, const coord_def &dc)
                        && !feat_is_water(feature)
                        && feature != DNGN_LAVA
                     || is_waypoint(dc)
-                    || is_stash(ls, dc.x, dc.y)))
+                    || is_stash(ls, dc)))
             {
                 features->push_back(dc);
             }

@@ -459,7 +459,7 @@ void stop_delay( bool stop_stair_travel )
 
     case DELAY_INTERRUPTIBLE:
         // Always stoppable by definition...
-        // try using a more specific type anyways. -- bwr
+        // try using a more specific type anyway. -- bwr
         _pop_delay();
         break;
 
@@ -1324,7 +1324,7 @@ static void _finish_delay(const delay_queue_item &delay)
             _pop_delay();
             handle_delay();
         }
-        StashTrack.update_stash(); // Stash-track the generated item(s).
+        StashTrack.update_stash(you.pos()); // Stash-track the generbated items.
         break;
     }
 

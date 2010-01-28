@@ -896,7 +896,6 @@ static void _input()
 
     // Currently only set if Xom accidentally kills the player.
     you.reset_escaped_death();
-    flush_prev_message();
 
     if (crawl_state.is_replaying_keys() && crawl_state.is_repeating_cmd()
         && kbhit())
@@ -906,6 +905,7 @@ static void _input()
         crawl_state.cancel_cmd_repeat("Key pressed, interrupting command "
                                       "repetition.");
         crawl_state.prev_cmd = CMD_NO_CMD;
+        flush_prev_message();
         getchm();
         return;
     }
@@ -981,10 +981,7 @@ static void _input()
 
     // Stop autoclearing more now that we have control back.
     if (!you_are_delayed())
-    {
-        flush_prev_message();
         set_more_autoclear(false);
-    }
 
     if (need_to_autopickup())
         autopickup();
@@ -1763,11 +1760,14 @@ void process_command( command_type cmd )
 
     case CMD_LOOK_AROUND:
     {
-        mpr("Move the cursor around to observe a square "
-            "(v - describe square, ? - help)", MSGCH_PROMPT);
-
-        struct dist lmove;   // Will be initialised by direction().
-        direction(lmove, DIR_TARGET, TARG_ANY, -1, true, false);
+        dist lmove;   // Will be initialised by direction().
+        direction_chooser_args args;
+        args.restricts = DIR_TARGET;
+        args.just_looking = true;
+        args.needs_path = false;
+        args.target_prefix = "Here";
+        args.may_target_monster = "Move the cursor around to observe a square.";
+        direction(lmove, args);
         if (lmove.isValid && lmove.isTarget && !lmove.isCancel
             && !crawl_state.arena_suspended)
         {
@@ -2087,8 +2087,6 @@ void process_command( command_type cmd )
            mpr("Unknown command.", MSGCH_EXAMINE_FILTER);
         break;
     }
-
-    flush_prev_message();
 }
 
 static void _prep_input()
@@ -3261,7 +3259,9 @@ static void _open_door(coord_def move, bool check_confused)
         else
         {
             mpr("Which direction? ", MSGCH_PROMPT);
-            direction(door_move, DIR_DIR);
+            direction_chooser_args args;
+            args.restricts = DIR_DIR;
+            direction(door_move, args);
 
             if (!door_move.isValid)
                 return;
@@ -3516,7 +3516,9 @@ static void _close_door(coord_def move)
         else
         {
             mpr("Which direction? ", MSGCH_PROMPT);
-            direction(door_move, DIR_DIR);
+            direction_chooser_args args;
+            args.restricts = DIR_DIR;
+            direction(door_move, args);
 
             if (!door_move.isValid)
                 return;

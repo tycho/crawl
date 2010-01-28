@@ -2065,44 +2065,22 @@ bool do_god_gift(bool prayed_for, bool forced)
                 int jelly_count = 0;
                 for (radius_iterator ri(you.pos(), 9); ri; ++ri)
                 {
-                    int item = igrd(*ri);
+                    monsters *mon = monster_at(*ri);
 
-                    if (item != NON_ITEM)
+                    if (mon != NULL && mons_is_slime(mon))
                     {
-                        for (stack_iterator si(*ri); si; ++si)
-                            if (one_chance_in(7))
-                                jelly_count++;
+                        mon->add_ench(mon_enchant(ENCH_PARALYSIS, 0,
+                                      KC_OTHER, 200));
+                        jelly_count++;
                     }
                 }
 
                 if (jelly_count > 0)
                 {
-                    int count_created = 0;
-                    for (; jelly_count > 0; --jelly_count)
-                    {
-                        mgen_data mg(MONS_JELLY, BEH_STRICT_NEUTRAL, 0, 0, 0,
-                                     you.pos(), MHITNOT, 0, GOD_JIYVA);
-
-                        mg.non_actor_summoner = "Jiyva";
-
-                        if (create_monster(mg) != -1)
-                            count_created++;
-
-                        // Sanity check: Stop if spawning further jellies
-                        // would excommunicate us.
-                        if (you.piety - (count_created + 1) * 5 <= 0)
-                            break;
-                    }
-
-                    if (count_created > 0)
-                    {
-                        mprf(MSGCH_PRAY, "%s!",
-                             count_created > 1 ? "Some jellies appear"
-                                               : "A jelly appears");
-                        success = true;
-                    }
-
-                    lose_piety(5 * count_created);
+                    mprf(MSGCH_PRAY, "%s.",
+                             jelly_count > 1 ? "The nearby slimes join your prayer"
+                                             : "A nearby slime joins your prayer");
+                    lose_piety(5);
                 }
             }
             break;
@@ -3234,7 +3212,9 @@ void god_pitch(god_type which_god)
     snprintf(info, INFO_SIZE, "Do you wish to %sjoin this religion?",
              (you.worshipped[which_god]) ? "re" : "");
 
-    if (!yesno(info, false, 'n') || !yesno("Are you sure?", false, 'n'))
+    cgotoxy(1, 18, GOTO_CRT);
+    textcolor(channel_to_colour(MSGCH_PROMPT));
+    if (!yesno(info, false, 'n', true, true, false, NULL, GOTO_CRT))
     {
         you.turn_is_over = false; // Okay, opt out.
         redraw_screen();

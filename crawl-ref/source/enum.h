@@ -98,7 +98,7 @@ enum ability_type
     ABIL_BEOGH_SMITING,
     ABIL_BEOGH_RECALL_ORCISH_FOLLOWERS,
     ABIL_JIYVA_CALL_JELLY,
-    ABIL_JIYVA_JELLY_SHIELD,                // 240
+    ABIL_JIYVA_JELLY_PARALYSE,                // 240
     ABIL_JIYVA_SLIMIFY,
     ABIL_JIYVA_CURE_BAD_MUTATION,
     ABIL_FEDHAS_FUNGAL_BLOOM,
@@ -1292,6 +1292,9 @@ enum equipment_type
     EQ_AMULET,
     NUM_EQUIP,
 
+    EQ_MIN_ARMOUR = EQ_CLOAK,
+    EQ_MAX_ARMOUR = EQ_BODY_ARMOUR,
+    EQ_MAX_WORN   = EQ_AMULET,
     // these aren't actual equipment slots, they're categories for functions
     EQ_STAFF            = 100,         // weapon with base_type OBJ_STAVES
     EQ_RINGS,                          // check both rings
@@ -1610,6 +1613,8 @@ enum targ_mode_type
     TARG_ENEMY,  // hostile + neutral
     TARG_FRIEND,
     TARG_HOSTILE,
+    TARG_HOSTILE_SUBMERGED, // Target hostiles including submerged ones
+    TARG_EVOLVABLE_PLANTS,  // Targetting mode for Fedhas' evolution
     TARG_NUM_MODES
 };
 

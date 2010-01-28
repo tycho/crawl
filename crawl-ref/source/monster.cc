@@ -2722,6 +2722,13 @@ void monsters::moveto(const coord_def& c)
     if (c != pos() && in_bounds(pos()))
         mons_clear_trapping_net(this);
 
+    if (mons_is_projectile(type))
+    {
+        // Assume some means of displacement, normal moves will overwrite this.
+        props["iood_x"].get_float() += c.x - pos().x;
+        props["iood_y"].get_float() += c.y - pos().y;
+    }
+
     set_position(c);
 }
 
@@ -2834,6 +2841,8 @@ void monsters::banish(const std::string &)
 {
     coord_def old_pos = pos();
 
+    if (mons_is_projectile(type))
+        return;
     if (!silenced(pos()) && can_speak())
         simple_monster_message(this, (" screams as " + pronoun(PRONOUN_NOCAP)
             + " is devoured by a tear in reality.").c_str(),
@@ -5552,7 +5561,10 @@ bool monsters::invisible() const
 
 bool monsters::visible_to(const actor *looker) const
 {
-    bool vis = !invisible() || looker->can_see_invisible();
+    bool sense_invis = looker->atype() == ACT_MONSTER
+                       && mons_sense_invis(looker->as_monster());
+    bool vis = !invisible() || looker->can_see_invisible()
+               || sense_invis && adjacent(pos(), looker->pos());
     return (vis && (this == looker || !has_ench(ENCH_SUBMERGED)));
 }
 
