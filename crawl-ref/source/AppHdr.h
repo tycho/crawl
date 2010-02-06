@@ -180,6 +180,7 @@
     #include "libdos.h"
 
     #include <dos.h>
+    #include <file.h>
 
     #define round(x) floor((x)+0.5)
 
@@ -508,6 +509,10 @@ inline void UNUSED(const volatile T &)
 }
 
 // And now headers we want precompiled
+#ifdef TARGET_COMPILER_VC
+#include "msvc.h"
+#endif
+
 #include "externs.h"
 #include "unwind.h"
 #include "version.h"

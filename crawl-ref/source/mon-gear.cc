@@ -466,7 +466,9 @@ static item_make_species_type _give_weapon(monsters *mon, int level,
     case MONS_YELLOW_DRACONIAN:
     case MONS_PURPLE_DRACONIAN:
     case MONS_TIAMAT:
-        if (mons_genus(mon->type) == MONS_NAGA)
+        if (mons_genus(mon->type) == MONS_DWARF)
+            item_race = MAKE_ITEM_DWARVEN;
+        else if (mons_genus(mon->type) == MONS_NAGA)
             item_race = MAKE_ITEM_NO_RACE;
 
         item.base_type = OBJ_WEAPONS;
@@ -1133,7 +1135,7 @@ static void _give_ammo(monsters *mon, int level,
             break;
 
         case MONS_MERFOLK:
-            if (!one_chance_in(3)
+            if (one_chance_in(3)
                 || active_monster_band == BAND_MERFOLK_JAVELINEER)
             {
                 item_race  = MAKE_ITEM_NO_RACE;
@@ -1410,6 +1412,9 @@ void give_armour(monsters *mon, int level)
     case MONS_RUPERT:
     case MONS_WAYNE:
     {
+        if (mons_genus(mon->type) == MONS_DWARF)
+            item_race = MAKE_ITEM_DWARVEN;
+
         item.base_type = OBJ_ARMOUR;
 
         const int temp_rand = random2(4);

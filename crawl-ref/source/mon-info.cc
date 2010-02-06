@@ -152,7 +152,7 @@ bool monster_info::less_than(const monster_info& m1,
         }
     }
 
-    if (m1.m_fullname && m2.m_fullname || m1type == MONS_PLAYER_GHOST)
+    if (m1.m_fullname && m2.m_fullname || mons_is_pghost(m1type))
         return (m1.m_mon->name(DESC_PLAIN) < m2.m_mon->name(DESC_PLAIN));
 
 #if 0 // for now, sort brands together.
@@ -223,7 +223,6 @@ void monster_info::to_string(int count, std::string& desc,
     if (!crawl_state.arena && you.misled())
         type = m_mon->get_mislead_type();
 
-
     if (count == 1)
     {
         if (mons_is_mimic(type))
@@ -243,14 +242,19 @@ void monster_info::to_string(int count, std::string& desc,
             out << count << " "
                 << m_mon->name(DESC_PLAIN);
         }
-        // Don't differentiate between dancing weapons, mimics, (very)
+        // Specialcase mimics, so they don't get described as piles of gold
+        // when that would be inappropriate. (HACK)
+        else if (mons_is_mimic(type))
+        {
+            out << count << " mimics";
+        }
+        // Don't differentiate between dancing weapons, (very)
         // ugly things or draconians of different types.
         else if (m_fullname
                  && type != MONS_DANCING_WEAPON
                  && mons_genus(type) != MONS_DRACONIAN
                  && type != MONS_UGLY_THING
                  && type != MONS_VERY_UGLY_THING
-                 && !mons_is_mimic(type)
                  && m_mon->mname.empty())
         {
             out << count << " "

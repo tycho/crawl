@@ -13,6 +13,7 @@
 #include "coord.h"
 #include "coordit.h"
 #include "database.h"
+#include "delay.h"
 #include "directn.h"
 #include "effects.h"
 #include "env.h"
@@ -1027,7 +1028,7 @@ bool plant_ring_from_fruit()
         return (false);
     }
 
-    if ((int)adjacent.size() > target_count)
+    if (static_cast<int>(adjacent.size()) > target_count)
         prioritise_adjacent(you.pos(), adjacent);
 
     int hp_adjust = you.skills[SK_INVOCATIONS] * 10;
@@ -1318,6 +1319,14 @@ bool evolve_flora()
     
     direction(spelld, args);
 
+    if (!spelld.isValid)
+    {
+        // Check for user cancel.
+        canned_msg(MSG_OK);
+        return (false);
+    }
+
+
     monsters* target = monster_at(spelld.target);
 
     if (!target)
@@ -1421,6 +1430,11 @@ bool ponderousify_armour()
     you.redraw_evasion = true;
 
     simple_god_message(" says: Use this wisely!");
+
+    // XXX: if the armour can have other wear effects, need to undo first.
+    if (item_is_equipped(arm))
+        armour_wear_effects(item_slot);
+
     return (true);
 }
 
@@ -1440,7 +1454,7 @@ static int _slouch_monsters(coord_def where, int pow, int, actor* agent)
 
 int cheibriados_slouch(int pow)
 {
-    return (apply_area_visible(_slouch_monsters, pow));
+    return (apply_area_visible(_slouch_monsters, pow, false, &you));
 }
 
 ////////////////////////////////////////////////////////////////////////////

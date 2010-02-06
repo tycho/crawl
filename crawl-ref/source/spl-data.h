@@ -291,7 +291,8 @@
      7,
      0,
      -1, -1,
-     0,
+     -4,   // Just a bit noisier than Blink, to keep this spell relevant
+           // for stabbers. [rob]
      NULL,
      false,
      true
@@ -2525,7 +2526,7 @@
 },
 
 {
-    SPELL_SUMMON_PLAYER_GHOST, "Summon Player Ghost",
+    SPELL_SUMMON_ILLUSION, "Summon Illusion",
      SPTYP_SUMMONING,
      SPFLAG_MONSTER,
      5,

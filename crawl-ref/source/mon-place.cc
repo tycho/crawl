@@ -196,6 +196,8 @@ bool monster_habitable_grid(monster_type montype,
 // Returns true if the monster can submerge in the given grid.
 bool monster_can_submerge(const monsters *mons, dungeon_feature_type grid)
 {
+    if (testbits(env.pgrid(mons->pos()), FPROP_NO_SUBMERGE))
+        return (false);
     if (mons_class_flag(mons->type, M_SUBMERGES))
         switch (mons_primary_habitat(mons))
         {
@@ -1154,6 +1156,15 @@ monsters* get_free_monster()
     return (NULL);
 }
 
+void mons_add_blame(monsters *mon, const std::string &blame_string)
+{
+    const bool exists = mon->props.exists("blame");
+    CrawlStoreValue& blame = mon->props["blame"];
+    if (!exists)
+        blame.new_vector(SV_STR, SFLAG_CONST_TYPE);
+    blame.get_vector().push_back(blame_string);
+}
+
 #ifdef USE_TILE
 // For some tiles, always use the fixed same variant out of a set
 // of tiles. (Where this is not handled by number or colour already.)
@@ -1495,10 +1506,7 @@ static int _place_monster_aux(const mgen_data &mg,
 
     if (!mg.non_actor_summoner.empty())
     {
-        CrawlStoreValue& blame = mon->props["blame"];
-
-        blame.new_vector(SV_STR, SFLAG_CONST_TYPE);
-        blame.get_vector().push_back(blame_prefix + mg.non_actor_summoner);
+        mons_add_blame(mon, blame_prefix + mg.non_actor_summoner);
     }
     // NOTE: The summoner might be dead if the summoned is placed by a
     // beam which killed the summoner first (like fire vortexes placed
@@ -1506,30 +1514,22 @@ static int _place_monster_aux(const mgen_data &mg,
     else if (mg.summoner != NULL && mg.summoner->alive())
     {
         ASSERT(mg.summoner->alive());
-
-        CrawlStoreValue& blame = mon->props["blame"];
-
-        blame.new_vector(SV_STR, SFLAG_CONST_TYPE);
-
         if (mg.summoner->atype() == ACT_PLAYER)
         {
-            blame.get_vector().push_back(blame_prefix + "the player character");
+            mons_add_blame(mon, blame_prefix + "the player character");
         }
         else
         {
             monsters* sum = dynamic_cast<monsters*>(mg.summoner);
-
-            blame.get_vector().push_back(blame_prefix
-                                         + sum->full_name(DESC_NOCAP_A, true));
-
+            mons_add_blame(mon, (blame_prefix
+                                 + sum->full_name(DESC_NOCAP_A, true)));
             if (sum->props.exists("blame"))
             {
                 CrawlVector& oldblame = sum->props["blame"].get_vector();
-
                 for (CrawlVector::iterator i = oldblame.begin();
                      i != oldblame.end(); ++i)
                 {
-                    blame.get_vector().push_back(*i);
+                    mons_add_blame(mon, *i);
                 }
             }
         }

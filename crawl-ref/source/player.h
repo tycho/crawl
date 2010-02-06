@@ -55,8 +55,7 @@ public:
 
   unsigned short unrand_reacts;
 
-  double elapsed_time;        // total amount of elapsed time in the game
-  // This is NOT a fraction; double is merely used as a portable long long here
+  long elapsed_time;        // total amount of elapsed time in the game
 
   int disease;
 
@@ -217,7 +216,6 @@ public:
   FixedVector<unsigned char, MAX_NUM_GODS>  worshipped;
   FixedVector<short,         MAX_NUM_GODS>  num_gifts;
 
-  char che_saved_ponderousness;
 
   FixedVector<unsigned char, NUM_MUTATIONS> mutation;
   FixedVector<unsigned char, NUM_MUTATIONS> demon_pow;
@@ -325,7 +323,7 @@ public:
     void reset_prev_move();
 
     bool in_water() const;
-    bool can_swim() const;
+    bool can_swim(bool permanently = false) const;
     int visible_igrd(const coord_def&) const;
     bool is_levitating() const;
     bool cannot_speak() const;
@@ -368,7 +366,7 @@ public:
     size_type transform_size(int psize = PSIZE_TORSO) const;
     std::string shout_verb() const;
 
-    item_def *slot_item(equipment_type eq);
+    item_def *slot_item(equipment_type eq, bool include_melded);
 
     // actor
     monster_type id() const;
@@ -593,15 +591,14 @@ bool player_in_hell(void);
 
 bool berserk_check_wielded_weapon(void);
 int player_equip( equipment_type slot, int sub_type, bool calc_unid = true );
-int player_equip_ego_type(int slot, int sub_type, bool ignore_melded = true);
+int player_equip_ego_type( int slot, int sub_type );
 bool player_equip_unrand( int unrand_index );
 bool player_can_hit_monster(const monsters *mon);
 
 bool player_is_shapechanged(void);
 
-bool is_light_armour( const item_def &item );
-
-bool player_light_armour(bool with_skill = false);
+bool is_effectively_light_armour(const item_def *item);
+bool player_effectively_in_light_armour();
 
 bool player_under_penance(void);
 

@@ -7,6 +7,8 @@
 
 #include "viewmap.h"
 
+#include <algorithm>
+
 #include "branch.h"
 #include "cio.h"
 #include "colour.h"
@@ -427,6 +429,14 @@ static void _reset_travel_colours(std::vector<coord_def> &features,
     arrange_features(features);
 }
 
+// Sort glyphs within a group, for the feature list.
+static bool _comp_glyphs(const glyph& g1, const glyph& g2)
+{
+    return (g1.ch < g2.ch || g1.ch == g2.ch && g1.col < g2.col);
+}
+
+static glyph _get_feat_glyph(const coord_def& gc);
+
 class feature_list
 {
     enum group
@@ -435,19 +445,6 @@ class feature_list
     };
 
     std::vector<glyph> data[NUM_GROUPS];
-
-    glyph get_glyph(const coord_def& gc)
-    {
-        // XXX: it's unclear whether we want to display all features
-        // or just those not obscured by remembered/detected stuff.
-        dungeon_feature_type feat = env.map_knowledge(gc).feat();
-        const bool terrain_seen = is_terrain_seen(gc);
-        const feature_def &fdef = get_feature_def(feat);
-        glyph g;
-        g.ch  = terrain_seen ? fdef.symbol : fdef.magic_symbol;
-        g.col = get_map_col(gc);
-        return (g);
-    }
 
     static group feat_dir(dungeon_feature_type feat)
     {
@@ -489,7 +486,7 @@ class feature_list
 
         group grp = get_group(gc);
         if (grp != G_NONE)
-            data[grp].push_back(get_glyph(gc));
+            data[grp].push_back(_get_feat_glyph(gc));
 #endif
     }
 
@@ -500,6 +497,8 @@ public:
             data[i].clear();
         for (rectangle_iterator ri(0); ri; ++ri)
             maybe_add(*ri);
+        for (unsigned int i = 0; i < NUM_GROUPS; ++i)
+            std::sort(data[i].begin(), data[i].end(), _comp_glyphs);
     }
 
     formatted_string format() const
@@ -1194,6 +1193,29 @@ static bool _travel_colour_override(const coord_def& p)
                                       obj.feat == DNGN_LAVA ||
                                       obj.feat == DNGN_DEEP_WATER ||
                                       obj.feat == DNGN_SHALLOW_WATER));
+}
+
+
+// Get glyph for feature list; here because it's so similar
+// to get_map_col.
+static glyph _get_feat_glyph(const coord_def& gc)
+{
+    // XXX: it's unclear whether we want to display all features
+    // or just those not obscured by remembered/detected stuff.
+    dungeon_feature_type feat = env.map_knowledge(gc).feat();
+    const bool terrain_seen = is_terrain_seen(gc);
+    const feature_def &fdef = get_feature_def(feat);
+    glyph g;
+    g.ch  = terrain_seen ? fdef.symbol : fdef.magic_symbol;
+    unsigned col;
+    if (_travel_colour_override(gc))
+        col = _get_travel_colour(gc);
+    else if (emphasise(gc))
+        col = fdef.seen_em_colour;
+    else
+        col = fdef.seen_colour;
+    g.col = real_colour(col);
+    return g;
 }
 
 unsigned get_map_col(const coord_def& p, bool travel)

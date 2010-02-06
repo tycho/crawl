@@ -231,7 +231,7 @@ public:
     int       damage_brand(int which_attack = -1);
     int       damage_type(int which_attack = -1);
 
-    item_def *slot_item(equipment_type eq);
+    item_def *slot_item(equipment_type eq, bool include_melded);
     item_def *mslot_item(mon_inv_type sl) const;
     item_def *weapon(int which_attack = -1);
     item_def *launcher();
@@ -337,6 +337,7 @@ public:
     bool visible_to(const actor *looker) const;
     bool mon_see_cell(const coord_def& pos, bool reach = false) const;
     bool near_foe() const;
+    reach_type reach_range() const;
 
     const los_def& get_los_no_trans();
 

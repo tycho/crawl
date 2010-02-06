@@ -78,12 +78,17 @@ public:
     virtual int       damage_brand(int which_attack = -1) = 0;
     virtual int       damage_type(int which_attack = -1) = 0;
     virtual item_def *weapon(int which_attack = -1) = 0;
-    virtual item_def *shield() = 0;
-    virtual item_def *slot_item(equipment_type eq) = 0;
-    // Just a wrapper; not to be overridden
-    const item_def *slot_item(equipment_type eq) const
+    // Yay for broken overloading.
+    const item_def *primary_weapon() const
     {
-        return const_cast<actor*>(this)->slot_item(eq);
+        return const_cast<actor*>(this)->weapon(0);
+    }
+    virtual item_def *shield() = 0;
+    virtual item_def *slot_item(equipment_type eq, bool include_melded) = 0;
+    // Just a wrapper; not to be overridden
+    const item_def *slot_item(equipment_type eq, bool include_melded) const
+    {
+        return const_cast<actor*>(this)->slot_item(eq, include_melded);
     }
     virtual bool has_equipped(equipment_type eq, int sub_type) const;
 
@@ -186,7 +191,9 @@ public:
     virtual void hibernate(int power = 0) = 0;
     virtual void check_awaken(int disturbance) = 0;
 
-    virtual bool wearing_light_armour(bool = false) const { return (true); }
+    virtual bool check_train_armour();
+    virtual bool check_train_dodging();
+
     virtual int  skill(skill_type sk, bool skill_bump = false) const
     {
         return (0);

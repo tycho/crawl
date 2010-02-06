@@ -26,6 +26,7 @@
 #include "fprop.h"
 #include "exclude.h"
 #include "food.h"
+#include "godpassive.h"
 #include "invent.h"
 #include "items.h"
 #include "itemname.h"
@@ -1506,6 +1507,7 @@ void armour_wear_effects(const int item_slot)
 
         case SPARM_PONDEROUSNESS:
             mpr("You feel rather ponderous.");
+            che_handle_change(CB_PONDEROUS, 1);
             you.redraw_evasion = true;
             break;
 
@@ -1644,17 +1646,24 @@ static void _handle_run_delays(const delay_queue_item &delay)
         return;
 
     command_type cmd = CMD_NO_CMD;
-    switch (delay.type)
+
+    bool want_move = delay.type == DELAY_RUN || delay.type == DELAY_TRAVEL;
+    if (!i_feel_safe(true, want_move))
+        stop_running();
+    else
     {
-    case DELAY_REST:
-    case DELAY_RUN:
-        cmd = _get_running_command();
-        break;
-    case DELAY_TRAVEL:
-        cmd = travel();
-        break;
-    default:
-        break;
+        switch (delay.type)
+        {
+        case DELAY_REST:
+        case DELAY_RUN:
+            cmd = _get_running_command();
+            break;
+        case DELAY_TRAVEL:
+            cmd = travel();
+            break;
+        default:
+            break;
+        }
     }
 
     if (cmd != CMD_NO_CMD)
@@ -1739,7 +1748,7 @@ static int _userdef_interrupt_activity( const delay_queue_item &idelay,
     {
         bool stop_run = false;
         if (clua.callfn("ch_stop_run", "M>b",
-                        (const monsters *) at.data, &stop_run))
+                        static_cast<const monsters *>(at.data), &stop_run))
         {
             if (stop_run)
                 return (true);

@@ -14,11 +14,6 @@
 #include <limits.h>
 #endif
 
-#ifdef DEBUG
-  // this contains the DBL_MAX constant
-  #include <float.h>
-#endif
-
 #include <errno.h>
 #include <time.h>
 #include <stdlib.h>
@@ -291,6 +286,8 @@ int main( int argc, char *argv[] )
 
     // Warn player about their weapon, if unsuitable.
     wield_warning(false);
+
+    mpr("Press <w>?</w> for a list of commands and other information.");
 
     _prep_input();
 
@@ -2820,10 +2817,21 @@ void world_reacts()
     _check_banished();
 
     ASSERT(you.time_taken >= 0);
-    // Make sure we don't overflow.
-    ASSERT(DBL_MAX - you.elapsed_time > you.time_taken);
-
     you.elapsed_time += you.time_taken;
+    if (you.elapsed_time >= 2*1000*1000*1000)
+    {
+        // 2B of 1/10 turns.  A 32-bit signed int can hold 2.1B.
+        // The worst case of mummy scumming had 92M turns, the second worst
+        // merely 8M.  This limit is ~200M turns, with an efficient bot that
+        // keeps resting on a fast machine, it takes ~24 hours to hit it
+        // on a level with no monsters, at 100% CPU utilization, producing
+        // a gigabyte of bzipped ttyrec.
+        // We could extend the counters to 64 bits, but in the light of the
+        // above, it's an useless exercise.
+        mpr("Outside, the world ends.");
+        mpr("Sorry, but your quest for the Orb is now rather pointless.  You quit...");
+        ouch(INSTANT_DEATH, NON_MONSTER, KILLED_BY_QUITTING);
+    }
 
     handle_time();
     manage_clouds();
@@ -2871,6 +2879,7 @@ void world_reacts()
         if (env.turns_on_level < INT_MAX)
             env.turns_on_level++;
         update_turn_count();
+        msgwin_new_turn();
     }
 }
 
@@ -3088,6 +3097,7 @@ static keycode_type _get_next_keycode()
     mouse_control mc(MOUSE_MODE_COMMAND);
     keyin = unmangle_direction_keys(getch_with_command_macros());
 
+    // This is the main mesclr() with Option.clear_messages.
     if (!is_synthetic_key(keyin))
         mesclr();
 
@@ -3771,15 +3781,24 @@ static bool _initialise(void)
         && Options.tile_title_screen)
     {
         tiles.draw_title();
+        tiles.update_title_msg("Loading Databases...");
     }
 #endif
 
     // Initialise internal databases.
     databaseSystemInit();
+#ifdef USE_TILE
+    if (Options.tile_title_screen)
+        tiles.update_title_msg("Loading Spells and Features...");
+#endif
 
     init_feat_desc_cache();
     init_spell_name_cache();
     init_spell_rarities();
+#ifdef USE_TILE
+    if (Options.tile_title_screen)
+        tiles.update_title_msg("Loading maps...");
+#endif
 
     // Read special levels and vaults.
     read_maps();
@@ -3791,6 +3810,13 @@ static bool _initialise(void)
 
     // System initialisation stuff.
     textbackground(0);
+#ifdef USE_TILE
+    if (Options.tile_title_screen)
+    {
+        tiles.update_title_msg("Loading complete, press any key to start.");
+        tiles.hide_title();
+    }
+#endif
 
     clrscr();
 
@@ -4614,6 +4640,7 @@ static void _compile_time_asserts()
     COMPILE_CHECK((int) SP_UNKNOWN_BRAND < 8*sizeof(you.seen_armour[0]), c12);
     COMPILE_CHECK(NUM_SPECIAL_WEAPONS <= SP_UNKNOWN_BRAND, c13);
     COMPILE_CHECK(NUM_SPECIAL_ARMOURS <= SP_UNKNOWN_BRAND, c14);
+    COMPILE_CHECK(sizeof(float) == sizeof(int32_t), c15);
 
     // Also some runtime stuff; I don't know if the order of branches[]
     // needs to match the enum, but it currently does.

@@ -1341,7 +1341,6 @@ void _acquirement_determine_food(int& type_wanted, int& quantity,
         // but it's easier to just give them a potion of blood
         // class type is set elsewhere
         type_wanted = POT_BLOOD;
-        quantity = 2 + random2(4);
     }
     else if (you.religion == GOD_FEDHAS)
     {
@@ -1379,6 +1378,12 @@ void _acquirement_determine_food(int& type_wanted, int& quantity,
     else if (type_wanted == FOOD_HONEYCOMB || type_wanted == FOOD_CHUNK)
     {
         quantity += random2avg(10, 2);
+    }
+    else if (type_wanted == POT_BLOOD)
+    {
+    // this was above in the vampire block, but gets overwritten by line 1371
+    // so moving here {due}
+        quantity = 2 + random2(4);
     }
 }
 
@@ -3737,7 +3742,7 @@ static int _div(int num, int denom)
 // Do various time related actions...
 void handle_time()
 {
-    int base_time = static_cast<int>(fmod(you.elapsed_time, 200));
+    int base_time = you.elapsed_time % 200;
     int old_time = base_time - you.time_taken;
 
     // The checks below assume the function is called at least
@@ -3998,25 +4003,21 @@ void handle_time()
     _rot_inventory_food(time_delta);
 
     // Exercise armour *xor* stealth skill: {dlb}
-    if (!player_light_armour(true))
+    if (one_chance_in(6) && you.check_train_armour())
     {
-        // lowered random roll from 7 to 6 -- bwross
-        if (random2(1000) > item_mass(you.inv[you.equip[EQ_BODY_ARMOUR]])
-            && one_chance_in(6))
-        {
-            exercise(SK_ARMOUR, 1);
-        }
+        // Armour trained in check_train_armour
     }
     // Exercise stealth skill:
     else if (you.burden_state == BS_UNENCUMBERED
              && !you.berserk()
              && !you.attribute[ATTR_SHADOWS])
     {
-        // Diminishing returns for stealth training by waiting.
-        if ((you.equip[EQ_BODY_ARMOUR] == -1
-            || you.equip[EQ_BODY_ARMOUR] != -1
-                && random2(item_mass(you.inv[you.equip[EQ_BODY_ARMOUR]])) < 100)
-            && you.skills[SK_STEALTH] <= 2 + random2(3) && one_chance_in(18))
+        const item_def *body_armour = you.slot_item(EQ_BODY_ARMOUR, false);
+        const int armour_mass = body_armour? item_mass(*body_armour) : 0;
+        if (!x_chance_in_y(armour_mass, 1000)
+            // Diminishing returns for stealth training by waiting.
+            && you.skills[SK_STEALTH] <= 2 + random2(3)
+            && one_chance_in(18))
         {
             exercise(SK_STEALTH, 1);
         }
@@ -4265,11 +4266,11 @@ static void _catchup_monster_moves(monsters *mon, int turns)
 // Update the level when the player returns to it.
 //
 //---------------------------------------------------------------
-void update_level(double elapsedTime)
+void update_level(long elapsedTime)
 {
     ASSERT(!crawl_state.arena);
 
-    const int turns = static_cast<int>(elapsedTime / 10.0);
+    const int turns = elapsedTime / 10;
 
 #if DEBUG_DIAGNOSTICS
     int mons_total = 0;
@@ -4279,7 +4280,7 @@ void update_level(double elapsedTime)
 
     update_corpses(elapsedTime);
     shoals_apply_tides(turns);
-    recharge_rods((long)turns, true);
+    recharge_rods(turns, true);
 
     if (env.sanctuary_time)
     {
@@ -4831,17 +4832,15 @@ static void _maybe_spawn_mushroom(item_def & corpse, int rot_time)
 //
 // update_corpses
 //
-// Update all of the corpses and food chunks on the floor. (The
-// elapsed time is a double because this is called when we re-
-// enter a level and a *long* time may have elapsed).
+// Update all of the corpses and food chunks on the floor.
 //
 //---------------------------------------------------------------
-void update_corpses(double elapsedTime)
+void update_corpses(long elapsedTime)
 {
-    if (elapsedTime <= 0.0)
+    if (elapsedTime <= 0)
         return;
 
-    const long rot_time = static_cast<long>(elapsedTime / 20.0);
+    const long rot_time = elapsedTime / 20;
 
     for (int c = 0; c < MAX_ITEMS; ++c)
     {
@@ -4878,8 +4877,8 @@ void update_corpses(double elapsedTime)
             it.special -= rot_time;
     }
 
-    int fountain_checks = static_cast<int>(elapsedTime / 1000.0);
-    if (x_chance_in_y(static_cast<int>(elapsedTime) % 1000, 1000))
+    int fountain_checks = elapsedTime / 1000;
+    if (x_chance_in_y(elapsedTime % 1000, 1000))
         fountain_checks += 1;
 
     // Dry fountains may start flowing again.

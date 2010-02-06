@@ -563,12 +563,10 @@ bool prompt_stop_explore(int es_why)
 #define ES_altar  (Options.explore_stop & ES_ALTAR)
 #define ES_portal (Options.explore_stop & ES_PORTAL)
 
-// Adds interesting stuff on (x, y) to explore_discoveries.
-inline static void _check_interesting_square(int x, int y,
+// Adds interesting stuff on the point p to explore_discoveries.
+inline static void _check_interesting_square(const coord_def pos,
                                              explore_discoveries &ed)
 {
-    const coord_def pos(x, y);
-
     if (ES_item || ES_greedy || ES_glow || ES_art || ES_rune)
     {
         if (const monsters *mons = monster_at(pos))
@@ -875,12 +873,12 @@ command_type travel()
         // feature, stop exploring.
 
         explore_discoveries discoveries;
-        for (int y = 0; y < GYM; ++y)
-            for (int x = 0; x < GXM; ++x)
-            {
-                if (!mapshadow[x][y].seen() && is_terrain_seen(x, y))
-                    _check_interesting_square(x, y, discoveries);
-            }
+        for (rectangle_iterator ri(1); ri; ++ri)
+        {
+            const coord_def p(*ri);
+            if (!mapshadow(p).seen() && is_terrain_seen(p))
+                _check_interesting_square(p, discoveries);
+        }
 
         if (discoveries.prompt_stop())
             stop_running();
@@ -1597,9 +1595,6 @@ bool travel_pathfind::path_examine_point(const coord_def &c)
 
 // Try to avoid to let travel (including autoexplore) move the player right
 // next to a lurking (previously unseen) monster.
-// NOTE: This define should either be replaced with a proper option, or
-//       removed entirely.
-#define SAFE_EXPLORE
 void find_travel_pos(const coord_def& youpos,
                      char *move_x, char *move_y,
                      std::vector<coord_def>* features)
@@ -1619,7 +1614,6 @@ void find_travel_pos(const coord_def& youpos,
     const coord_def dest = tp.pathfind( rmode );
     coord_def new_dest = dest;
 
-#ifdef SAFE_EXPLORE
     // Check whether this step puts us adjacent to any grid we haven't ever
     // seen or any non-wall grid we cannot currently see.
     //
@@ -1667,7 +1661,7 @@ void find_travel_pos(const coord_def& youpos,
 #endif
         }
     }
-#endif
+
     if (new_dest.origin())
     {
         if (move_x && move_y)

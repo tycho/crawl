@@ -483,7 +483,7 @@ ENDMAP
 # and the walls are always diggable then.
 #
 NAME:    oklob_3
-DEPTH:   D:18-26, Lair:2-10, Elf:2-7
+DEPTH:   D:18-26, Lair:2-, Elf:2-7
 WEIGHT:  2
 ORIENT:  float
 SHUFFLE: ab" / AB'
@@ -519,7 +519,7 @@ ENDMAP
 #
 NAME:    onia_ninara_012_swampy_vault
 TAGS:    no_pool_fixup no_monster_gen
-DEPTH:   D:16-20, Lair:3-10, Snake
+DEPTH:   D:16-20, Lair:3-, Snake
 ORIENT:  float
 SHUFFLE: AB@
 SUBST: x = .:30 W x:4
@@ -563,7 +563,7 @@ ENDMAP
 NAME:    reptile_caves
 DEPTH:   D:10-13, Lair, Snake
 ORIENT:  float
-MONS:    giant gecko / giant newt, crocodile, giant iguana
+MONS:    giant gecko / giant newt, crocodile, iguana
 MONS:    fire drake / swamp drake
 MONS:    snake, water moccasin, viper
 SUBST:   4 = 34
@@ -904,6 +904,52 @@ MAP
     xxxxxxx!xxxxxxx
        xxxx+xxxx
            @
+ENDMAP
+
+###########################################################################
+# Eyes! by Minmay
+NAME:   minmay_eyes
+DEPTH:  D:14-24
+ORIENT: float
+MONS:   eye of devastation / great orb of eyes w:2
+MONS:   giant eyeball / shining eye w:2
+MONS:   giant orange brain
+MAP
+...................................
+.cccccccccccc.........cccccccccccc.
+.c.............................n2c.
+.c.1.............1.............nnc.
+.c...............................c.
+.c...cccccccccnnnnnnnccccccccc...c.
+.c...c.......................c...c.
+.c...c.1.........1.........1.c...c.
+.c...c.......................c...c.
+.c...c...ccccccnnnnncccccc...c...c.
+.c...c...c...............c...c...c.
+.c...c...c.1.....1.....1.c...c...c.
+.c...c...c...............c...c...c.
+.n...c...c...cccnnnccc...c...c...n.
+.n...n...c...c3.....3c...c.......n.
+.n...n...n...c..%.%..c...n.......n.
+.n...n...n.....%|*|%.n...n.......n.
+.n.1.n.1.n.1....*|*..n.1.n.1...1.n.
+.n...n...n.....%|*|%.n...n.......n.
+.n...n...n...c..%.%..c...n.......n.
+.n...n...c...c3.....3c...c.......n.
+.n...c...c...cccnnnccc...c...c...n.
+.c...c...c...............c...c...c.
+.c...c...cnn.....1.....1.c...c...c.
+.c...c...c2n.............c...c...c.
+.c...c...cccccc.....cccccc...c...c.
+.c...c.......................c...c.
+.c...c.1.........1.........nnc...c.
+.c...c.....................n2c...c.
+.c...cccccccccnnnnnnnccccccccc...c.
+.c...............................c.
+.c.1.............1.............1.c.
+.c...............................c.
+.ccccccccccccnnnnnnnnncccccccccccc.
+...................................
 ENDMAP
 
 ##############################################################################

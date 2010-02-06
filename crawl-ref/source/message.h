@@ -48,6 +48,10 @@ class input_history;
 void msgwin_prompt(std::string prompt);
 void msgwin_reply(std::string reply);
 
+// Tell the message window that previous messages may be considered
+// read, e.g. after reading input from the player.
+void msgwin_got_input();
+
 int msgwin_get_line(std::string prompt,
                     char *buf, int len,
                     input_history *mh = NULL,
@@ -70,6 +74,8 @@ template<int> static int msgwin_get_line_autohist_temp(std::string prompt,
 // Tell the message window that the game is about to read a new
 // command from the player.
 void msgwin_new_cmd();
+// Tell the message window that a new turn has started.
+void msgwin_new_turn();
 
 class no_messages
 {

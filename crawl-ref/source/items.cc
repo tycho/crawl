@@ -668,7 +668,7 @@ void item_check(bool verbose)
 
     std::vector<const item_def*> items;
 
-    item_list_on_square( items, igrd(you.pos()), true );
+    item_list_on_square( items, you.visible_igrd(you.pos()), true );
 
     if (items.empty())
     {
@@ -1936,7 +1936,7 @@ const item_def* top_item_at(const coord_def& where, bool allow_mimic_item)
             return &get_mimic_item(mon);
     }
 
-    const int link = igrd(where);
+    const int link = you.visible_igrd(where);
     return (link == NON_ITEM) ? NULL : &mitm[link];
 }
 
@@ -2347,7 +2347,7 @@ static bool _is_option_autopickup(const item_def &item, std::string &iname)
             return Options.force_autopickup[i].second;
 
 #ifdef CLUA_BINDINGS
-    const bool res = clua.callbooleanfn(false, "ch_force_autopickup", "is",
+    bool res = clua.callbooleanfn(false, "ch_force_autopickup", "is",
                                         &item, iname.c_str());
     if (!clua.error.empty())
         mprf(MSGCH_ERROR, "ch_force_autopickup failed: %s",
@@ -2356,6 +2356,14 @@ static bool _is_option_autopickup(const item_def &item, std::string &iname)
     if (res)
         return (true);
 
+    res = clua.callbooleanfn(false, "ch_deny_autopickup", "is",
+                             &item, iname.c_str());
+    if (!clua.error.empty())
+        mprf(MSGCH_ERROR, "ch_deny_autopickup failed: %s",
+             clua.error.c_str());
+
+    if (res)
+        return (false);
 #endif
 
     return (Options.autopickups & (1L << item.base_type));
@@ -3433,8 +3441,7 @@ bool get_item_by_name(item_def *item, char* specs,
     case OBJ_ARMOUR:
     {
         char buf[80];
-        mpr("What ego type? ", MSGCH_PROMPT);
-        get_input_line( buf, sizeof( buf ) );
+        msgwin_get_line_autohist("What ego type? ", buf, sizeof(buf));
 
         if (buf[0] != '\0')
         {

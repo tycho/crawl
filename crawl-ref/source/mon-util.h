@@ -195,6 +195,7 @@ shout_type mons_shouts(int mclass, bool demon_shout = false);
 
 bool mons_is_ghost_demon(int mc);
 bool mons_is_unique(int mc);
+bool mons_is_pghost(int mc);
 
 int mons_difficulty(int mtype);
 int exper_value(const monsters *monster);
@@ -346,6 +347,8 @@ bool mons_looks_distracted(const monsters *m);
 
 void mons_start_fleeing_from_sanctuary(monsters *monster);
 void mons_stop_fleeing_from_sanctuary(monsters *monster);
+
+bool mons_landlubbers_in_reach(const monsters *monster);
 
 bool mons_has_smite_attack(const monsters *monster);
 

@@ -32,6 +32,7 @@
 #include "food.h"
 #include "godabil.h"
 #include "goditem.h"
+#include "godpassive.h"
 #include "itemname.h"
 #include "itemprop.h"
 #include "items.h"
@@ -184,9 +185,10 @@ bool move_player_to_grid( const coord_def& p, bool stepped, bool allow_shift,
         {
             if (new_grid == DNGN_UNDISCOVERED_TRAP)
             {
-                const int skill = 4 + you.skills[SK_TRAPS_DOORS]
-                                    + player_mutation_level(MUT_ACUTE_VISION)
-                                    - 2 * player_mutation_level(MUT_BLURRY_VISION);
+                const int skill =
+                    (4 + you.skills[SK_TRAPS_DOORS]
+                     + player_mutation_level(MUT_ACUTE_VISION)
+                     - 2 * player_mutation_level(MUT_BLURRY_VISION));
 
                 if (random2(skill) > 6)
                 {
@@ -220,7 +222,8 @@ bool move_player_to_grid( const coord_def& p, bool stepped, bool allow_shift,
                 const trap_type type = get_trap_type(p);
                 if (type == TRAP_ZOT)
                 {
-                    if (!yes_or_no("Do you really want to step into the Zot trap"))
+                    if (!yes_or_no(
+                            "Do you really want to step into the Zot trap"))
                     {
                         canned_msg(MSG_OK);
                         stop_running();
@@ -230,12 +233,16 @@ bool move_player_to_grid( const coord_def& p, bool stepped, bool allow_shift,
                 }
                 else if (new_grid != DNGN_TRAP_MAGICAL && you.airborne())
                 {
-                    // No prompt (shaft and mechanical traps ineffective, if flying)
+                    // No prompt (shaft and mechanical traps
+                    // ineffective, if flying)
                 }
-                else if (type == TRAP_TELEPORT && (player_equip(EQ_AMULET, AMU_STASIS, true)
-                         || scan_artefacts(ARTP_PREVENT_TELEPORTATION, false)))
+                else if (type == TRAP_TELEPORT
+                         && (player_equip(EQ_AMULET, AMU_STASIS, true)
+                             || scan_artefacts(ARTP_PREVENT_TELEPORTATION,
+                                               false)))
                 {
-                    // No prompt (teleport traps are ineffective if wearing an amulet of stasis)
+                    // No prompt (teleport traps are ineffective if
+                    // wearing an amulet of stasis)
                 }
                 else
 #ifdef CLUA_BINDINGS
@@ -251,7 +258,8 @@ bool move_player_to_grid( const coord_def& p, bool stepped, bool allow_shift,
                         "Really step %s that %s?",
                         (type == TRAP_ALARM) ? "onto" : "into",
                         feature_description(new_grid, type,
-                                            false, DESC_BASENAME, false).c_str());
+                                            false, DESC_BASENAME,
+                                            false).c_str());
 
                     if (!yesno(prompt.c_str(), true, 'n'))
                     {
@@ -278,7 +286,9 @@ bool move_player_to_grid( const coord_def& p, bool stepped, bool allow_shift,
                 swimming_check = true;
 
             // Safer water effects for merfolk.
-            if (you.species == SP_MERFOLK&& feat_is_water(new_grid) && !feat_is_water(old_grid))
+            if (you.species == SP_MERFOLK
+                && feat_is_water(new_grid)
+                && !feat_is_water(old_grid))
             {
                 // Check for fatal stat loss due to transforming.
                 // Also handles the warning message.
@@ -448,7 +458,7 @@ bool player_in_hell(void)
 
 bool player_likes_water(bool permanently)
 {
-    return (you.can_swim() || (!permanently && beogh_water_walk()));
+    return (you.can_swim(permanently) || (!permanently && beogh_water_walk()));
 }
 
 bool player_in_bat_form()
@@ -903,9 +913,9 @@ int player_equip( equipment_type slot, int sub_type, bool calc_unid )
 // Returns number of matches (jewellery returns zero -- no ego type).
 // [ds] There's no equivalent of calc_unid or req_id because as of now, weapons
 // and armour type-id on wield/wear.
-int player_equip_ego_type(int slot, int special, bool ignore_melded)
+int player_equip_ego_type( int slot, int special )
 {
-    if (ignore_melded && !you_tran_can_wear(slot))
+    if (!you_tran_can_wear(slot))
         return (0);
 
     int ret = 0;
@@ -939,7 +949,7 @@ int player_equip_ego_type(int slot, int special, bool ignore_melded)
         for (int i = EQ_MIN_ARMOUR; i <= EQ_MAX_ARMOUR; i++)
         {
             // ... but skip ones you can't currently use!
-            if (ignore_melded && !you_tran_can_wear(i))
+            if (!you_tran_can_wear(i))
                 continue;
 
             if (you.equip[i] != -1
@@ -1307,6 +1317,9 @@ int player_res_fire(bool calc_unid, bool temp, bool items)
 
         // randart weapons:
         rf += scan_artefacts(ARTP_FIRE, calc_unid);
+
+        // Che bonus
+        rf += che_boost(CB_RFIRE);
     }
 
     // species:
@@ -1417,6 +1430,9 @@ int player_res_cold(bool calc_unid, bool temp, bool items)
 
         // randart weapons:
         rc += scan_artefacts(ARTP_COLD, calc_unid);
+
+        // Che bonus
+        rc += che_boost(CB_RCOLD);
     }
 
     // mutations:
@@ -1536,7 +1552,9 @@ int player_res_torment(bool, bool temp)
     return (player_mutation_level(MUT_TORMENT_RESISTANCE)
             || you.attribute[ATTR_TRANSFORMATION] == TRAN_LICH
             || you.species == SP_VAMPIRE && you.hunger_state == HS_STARVING
-            || temp && (20 * player_mutation_level(MUT_STOCHASTIC_TORMENT_RESISTANCE) >= random2(100)));
+            || (temp &&
+                (20 * player_mutation_level(MUT_STOCHASTIC_TORMENT_RESISTANCE)
+                 >= random2(100))));
 }
 
 // Funny that no races are susceptible to poisons. {dlb}
@@ -1826,6 +1844,9 @@ int player_prot_life(bool calc_unid, bool temp, bool items)
 
         // randart wpns
         pl += scan_artefacts(ARTP_NEGATIVE_ENERGY, calc_unid);
+
+        // Che bonus
+        pl += che_boost(CB_RNEG);
     }
 
     // undead/demonic power
@@ -1992,44 +2013,16 @@ static int _player_armour_racial_bonus(const item_def& item)
     return racial_bonus;
 }
 
-bool is_light_armour( const item_def &item )
+bool is_effectively_light_armour(const item_def *item)
 {
-    if (get_equip_race(item) == ISFLAG_ELVEN)
-        return (true);
-
-    switch (item.sub_type)
-    {
-    case ARM_ROBE:
-    case ARM_ANIMAL_SKIN:
-    case ARM_LEATHER_ARMOUR:
-    case ARM_TROLL_HIDE:
-    case ARM_TROLL_LEATHER_ARMOUR:
-    case ARM_STEAM_DRAGON_HIDE:
-    case ARM_STEAM_DRAGON_ARMOUR:
-    case ARM_MOTTLED_DRAGON_HIDE:
-    case ARM_MOTTLED_DRAGON_ARMOUR:
-        return (true);
-
-    default:
-        return (false);
-    }
+    return (!item
+            || (abs(property(*item, PARM_EVASION)) < 2));
 }
 
-bool player_light_armour(bool with_skill)
+bool player_effectively_in_light_armour()
 {
-    if (!player_wearing_slot(EQ_BODY_ARMOUR))
-        return (true);
-
-    // We're wearing some kind of body armour and it's not melded.
-    const int arm = you.equip[EQ_BODY_ARMOUR];
-
-    if (with_skill
-        && property(you.inv[arm], PARM_EVASION) + you.skills[SK_ARMOUR]/3 >= 0)
-    {
-        return (true);
-    }
-
-    return (is_light_armour(you.inv[arm]));
+    const item_def *armour = you.slot_item(EQ_BODY_ARMOUR, false);
+    return is_effectively_light_armour(armour);
 }
 
 //
@@ -2061,7 +2054,7 @@ int player_evasion_size_factor()
 // The EV penalty to the player for wearing their current shield.
 int player_adjusted_shield_evasion_penalty(int scale)
 {
-    const item_def *shield = you.slot_item(EQ_SHIELD);
+    const item_def *shield = you.slot_item(EQ_SHIELD, false);
     if (!shield)
         return (0);
 
@@ -2075,7 +2068,7 @@ int player_adjusted_shield_evasion_penalty(int scale)
 // The EV penalty to the player for their worn body armour.
 int player_adjusted_body_armour_evasion_penalty(int scale)
 {
-    const item_def *body_armour = you.slot_item(EQ_BODY_ARMOUR);
+    const item_def *body_armour = you.slot_item(EQ_BODY_ARMOUR, false);
     if (!body_armour)
         return (0);
 
@@ -2232,7 +2225,7 @@ int player_evasion(ev_ignore_type evit)
 
 int player_body_armour_racial_spellcasting_bonus(const int scale)
 {
-    const item_def *body_armour = you.slot_item(EQ_BODY_ARMOUR);
+    const item_def *body_armour = you.slot_item(EQ_BODY_ARMOUR, false);
     if (!body_armour)
         return (0);
 
@@ -2528,6 +2521,53 @@ void gain_exp( unsigned int exp_gained, unsigned int* actual_gain,
         *actual_avail_gain = you.exp_available - old_avail;
 }
 
+static void _draconian_scale_colour_message()
+{
+    switch (you.species)
+    {
+    case SP_RED_DRACONIAN:
+        mpr("Your scales start taking on a fiery red colour.",
+            MSGCH_INTRINSIC_GAIN);
+        break;
+    case SP_WHITE_DRACONIAN:
+        mpr("Your scales start taking on an icy white colour.",
+            MSGCH_INTRINSIC_GAIN);
+        break;
+    case SP_GREEN_DRACONIAN:
+        mpr("Your scales start taking on a green colour.",
+            MSGCH_INTRINSIC_GAIN);
+        // Green draconians get this at level 7.
+        perma_mutate(MUT_POISON_RESISTANCE, 1);
+        break;
+    case SP_YELLOW_DRACONIAN:
+        mpr("Your scales start taking on a golden yellow colour.",
+            MSGCH_INTRINSIC_GAIN);
+        break;
+    case SP_BLACK_DRACONIAN:
+        mpr("Your scales start turning black.",
+            MSGCH_INTRINSIC_GAIN);
+        break;
+    case SP_PURPLE_DRACONIAN:
+        mpr("Your scales start taking on a rich purple colour.",
+            MSGCH_INTRINSIC_GAIN);
+        break;
+    case SP_MOTTLED_DRACONIAN:
+        mpr("Your scales start taking on a weird mottled pattern.",
+            MSGCH_INTRINSIC_GAIN);
+        break;
+    case SP_PALE_DRACONIAN:
+        mpr("Your scales start fading to a pale grey colour.",
+            MSGCH_INTRINSIC_GAIN);
+        break;
+    case SP_BASE_DRACONIAN:
+        mpr("");
+        break;
+
+    default:
+        break;
+    }
+}
+
 void level_change(bool skip_attribute_increase)
 {
     const bool wiz_cmd = crawl_state.prev_cmd == CMD_WIZARD
@@ -2540,19 +2580,12 @@ void level_change(bool skip_attribute_increase)
     while (you.experience_level < 27
            && you.experience > exp_needed(you.experience_level + 2))
     {
-        bool skip_more = false;
-
         if (!skip_attribute_increase && !wiz_cmd)
         {
             crawl_state.cancel_cmd_all();
 
             if (is_processing_macro())
                 flush_input_buffer(FLUSH_ABORT_MACRO);
-        }
-        else if (crawl_state.is_replaying_keys()
-                 || crawl_state.is_repeating_cmd() || is_processing_macro())
-        {
-            skip_more = true;
         }
 
         const int old_hp = you.hp;
@@ -2597,8 +2630,6 @@ void level_change(bool skip_attribute_increase)
 
             if (!(new_exp % 3) && !skip_attribute_increase)
                 _attribute_increase();
-
-            // No more prompts for this XL past this point.
 
             int brek = 0;
 
@@ -2825,51 +2856,10 @@ void level_change(bool skip_attribute_increase)
 #ifdef USE_TILE
                     init_player_doll();
 #endif
-                    switch (you.species)
-                    {
-                    case SP_RED_DRACONIAN:
-                        mpr("Your scales start taking on a fiery red colour.",
-                            MSGCH_INTRINSIC_GAIN);
-                        break;
-                    case SP_WHITE_DRACONIAN:
-                        mpr("Your scales start taking on an icy white colour.",
-                            MSGCH_INTRINSIC_GAIN);
-                        break;
-                    case SP_GREEN_DRACONIAN:
-                        mpr("Your scales start taking on a green colour.",
-                            MSGCH_INTRINSIC_GAIN);
-                        // Green draconians get this at level 7.
-                        perma_mutate(MUT_POISON_RESISTANCE, 1);
-                        break;
-                    case SP_YELLOW_DRACONIAN:
-                        mpr("Your scales start taking on a golden yellow colour.",
-                            MSGCH_INTRINSIC_GAIN);
-                        break;
-                    case SP_BLACK_DRACONIAN:
-                        mpr("Your scales start turning black.",
-                            MSGCH_INTRINSIC_GAIN);
-                        break;
-                    case SP_PURPLE_DRACONIAN:
-                        mpr("Your scales start taking on a rich purple colour.",
-                            MSGCH_INTRINSIC_GAIN);
-                        break;
-                    case SP_MOTTLED_DRACONIAN:
-                        mpr("Your scales start taking on a weird mottled pattern.",
-                            MSGCH_INTRINSIC_GAIN);
-                        break;
-                    case SP_PALE_DRACONIAN:
-                        mpr("Your scales start fading to a pale grey colour.",
-                            MSGCH_INTRINSIC_GAIN);
-                        break;
-                    case SP_BASE_DRACONIAN:
-                        mpr("");
-                        break;
-
-                    default:
-                        break;
-                    }
-                    more();
+                    _draconian_scale_colour_message();
+#ifdef USE_TILE
                     redraw_screen();
+#endif
                 }
 
                 if (you.experience_level == 14)
@@ -2911,8 +2901,9 @@ void level_change(bool skip_attribute_increase)
 #endif
                     mpr("Your scales start turning grey.",
                         MSGCH_INTRINSIC_GAIN);
-                    more();
+#ifdef USE_TILE
                     redraw_screen();
+#endif
                 }
 
                 if (!(you.experience_level % 3))
@@ -3107,9 +3098,6 @@ void level_change(bool skip_attribute_increase)
 
         xom_is_stimulated(16);
 
-        if (!skip_more && any_messages())
-            more();
-
         learned_something_new(TUT_NEW_LEVEL);
     }
 
@@ -3187,22 +3175,30 @@ int check_stealth(void)
     if (you.confused())
         stealth /= 3;
 
-    const int arm   = you.equip[EQ_BODY_ARMOUR];
-    const int cloak = you.equip[EQ_CLOAK];
-    const int boots = you.equip[EQ_BOOTS];
+    const item_def *arm = you.slot_item(EQ_BODY_ARMOUR, false);
+    const item_def *cloak = you.slot_item(EQ_CLOAK, false);
+    const item_def *boots = you.slot_item(EQ_BOOTS, false);
 
-    if (arm != -1 && !player_light_armour())
-        stealth -= (item_mass( you.inv[arm] ) / 10);
+    if (arm)
+    {
+        // [ds] New stealth penalty formula from rob: SP = 6 * (EP^2)
+        const int ep = -property(*arm, PARM_EVASION);
+        const int penalty = 6 * ep * ep;
+#if 0
+        dprf("Stealth penalty for armour (ep: %d): %d", ep, penalty);
+#endif
+        stealth -= penalty;
+    }
 
-    if (cloak != -1 && get_equip_race(you.inv[cloak]) == ISFLAG_ELVEN)
+    if (cloak && get_equip_race(*cloak) == ISFLAG_ELVEN)
         stealth += 20;
 
-    if (boots != -1)
+    if (boots)
     {
-        if (get_armour_ego_type( you.inv[boots] ) == SPARM_STEALTH)
+        if (get_armour_ego_type(*boots) == SPARM_STEALTH)
             stealth += 50;
 
-        if (get_equip_race(you.inv[boots]) == ISFLAG_ELVEN)
+        if (get_equip_race(*boots) == ISFLAG_ELVEN)
             stealth += 20;
     }
 
@@ -4723,7 +4719,7 @@ bool confuse_player(int amount, bool resistable)
         {
             // Since it's not extrinsic, it must be from the amulet.
             ASSERT(player_wearing_slot(EQ_AMULET));
-            item_def* const amu = you.slot_item(EQ_AMULET);
+            item_def* const amu = you.slot_item(EQ_AMULET, false);
             if (!item_ident(*amu, ISFLAG_KNOW_TYPE))
             {
                 set_ident_flags(*amu, ISFLAG_KNOW_TYPE);
@@ -5396,8 +5392,6 @@ void player::init()
     worshipped.init(0);
     num_gifts.init(0);
 
-    che_saved_ponderousness = 0;
-
     equip.init(-1);
 
     spells.init(SPELL_NO_SPELL);
@@ -5529,12 +5523,13 @@ bool player::in_water() const
             && feat_is_water(grd(this->pos())));
 }
 
-bool player::can_swim() const
+bool player::can_swim(bool permanently) const
 {
     // Transforming could be fatal if it would cause unequipment of
     // stat-boosting boots or heavy armour.
-    return ((species == SP_MERFOLK && merfolk_change_is_safe(true)
-             || you.attribute[ATTR_TRANSFORMATION] == TRAN_ICE_BEAST));
+    return ((species == SP_MERFOLK && merfolk_change_is_safe(true))
+            || (!permanently
+                && you.attribute[ATTR_TRANSFORMATION] == TRAN_ICE_BEAST));
 }
 
 int player::visible_igrd(const coord_def &where) const
@@ -5718,18 +5713,20 @@ int player::damage_brand(int)
 
 // Returns the item in the given equipment slot, NULL if the slot is empty.
 // eq must be in [EQ_WEAPON, EQ_AMULET], or bad things will happen.
-item_def *player::slot_item(equipment_type eq)
+item_def *player::slot_item(equipment_type eq, bool include_melded)
 {
     ASSERT(eq >= EQ_WEAPON && eq <= EQ_AMULET);
 
     const int item = equip[eq];
-    return (item == -1 ? NULL : &inv[item]);
+    return (item == -1 ? NULL :
+            include_melded || you_tran_can_wear(eq) ? &inv[item] :
+            NULL);
 }
 
 // Returns the item in the player's weapon slot.
 item_def *player::weapon(int /* which_attack */)
 {
-    return (slot_item(EQ_WEAPON));
+    return (slot_item(EQ_WEAPON, false));
 }
 
 bool player::can_wield(const item_def& item, bool ignore_curse,
@@ -5777,10 +5774,7 @@ bool player::could_wield(const item_def &item, bool ignore_brand,
 // Returns the shield the player is wearing, or NULL if none.
 item_def *player::shield()
 {
-    if (!you_tran_can_wear(EQ_SHIELD))
-        return (NULL);
-
-    return (slot_item(EQ_SHIELD));
+    return (slot_item(EQ_SHIELD, false));
 }
 
 std::string player::name(description_level_type type, bool) const
@@ -5935,15 +5929,15 @@ static bool _equipment_make_berserk()
 {
     for (int eq = EQ_WEAPON; eq < NUM_EQUIP; eq++)
     {
-         const item_def *item = you.slot_item((equipment_type) eq);
-         if (!item)
-             continue;
+        const item_def *item = you.slot_item((equipment_type) eq, false);
+        if (!item)
+            continue;
 
-         if (!is_artefact(*item))
-             continue;
+        if (!is_artefact(*item))
+            continue;
 
-         if (artefact_wpn_property(*item, ARTP_ANGRY) && one_chance_in(20))
-             return (true);
+        if (artefact_wpn_property(*item, ARTP_ANGRY) && one_chance_in(20))
+            return (true);
     }
 
     // nothing found
@@ -6025,7 +6019,7 @@ bool player::can_go_berserk(bool intentional, bool potion) const
     {
         if (verbose)
         {
-            const item_def *amulet = you.slot_item(EQ_AMULET);
+            const item_def *amulet = you.slot_item(EQ_AMULET, false);
             mprf("You cannot go berserk with %s on.",
                  amulet? amulet->name(DESC_NOCAP_YOUR).c_str() : "your amulet");
         }
@@ -6153,11 +6147,6 @@ void player::shield_block_succeeded(actor *foe)
     shield_blocks++;
     if (coinflip())
         exercise(SK_SHIELDS, 1);
-}
-
-bool player::wearing_light_armour(bool with_skill) const
-{
-    return (player_light_armour(with_skill));
 }
 
 void player::exercise(skill_type sk, int qty)
@@ -7174,9 +7163,9 @@ PlaceInfo::PlaceInfo()
     : level_type(-2), branch(-2), num_visits(0),
       levels_seen(0), mon_kill_exp(0), mon_kill_exp_avail(0),
       turns_total(0), turns_explore(0), turns_travel(0), turns_interlevel(0),
-      turns_resting(0), turns_other(0), elapsed_total(0.0),
-      elapsed_explore(0.0), elapsed_travel(0.0), elapsed_interlevel(0.0),
-      elapsed_resting(0.0), elapsed_other(0.0)
+      turns_resting(0), turns_other(0), elapsed_total(0),
+      elapsed_explore(0), elapsed_travel(0), elapsed_interlevel(0),
+      elapsed_resting(0), elapsed_other(0)
 {
     for (int i = 0; i < KC_NCATEGORIES; i++)
         mon_kill_num[i] = 0;
