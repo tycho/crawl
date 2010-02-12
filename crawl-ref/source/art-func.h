@@ -25,6 +25,7 @@
 #include "effects.h"  // For Sceptre of Torment tormenting
 #include "env.h"      // For storm bow env.cgrid
 #include "food.h"     // For evokes
+#include "godconduct.h" // did_god_conduct.
 #include "mgen_data.h" // For Sceptre of Asmodeus evoke
 #include "mon-place.h" // For Sceptre of Asmodeus evoke
 #include "mon-stuff.h" // For Scythe of Curses cursing items
@@ -469,6 +470,7 @@ static void _ZONGULDROK_world_reacts(item_def *item)
         animate_dead(&you, 1 + random2(3), BEH_HOSTILE, MHITYOU, 0,
                      "the Sword of Zonguldrok");
         did_god_conduct(DID_NECROMANCY, 1);
+        did_god_conduct(DID_CORPSE_VIOLATION, 1);
     }
 }
 
@@ -478,6 +480,7 @@ static void _ZONGULDROK_melee_effect(item_def* weapon, actor* attacker,
     if (attacker->atype() == ACT_PLAYER)
     {
         did_god_conduct(DID_NECROMANCY, 3);
+        did_god_conduct(DID_CORPSE_VIOLATION, 3);
     }
 }
 
@@ -513,9 +516,6 @@ static void _GONG_melee_effect(item_def* item, actor* wearer,
 
 static void _RCLOUDS_world_reacts(item_def *item)
 {
-    if (one_chance_in(100))
-        return;
-
     cloud_type cloud;
     if (one_chance_in(4))
         cloud = CLOUD_RAIN;
@@ -523,9 +523,14 @@ static void _RCLOUDS_world_reacts(item_def *item)
         cloud = CLOUD_MIST;
 
     for (radius_iterator ri(you.pos(), 2); ri; ++ri)
-        if (!cell_is_solid(*ri) && env.cgrid(*ri) == EMPTY_CLOUD 
+        if (!cell_is_solid(*ri) && env.cgrid(*ri) == EMPTY_CLOUD
                 && one_chance_in(20))
         {
             place_cloud( cloud, *ri, random2(10), KC_OTHER, 1);
         }
+}
+
+static void _RCLOUDS_equip(item_def *item, bool *show_msgs, bool unmeld)
+{
+    _equip_mpr(show_msgs, "A thin mist springs up around you!");
 }

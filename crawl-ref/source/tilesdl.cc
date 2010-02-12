@@ -7,9 +7,11 @@
 #include "coord.h"
 #include "directn.h"
 #include "env.h"
+#include "food.h"
 #include "itemname.h"
 #include "itemprop.h"
 #include "files.h"
+#include "libutil.h"
 #include "macro.h"
 #include "map_knowledge.h"
 #include "message.h"
@@ -27,6 +29,7 @@
 #include "viewgeom.h"
 
 #include "tiledef-dngn.h"
+#include "tiledef-main.h"
 #include "tilefont.h"
 
 #include <SDL.h>
@@ -46,59 +49,6 @@ static int _screen_sizes[4][8] =
     // Eee PC
     {800, 480, 3, 13, 12, 10, 13, 11}
 };
-
-// Note: these defaults should match the OpenGL defaults
-GLState::GLState() :
-    array_vertex(false),
-    array_texcoord(false),
-    array_colour(false),
-    blend(false),
-    texture(false)
-{
-}
-
-void GLStateManager::init()
-{
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glClearColor(0.0, 0.0, 0.0, 1.0f);
-}
-
-void GLStateManager::set(const GLState& state)
-{
-    if (state.array_vertex)
-        glEnableClientState(GL_VERTEX_ARRAY);
-    else
-        glDisableClientState(GL_VERTEX_ARRAY);
-
-    if (state.array_texcoord)
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    else
-        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-
-    if (state.array_colour)
-    {
-        glEnableClientState(GL_COLOR_ARRAY);
-    }
-    else
-    {
-        glDisableClientState(GL_COLOR_ARRAY);
-
-        // [enne] This should *not* be necessary, but the Linux OpenGL
-        // driver that I'm using sets this to the last colour of the
-        // colour array.  So, we need to unset it here.
-        glColor3f(1.0f, 1.0f, 1.0f);
-    }
-
-    if (state.texture)
-        glEnable(GL_TEXTURE_2D);
-    else
-        glDisable(GL_TEXTURE_2D);
-
-    if (state.blend)
-        glEnable(GL_BLEND);
-    else
-        glDisable(GL_BLEND);
-}
 
 TilesFramework tiles;
 
@@ -179,19 +129,68 @@ void TilesFramework::shutdown()
     _shutdown_console();
 }
 
+/**
+ * Creates a new title region and sets it active
+ * Remember to call hide_title() when you're done
+ * showing the title.
+ */
 void TilesFramework::draw_title()
 {
-    TitleRegion* reg = new TitleRegion(m_windowsz.x, m_windowsz.y);
-    use_control_region(reg);
+    TitleRegion* reg = new TitleRegion(m_windowsz.x, m_windowsz.y,
+                                       m_fonts[m_msg_font].font);
+
+    m_layers[LAYER_TILE_CONTROL].m_regions.push_back(reg);
+    m_active_layer = LAYER_TILE_CONTROL;
+    redraw();
+}
+
+/**
+ * Updates the loading message text on the title
+ * screen
+ * Assumes that we only have one region on the layer
+ * If at some point it's possible to have multiple regions
+ * open while the title screen shows, the .at(0) will need
+ * to be changed and saved on a variable somewhere instead
+ */
+void TilesFramework::update_title_msg(std::string message)
+{
+    assert (m_layers[LAYER_TILE_CONTROL].m_regions.size() == 1);
+    assert (m_active_layer == LAYER_TILE_CONTROL);
+    TitleRegion* reg = dynamic_cast<TitleRegion*>(
+            m_layers[LAYER_TILE_CONTROL].m_regions.at(0));
+    reg->update_message(message);
+    redraw();
+}
+
+/**
+ * Deletes the dynamically reserved Titlescreen memory
+ * at end. Runs reg->run to get one key input from the user
+ * so that the title screen stays ope until any input is given.
+ * Assumes that we only have one region on the layer
+ * If at some point it's possible to have multiple regions
+ * open while the title screen shows, the .at(0) will need
+ * to be changed and saved on a variable somewhere instead
+ */
+void TilesFramework::hide_title()
+{
+    assert (m_layers[LAYER_TILE_CONTROL].m_regions.size() == 1);
+    assert (m_active_layer == LAYER_TILE_CONTROL);
+    TitleRegion* reg = dynamic_cast<TitleRegion*>(
+            m_layers[LAYER_TILE_CONTROL].m_regions.at(0));
+    redraw();
+    reg->run();
     delete reg;
+    m_layers[LAYER_TILE_CONTROL].m_regions.clear();
 }
 
 void TilesFramework::draw_doll_edit()
 {
-    DollEditRegion* reg = new DollEditRegion(&m_image, m_fonts[m_msg_font].font);
+    DollEditRegion* reg = new DollEditRegion(&m_image,
+                                             m_fonts[m_msg_font].font);
     use_control_region(reg);
     delete reg;
 }
+
 
 void TilesFramework::use_control_region(ControlRegion *reg)
 {
@@ -484,7 +483,7 @@ void TilesFramework::resize()
     glLoadIdentity();
 
     // For ease, vertex positions are pixel positions.
-    glOrtho(0, m_windowsz.x, m_windowsz.y, 0, 0, 100);
+    glOrtho(0, m_windowsz.x, m_windowsz.y, 0, -1000, 1000);
 }
 
 static unsigned char _get_modifiers(SDL_keysym &keysym)
@@ -765,7 +764,6 @@ struct cursor_loc
 
 int TilesFramework::getch_ck()
 {
-    flush_prev_message();
     SDL_Event event;
     cursor_loc cur_loc;
     cursor_loc tip_loc;
@@ -773,14 +771,14 @@ int TilesFramework::getch_ck()
 
     int key = 0;
 
-    // Don't update tool tips etc. in targetting mode.
+    // Don't update tool tips etc. in targeting mode.
     const bool mouse_target_mode
                 = (mouse_control::current_mode() == MOUSE_MODE_TARGET_PATH
                    || mouse_control::current_mode() == MOUSE_MODE_TARGET_DIR);
 
-    // When moving the mouse via cursor when targetting update more often.
+    // When moving the mouse via cursor when targeting update more often.
     // For beams, the beam drawing already handles this, and when not
-    // targetting the normal drawing routines handle it.
+    // targeting the normal drawing routines handle it.
     const unsigned int ticks_per_cursor_redraw = (mouse_target_mode ? 100 : 30);
     const unsigned int ticks_per_screen_redraw = Options.tile_update_rate;
 
@@ -1069,7 +1067,7 @@ void TilesFramework::do_layout()
 
         // Shrink msgsz if too tall:
         while (m_region_tile->wy + m_region_msg->wy > m_windowsz.y
-               && crawl_view.msgsz.y > MSG_MIN_HEIGHT)
+               && crawl_view.msgsz.y > Options.msg_min_height)
         {
             m_region_msg->resize(m_region_msg->mx, --crawl_view.msgsz.y);
         }
@@ -1208,30 +1206,6 @@ void TilesFramework::clrscr()
     cgotoxy(1,1);
 }
 
-void TilesFramework::message_out(int *which_line, int colour, const char *s,
-                                 int firstcol)
-{
-    if (!firstcol)
-        firstcol = Options.delay_message_clear ? 2 : 1;
-
-    while (*which_line > crawl_view.msgsz.y - 1)
-    {
-        m_region_msg->scroll();
-        (*which_line)--;
-    }
-
-    cgotoxy(firstcol, (*which_line) + 1, GOTO_MSG);
-    textcolor(colour);
-
-    cprintf("%s", s);
-}
-
-void TilesFramework::clear_message_window()
-{
-    m_region_msg->clear();
-    m_active_layer = LAYER_NORMAL;
-}
-
 int TilesFramework::get_number_of_lines()
 {
     return m_region_crt->my;
@@ -1250,29 +1224,41 @@ int TilesFramework::get_number_of_cols()
     }
 }
 
-void TilesFramework::cgotoxy(int x, int y, int region)
+void TilesFramework::cgotoxy(int x, int y, GotoRegion region)
 {
-    if (region == GOTO_LAST)
+    switch (region)
     {
-        // nothing
-    }
-    else if (region == GOTO_CRT)
-    {
+    case GOTO_CRT:
         m_active_layer = LAYER_CRT;
         TextRegion::text_mode = m_region_crt;
-    }
-    else if (region == GOTO_MSG)
-    {
+        break;
+    case GOTO_MSG:
         m_active_layer = LAYER_NORMAL;
         TextRegion::text_mode = m_region_msg;
-    }
-    else if (region == GOTO_STAT)
-    {
+        break;
+    case GOTO_STAT:
         m_active_layer = LAYER_NORMAL;
         TextRegion::text_mode = m_region_stat;
+        break;
+    default:
+        DEBUGSTR("invalid cgotoxy region in tiles: %d", region);
+        break;
     }
 
     TextRegion::cgotoxy(x, y);
+}
+
+GotoRegion TilesFramework::get_cursor_region() const
+{
+    if (TextRegion::text_mode == m_region_crt)
+        return (GOTO_CRT);
+    if (TextRegion::text_mode == m_region_msg)
+        return (GOTO_MSG);
+    if (TextRegion::text_mode == m_region_stat)
+        return (GOTO_STAT);
+
+    ASSERT(!"Bogus region");
+    return (GOTO_CRT);
 }
 
 // #define DEBUG_TILES_REDRAW
@@ -1299,7 +1285,8 @@ void TilesFramework::redraw()
         FTFont *font = m_fonts[m_tip_font].font;
 
         font->render_string(m_mouse.x, m_mouse.y - 2, m_tooltip.c_str(),
-                            min_pos, m_windowsz, WHITE, false, 220, BLUE, 5);
+                            min_pos, m_windowsz, WHITE, false, 220, BLUE, 5,
+                            true);
     }
 
     SDL_GL_SwapBuffers();
@@ -1335,6 +1322,8 @@ void TilesFramework::update_minimap(int gx, int gy, map_feature f)
         const monsters *mon = monster_at(gc);
         if (mon->friendly())
             f = MF_MONS_FRIENDLY;
+        else if (mon->good_neutral())
+            f = MF_MONS_PEACEFUL;
         else if (mon->neutral())
             f = MF_MONS_NEUTRAL;
         else if (mons_class_flag(mon->type, M_NO_EXP_GAIN))
@@ -1371,15 +1360,22 @@ void TilesFramework::update_minimap_bounds()
     m_region_map->update_bounds();
 }
 
-int tile_known_weapon_brand(const item_def item)
+int tile_known_brand(const item_def item)
 {
     if (!item_type_known(item))
         return 0;
 
     if (item.base_type == OBJ_WEAPONS)
     {
-        if (get_weapon_brand(item) != SPWPN_NORMAL)
+        const int brand = get_weapon_brand(item);
+        if (brand != SPWPN_NORMAL)
             return (TILE_BRAND_FLAMING + get_weapon_brand(item) - 1);
+    }
+    else if (item.base_type == OBJ_ARMOUR)
+    {
+        const int brand = get_armour_ego_type(item);
+        if (brand != SPARM_NORMAL)
+            return (TILE_BRAND_ARM_RUNNING + get_armour_ego_type(item) - 1);
     }
     else if (item.base_type == OBJ_MISSILES)
     {
@@ -1397,10 +1393,60 @@ int tile_known_weapon_brand(const item_def item)
             return TILE_BRAND_RETURNING;
         case SPMSL_CHAOS:
             return TILE_BRAND_CHAOS;
+        case SPMSL_PENETRATION:
+            return TILE_BRAND_PENETRATION;
+        case SPMSL_REAPING:
+            return TILE_BRAND_REAPING;
+        case SPMSL_DISPERSAL:
+            return TILE_BRAND_DISPERSAL;
+        case SPMSL_EXPLODING:
+            return TILE_BRAND_EXPLOSION;
+        case SPMSL_ELECTRIC:
+            return TILE_BRAND_ELECTRIC;
+        case SPMSL_CONFUSION:
+            return TILE_BRAND_CONFUSION;
+        case SPMSL_PARALYSIS:
+            return TILE_BRAND_PARALYSIS;
+        case SPMSL_SLOW:
+            return TILE_BRAND_SLOWING;
+        case SPMSL_SICKNESS:
+            return TILE_BRAND_SICKNESS;
+        case SPMSL_RAGE:
+            return TILE_BRAND_RAGE;
+        case SPMSL_SLEEP:
+            return TILE_BRAND_SLEEP;
         default:
             break;
         }
     }
+    return 0;
+}
+
+int tile_corpse_brand(const item_def item)
+{
+    if (item.base_type != OBJ_CORPSES || item.sub_type != CORPSE_BODY)
+        return (0);
+
+    // Brands are mostly meaningless to herbivores.
+    // Could still be interesting for Fulsome Distillation, though.
+    if (player_mutation_level(MUT_HERBIVOROUS) == 3)
+        return (0);
+
+    if (is_poisonous(item))
+        return TILE_FOOD_POISONED;
+
+    if (is_mutagenic(item))
+        return TILE_FOOD_MUTAGENIC;
+
+    if (causes_rot(item))
+        return TILE_FOOD_ROTTING;
+
+    if (is_forbidden_food(item))
+        return TILE_FOOD_FORBIDDEN;
+
+    if (is_contaminated(item))
+        return TILE_FOOD_CONTAMINATED;
+
     return 0;
 }
 
@@ -1426,9 +1472,13 @@ static void _fill_item_info(InventoryTile &desc, const item_def &item)
     else
         desc.quantity = -1;
 
-    desc.special = tile_known_weapon_brand(item);
+    if (type == OBJ_WEAPONS || type == OBJ_MISSILES || type == OBJ_ARMOUR)
+        desc.special = tile_known_brand(item);
+    else if (type == OBJ_CORPSES)
+        desc.special = tile_corpse_brand(item);
+
     desc.flag = 0;
-    if (item_cursed(item) && item_ident(item, ISFLAG_KNOW_CURSE))
+    if (item.cursed() && item_ident(item, ISFLAG_KNOW_CURSE))
         desc.flag |= TILEI_FLAG_CURSE;
     if (item_type_tried(item))
         desc.flag |= TILEI_FLAG_TRIED;
@@ -1545,7 +1595,7 @@ void TilesFramework::update_inventory()
     memset(inv_shown, 0, sizeof(inv_shown));
 
     int num_ground = 0;
-    for (int i = igrd(you.pos()); i != NON_ITEM; i = mitm[i].link)
+    for (int i = you.visible_igrd(you.pos()); i != NON_ITEM; i = mitm[i].link)
         num_ground++;
 
     // If the inventory is full, show at least one row of the ground.
@@ -1671,7 +1721,8 @@ void TilesFramework::update_inventory()
             type = (object_class_type)(find - obj_syms);
         }
 
-        for (int i = igrd(you.pos()); i != NON_ITEM; i = mitm[i].link)
+        for (int i = you.visible_igrd(you.pos());
+             i != NON_ITEM; i = mitm[i].link)
         {
             if ((int)inv.size() >= mx * my)
                 break;
@@ -1722,7 +1773,7 @@ void TilesFramework::add_text_tag(text_tag_type type, const monsters* mon)
 
     const coord_def &gc = mon->pos();
 
-    if (mon->type == MONS_PLAYER_GHOST)
+    if (mons_is_pghost(mon->type))
     {
         // Beautification hack.  "Foo's ghost" is a little bit
         // verbose as a tag.  "Foo" on its own should be sufficient.

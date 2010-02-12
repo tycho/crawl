@@ -24,7 +24,7 @@ class stack_iterator : public std::iterator<std::forward_iterator_tag,
                                             item_def>
 {
 public:
-    explicit stack_iterator( const coord_def& pos );
+    explicit stack_iterator( const coord_def& pos, bool accessible = false );
     explicit stack_iterator( int start_link );
 
     operator bool() const;
@@ -63,13 +63,14 @@ typedef std::map<int, int> explicit_keymap;
 bool yesno( const char * str, bool safe = true, int safeanswer = 0,
             bool clear_after = true, bool interrupt_delays = true,
             bool noprompt = false,
-            const explicit_keymap *map = NULL );
+            const explicit_keymap *map = NULL,
+            GotoRegion = GOTO_MSG);
 
 int yesnoquit( const char* str, bool safe = true, int safeanswer = 0,
                bool allow_all = false, bool clear_after = true,
                char alt_yes = 'Y', char alt_yes2 = 'Y' );
 
-bool player_can_hear(const coord_def& p);
+bool player_can_hear(const coord_def& p, int hear_distance = 999);
 
 char index_to_letter (int the_index);
 
@@ -83,15 +84,8 @@ inline bool testbits(unsigned long flags, unsigned long test)
     return ((flags & test) == test);
 }
 
-template <typename Z> inline Z sgn(Z x)
-{
-    return (x < 0 ? -1 : (x > 0 ? 1 : 0));
-}
-
 bool is_trap_square(dungeon_feature_type grid);
 void zap_los_monsters(bool items_also);
-
-int integer_sqrt(int value);
 
 int random_rod_subtype();
 

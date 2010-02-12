@@ -226,7 +226,6 @@ portal vaults in the following steps (no compilation is necessary):
   The "name" should be descriptive of the vault you're adding.
   The "name" should not exceed eight letters.
   The ending must be "des".
-* Add "name.des" to the list of local files in dat/clua/loadmaps.lua.
 * "name.des" should contain a comment at the top, explaining flavour and
   gameplay goals of the portal vault (and perhaps additional ideas etc.)
 * Define at least one vault containing the portal (see below).
@@ -719,6 +718,29 @@ dungeon cell which they are on:
       before opening the door, with the value of the property used as
       the prompt string.
 
+* door_description_adjective: Overwrite the adjective for the door. Not
+      currently used.
+
+* door_description_noun: Overwrite the noun used by the door. Replaces, for
+      instance, "door" with "doorway".
+
+* door_description_veto: Vetoes the use of "open", "closed" and "detected
+      secret" when applying adjectives to door descriptions.
+
+* door_berserk_verb_open: Replace the verb used for opening the door while
+      berserk. Should include "%s%s", as it is printed as a formatted string.
+
+* door_berserk_adjective: Replaces the adjective "with a bang" when the player
+      is not silenced while opening a door.
+
+* door_noisy_verb_open: Replaces "opens with a creak". Also requires "%s%s" as
+      it is a formatted string.
+
+* door_airborne_verb_open: Replaces "reach down and open", also requires "%s%s".
+
+* door_open_verb: Replaces "You open". Also requires "%s%s". All of the above "open"
+      have "close" counterparts which are used when closing a door.
+
 * feature_description: What to use as the short description of the
       cell's feature.
 
@@ -742,6 +764,9 @@ dungeon cell which they are on:
 * veto_shatter: If this property is set to "veto" then the cell will
       be unaffected by the Shatter spell.
 
+* veto_fire: If this property is set to "veto" then the cell will be
+      unaffected by any fire spells.
+
 Special monster-related Lua marker properties
 ---------------------------------------------
 
@@ -756,6 +781,18 @@ the marker is placed upon. The options currently available are:
 * monster_dies_lua_key: If this property is set to a function, that function
       will be executed upon the monster's death.
 
+* shout_func: If this property is set to a function, that function will be
+      called if the monster shouts, and the string returned by the function
+      will be used as the text of the message.  can return "__NONE" to
+      make the monster not shout, or "__NEXT" to proceed as if there was no
+      speech_func property.
+
+* speech_func: If this property is set to a function, that function will be
+      called if the monster speaks, and the string returned by the function
+      will be used as the text of the message.  can return "__NONE" to
+      make the monster not talk, or "__NEXT" to proceed as if there was no
+      speech_func property.
+
 * speech_key: This will override the initial key searched for in the speech
       database. Setting this to "Edmund", for example, will give the relevant
       monster Edmund's speech.
@@ -768,6 +805,9 @@ An example of MonPropsMarker to replace the description and quote of a monster:
 
     MARKER: 8 = lua:MonPropsMarker:new {description="What a horrible sight!\n", \
                                         quote='"They were filled with fear!'\n"}
+
+Note that all of the speech related properties will be reset if the monster
+polymorphs.
 
 Lua API reference
 -----------------

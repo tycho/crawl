@@ -309,6 +309,17 @@ Xom casts you into the Abyss!
 
 The world seems to spin as Xom's maniacal laughter rings in your ears.
 %%%%
+Xom revert banishment
+
+w:30
+"Kidding!"
+
+"On second thought, though..."
+
+"No, I've changed my mind."
+
+Xom pulls you back into the comparable quietude of the dungeon.
+%%%%
 # Xom upgrades a nearby hostile monster's weapon to a chaos brand
 Xom chaos upgrade
 
@@ -387,6 +398,18 @@ Xom's power brushes against you for a moment.
 
 You hear Xom's avuncular chuckle.
 %%%%
+Xom snakes to sticks
+
+Xom transforms those around you.
+
+"I like them better like this."
+
+"Never liked these squiggly things."
+
+Xom touches your surroundings.
+
+@Xom good monster polymorph@
+%%%%
 Xom accidental homicide
 
 "Oops, I didn't mean to do *that*!"
@@ -419,6 +442,31 @@ Xom pokes at a nearby @staircase@.
 
 Xom alters the dungeon around you.
 %%%%
+Xom life saving general
+
+"What? Wait, NO!"
+
+"Hey, things were just getting interesting!"
+
+"NOOOOOOO, not my @xom_plaything@!"
+
+"Not here, not now."
+
+Xom is feeling generous.
+%%%%
+Xom life saving actor
+
+w:20
+@Xom life saving general@
+
+"Hey, that's my @xom_plaything@!"
+
+"Oh no, you don't!"
+
+"That's my @xom_plaything@, go get your own one!"
+
+"Leave my @xom_plaything@ alone!"
+%%%%
 Xom boring death
 
 Xom yawns loudly!
@@ -429,7 +477,7 @@ Xom yawns loudly!
 
 "I guess I need a new plaything now."
 
-"Hmm? Did I miss something?"
+"Huh? Did I miss anything?"
 %%%%
 # Xom laughing
 # (Currently only used post-game in response to "You die...")

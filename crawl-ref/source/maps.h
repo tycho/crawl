@@ -17,6 +17,10 @@ class map_def;
 struct map_file_place;
 struct vault_placement;
 
+bool map_safe_vault_place(const map_def &md,
+                          const coord_def &c,
+                          const coord_def &size);
+
 int vault_main(vault_placement &vp, const map_def *vault,
                bool check_place = false);
 
@@ -41,7 +45,14 @@ void add_parsed_map(const map_def &md);
 
 std::vector<std::string> find_map_matches(const std::string &name);
 
+std::vector<map_def> find_maps_for_tag (const std::string tag,
+                                          bool check_depth = false,
+                                          bool check_used = true);
+
+int weight_map_vector (std::vector<map_def> maps);
+
 void read_maps();
+void sanity_check_maps();
 void read_map(const std::string &file);
 void run_map_preludes();
 void reset_map_parser();
@@ -62,12 +73,24 @@ typedef bool (*map_place_check_t)(const map_def &, const coord_def &c,
                                   const coord_def &size);
 
 typedef std::vector<coord_def> point_vector;
+typedef std::vector<std::string> string_vector;
 
 extern map_place_check_t map_place_valid;
 extern point_vector      map_anchor_points;
 
-const int              MAP_CACHE_VERSION = 1011;
+// Use dgn_map_parameters to modify:
+extern string_vector     map_parameters;
 
+const int              MAP_CACHE_VERSION = 1012;
+
+class dgn_map_parameters
+{
+public:
+    dgn_map_parameters(const std::string &astring);
+    dgn_map_parameters(const string_vector &parameters);
+private:
+    unwind_var<string_vector> mpar;
+};
 
 #ifdef DEBUG_DIAGNOSTICS
 void mg_report_random_maps(FILE *outf, const level_id &place);

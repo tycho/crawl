@@ -20,11 +20,15 @@ power.
 %%%%
 Aizul
 
-Once the guardian of a legendary treasure hoard, he was disgraced after thieves looted it while he slept. Left without a purpose he now slithers aimlessly from place to place, seeking redemption on the field of battle.
+Once the primary guardian of a legendary treasure hoard, he was disgraced after thieves looted it while he slept. Left without a job and a purpose, he now slithers aimlessly from place to place.
 %%%%%
 Agnes
 
 A lanky warrior, she moves at a great pace and carries an exotic weapon.
+%%%%
+alligator
+
+A reptile that's quite happy to ignore you. If you don't, or you get too close, it'll put on a great burst of speed and crush you in its massive jaws!
 %%%%
 Angel
 
@@ -41,6 +45,10 @@ One of the arch-demons who dwell in the depths of Hell.
 Azrael
 
 A powerful, belligerent Efreet.  (Is there any other kind?)
+%%%%
+baby alligator
+
+While this juvenile form of the alligator does not have crushing jaws, nor does it have the strength to put on massive bursts of speed, it is more limber than the adult form, and its milk-tooth is still very sharp.
 %%%%
 Balrug
 
@@ -87,8 +95,19 @@ Dissolution
 The Pits of Slime used to be a thriving civilization, and Dissolution was the prophet of their god.  When the city was overtaken by its current residents, only Dissolution survived, for he alone turned faithfully to the Slime God.  Dissolution become a tremendous mass of acidic ooze, yet retained his intelligence.  He is filled with hatred for anything that can hold a form.
 %%%%
 Donald
+{{
+local descript = "An adventurer just like you, trying to find the Orb."
 
-An adventurer like you, trying to find the Orb.
+if you.race() ~= "Merfolk" then
+    descript = descript .. " Unlike you, and d"
+else
+    descript = descript .. " D"
+end
+
+descript = descript .. "espite his hatred of it, he takes to water like a fowl."
+
+return descript
+}}
 %%%%
 Dowan
 
@@ -168,11 +187,9 @@ Grum
 
 A tough-looking gnoll, wearing the pelt of one of his former war dogs.
 %%%%
-guardian naga
+guardian serpent
 
-A hybrid; human from the chest up, with a scaly, muscular torso trailing off like that of a snake.
-
-These nagas are often used as guardians by powerful creatures.
+Serpents are distinct and rare members of scaly society. They are light and swift like snakes, yet also intelligent like nagas. Their lack of hands, together with an extreme sense of duty, makes them renowned guardians. It is said that a guardian serpent would rather die in battle than leave anything to an intruder.
 %%%%
 Harold
 
@@ -230,9 +247,9 @@ Louise
 
 An unusually heavily armoured spellcaster.
 %%%%
-Lernaean hydra
+the Lernaean hydra
 
-An ancient nameless serpent-like water beast that possesses numerous heads.  The poets mention more heads than vase-painters can paint, poisonous venom coming out of its eyes, and that this hydra is a guardian of an entrance to the Underworld.  What of this is true, you do not know.
+An ancient, outsized serpent-like water beast that possesses numerous heads.  The poets mention more heads than vase-painters can paint, poisonous venom coming out of its eyes, and that this hydra is a guardian of an entrance to the Underworld.  What of this is true, you do not know.
 %%%%
 Margery
 
@@ -367,7 +384,7 @@ end
 %%%%
 Wayne
 
-A fat wizard wearing a stupid-looking hat.
+A fat dwarf wearing a stupid-looking hat.
 %%%%
 Xtahua
 
@@ -484,6 +501,10 @@ A hybrid with the torso of a human atop the body of a large horse.  It looks str
 clay golem
 
 A huge animated clay statue.
+%%%%
+crocodile
+
+A crocodile with great crunching jaws.
 %%%%
 crystal golem
 
@@ -760,17 +781,9 @@ giant goldfish
 
 This is what happens when you give your pet goldfish too much food!
 %%%%
-giant iguana
-
-A huge lizard with great crunching jaws.
-%%%%
 giant leech
 
 A huge blood-sucking leech. How horrible!
-%%%%
-giant lizard
-
-A huge lizard with great crunching jaws.
 %%%%
 giant mite
 
@@ -840,9 +853,9 @@ grey rat
 
 A very large grey rat.
 %%%%
-grey snake
+anaconda
 
-A very large grey python.
+A very large grey constrictor snake.
 %%%%
 griffon
 
@@ -931,6 +944,10 @@ One of the most terrible denizens of the many Hells, the Ice Fiend is a huge icy
 ice statue
 
 An imposing statue carved in glistening ice. Freezing vapours swirl about it.
+%%%%
+iguana
+
+A huge lizard with great crunching jaws.
 %%%%
 imp
 
@@ -1030,7 +1047,7 @@ A vaguely humanoid blob of putrid white flesh.
 %%%%
 lich
 
-A wizard who didn't want to die, a Lich is a skeletal, desiccated corpse kept alive by a mighty exercise of necromancy.  These undead creatures can wield great magic and are best avoided by all but the most confident.
+A wizard who didn't want to die, a lich is a skeletal, desiccated corpse kept alive by a mighty exercise of necromancy.  This undead creature can wield great magic and is best avoided by all but the most confident.
 %%%%
 lindwurm
 
@@ -1044,9 +1061,37 @@ manticore
 
 A hideous cross-breed, bearing the features of a human and a lion, with great bat-like wings. Its tail bristles with spikes that can be loosed at potential prey.
 %%%%
+Mara
+
+This tall and powerful demon is Mara, Lord of Illusions, mighty among dreamers. He is capable of creating intricately detailed illusions, able to mislead even the minds of the mightiest and most brilliant spell-casters.
+%%%%
+snapping turtle
+
+A large belligerent reptile, armoured in a carapace. Its neck is surprisingly extensible and can reach out and bite from afar.
+%%%%
+alligator snapping turtle
+
+A huge snapping turtle of unpleasant disposition. It can reach out and bite from afar.
+%%%%
+sea snake
+
+A brightly coloured snake with a potent venomous bite.
+%%%%
 merfolk
 
-Half fish, half man, the merfolk are citizens of both water and land, and they'll fiercely protect their chosen territory.
+Half fish, half man, the merfolk are citizens of both water and land, and fierce protectors of their chosen territory.
+%%%%
+merfolk impaler
+
+A powerfully muscled merfolk warrior, bearing a great trident.
+%%%%
+merfolk aquamancer
+
+A slender merfolk mystic with unusually webby hands. Its form shifts and glistens as if seen through ocean spray.
+%%%%
+merfolk javelineer
+
+A fearsome merfolk champion with a piercing gaze and a large bundle of javelins.
 %%%%
 mermaid
 
@@ -1268,7 +1313,7 @@ Before you stands a draconian.
 %%%%
 red wasp
 
-A huge red wasp with a viciously barbed stinger.
+A huge red wasp with a viciously barbed stinger.  Potent paralytic poison drips from its tip.
 %%%%
 redback
 

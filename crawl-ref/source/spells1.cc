@@ -31,6 +31,7 @@
 #include "it_use2.h"
 #include "itemname.h"
 #include "itemprop.h"
+#include "item_use.h"
 #include "los.h"
 #include "message.h"
 #include "misc.h"
@@ -40,6 +41,7 @@
 #include "options.h"
 #include "player.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills2.h"
 #include "spells2.h"
 #include "spells3.h"
@@ -49,7 +51,7 @@
 #include "stuff.h"
 #include "teleport.h"
 #include "terrain.h"
-#include "transfor.h"
+#include "transform.h"
 #include "traps.h"
 #include "view.h"
 #include "shout.h"
@@ -83,8 +85,8 @@ int blink(int pow, bool high_level_controlled_blink, bool wizard_blink)
     }
 
     // yes, there is a logic to this ordering {dlb}:
-    if (scan_artefacts(ARTP_PREVENT_TELEPORTATION) && !wizard_blink)
-        mpr("You feel a weird sense of stasis.");
+    if (item_blocks_teleport(true, true) && !wizard_blink)
+        canned_msg(MSG_WEIRD_STASIS);
     else if (you.level_type == LEVEL_ABYSS
              && _abyss_blocks_teleport(high_level_controlled_blink)
              && !wizard_blink)
@@ -105,8 +107,12 @@ int blink(int pow, bool high_level_controlled_blink, bool wizard_blink)
         // query for location {dlb}:
         while (true)
         {
-            direction(beam, DIR_TARGET, TARG_ANY, -1, false, false, false,
-                     false, "Blink to where?");
+            direction_chooser_args args;
+            args.restricts = DIR_TARGET;
+            args.needs_path = false;
+            args.may_target_monster = false;
+            args.top_prompt = "Blink to where?";
+            direction(beam, args);
 
             if (!beam.isValid || beam.target == you.pos())
             {
@@ -199,8 +205,8 @@ void random_blink(bool allow_partial_control, bool override_abyss)
     bool success = false;
     coord_def target;
 
-    if (scan_artefacts(ARTP_PREVENT_TELEPORTATION))
-        mpr("You feel a weird sense of stasis.");
+    if (item_blocks_teleport(true, true))
+        canned_msg(MSG_WEIRD_STASIS);
     else if (you.level_type == LEVEL_ABYSS
              && !override_abyss && !one_chance_in(3))
     {
@@ -232,7 +238,7 @@ void random_blink(bool allow_partial_control, bool override_abyss)
         // result in awkward messaging if it cancels for some reason,
         // but it's probably better than getting the blink message after
         // any Mf transform messages all the time. -cao
-        mpr("You blink.");
+        canned_msg(MSG_YOU_BLINK);
         coord_def origin = you.pos();
         success = move_player_to_grid(target, false, true, true);
         if (success)
@@ -264,7 +270,7 @@ void setup_fire_storm(const actor *source, int pow, bolt &beam)
     beam.ex_size      = 2 + (random2(pow) > 75);
     beam.flavour      = BEAM_LAVA;
     beam.real_flavour = beam.flavour;
-    beam.type         = dchar_glyph(DCHAR_FIRED_ZAP);
+    beam.glyph        = dchar_glyph(DCHAR_FIRED_ZAP);
     beam.colour       = RED;
     beam.beam_source  = source->mindex();
     // XXX: Should this be KILL_MON_MISSILE?
@@ -300,7 +306,7 @@ bool cast_hellfire_burst(int pow, bolt &beam)
     beam.ex_size           = 1;
     beam.flavour           = BEAM_HELLFIRE;
     beam.real_flavour      = beam.flavour;
-    beam.type              = dchar_glyph(DCHAR_FIRED_BURST);
+    beam.glyph             = dchar_glyph(DCHAR_FIRED_BURST);
     beam.colour            = RED;
     beam.beam_source       = MHITYOU;
     beam.thrower           = KILL_YOU;
@@ -352,7 +358,7 @@ void cast_chain_lightning(int pow, const actor *caster)
     beam.thrower        = (caster == &you) ? KILL_YOU_MISSILE : KILL_MON_MISSILE;
     beam.range          = 8;
     beam.hit            = AUTOMATIC_HIT;
-    beam.type           = dchar_glyph(DCHAR_FIRED_ZAP);
+    beam.glyph          = dchar_glyph(DCHAR_FIRED_ZAP);
     beam.flavour        = BEAM_ELECTRICITY;
     beam.obvious_effect = true;
     beam.is_beam        = false;       // since we want to stop at our target
@@ -581,7 +587,7 @@ bool conjure_flame(int pow, const coord_def& where)
         return (false);
     }
 
-    // Note that self-targetting is handled by SPFLAG_NOT_SELF.
+    // Note that self-targeting is handled by SPFLAG_NOT_SELF.
     monsters *monster = monster_at(where);
     if (monster)
     {
@@ -623,7 +629,7 @@ bool stinking_cloud( int pow, bolt &beem )
     beem.range       = 6;
     beem.damage      = dice_def( 1, 0 );
     beem.hit         = 20;
-    beem.type        = dchar_glyph(DCHAR_FIRED_ZAP);
+    beem.glyph       = dchar_glyph(DCHAR_FIRED_ZAP);
     beem.flavour     = BEAM_POTION_STINKING_CLOUD;
     beem.ench_power  = pow;
     beem.beam_source = MHITYOU;
@@ -632,7 +638,7 @@ bool stinking_cloud( int pow, bolt &beem )
     beem.is_explosion = true;
     beem.aux_source.clear();
 
-    // Don't bother tracing if you're targetting yourself.
+    // Don't bother tracing if you're targeting yourself.
     if (beem.target != you.pos())
     {
         // Fire tracer.
@@ -661,29 +667,32 @@ bool stinking_cloud( int pow, bolt &beem )
 
 int cast_big_c(int pow, cloud_type cty, kill_category whose, bolt &beam)
 {
-    big_cloud( cty, whose, beam.target, pow, 8 + random2(3) );
+    big_cloud( cty, whose, beam.target, pow, 8 + random2(3), -1 );
     return (1);
 }
 
 void big_cloud(cloud_type cl_type, kill_category whose,
-               const coord_def& where, int pow, int size, int spread_rate)
+               const coord_def& where, int pow, int size, int spread_rate,
+               int colour, std::string name, std::string tile)
 {
     big_cloud(cl_type, whose, cloud_struct::whose_to_killer(whose),
-              where, pow, size, spread_rate);
+              where, pow, size, spread_rate, colour, name, tile);
 }
 
 void big_cloud(cloud_type cl_type, killer_type killer,
-               const coord_def& where, int pow, int size, int spread_rate)
+               const coord_def& where, int pow, int size, int spread_rate,
+               int colour, std::string name, std::string tile)
 {
     big_cloud(cl_type, cloud_struct::killer_to_whose(killer), killer,
-              where, pow, size, spread_rate);
+              where, pow, size, spread_rate, colour, name, tile);
 }
 
 void big_cloud(cloud_type cl_type, kill_category whose, killer_type killer,
-               const coord_def& where, int pow, int size, int spread_rate)
+               const coord_def& where, int pow, int size, int spread_rate,
+               int colour, std::string name, std::string tile)
 {
     apply_area_cloud(make_a_normal_cloud, where, pow, size,
-                     cl_type, whose, killer, spread_rate);
+                     cl_type, whose, killer, spread_rate, colour, name, tile);
 }
 
 static bool _mons_hostile(const monsters *mon)
@@ -737,12 +746,9 @@ static bool _can_pacify_monster(const monsters *mon, const int healed)
     const int random_factor = random2((you.skills[SK_INVOCATIONS] + 1) *
                                       healed / divisor);
 
-#ifdef DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS,
-         "pacifying %s? max hp: %d, factor: %d, Inv: %d, healed: %d, rnd: %d",
+    dprf("pacifying %s? max hp: %d, factor: %d, Inv: %d, healed: %d, rnd: %d",
          mon->name(DESC_PLAIN).c_str(), mon->max_hit_points, factor,
          you.skills[SK_INVOCATIONS], healed, random_factor);
-#endif
 
     if (mon->max_hit_points < factor * random_factor)
         return (true);
@@ -767,7 +773,7 @@ static int _healing_spell(int healed, bool divine_ability,
                                       you.religion == GOD_ELYVILON ?
                                             TARG_ANY : TARG_FRIEND,
                                       LOS_RADIUS,
-                                      false, true, true, "Heal whom?");
+                                      false, true, true, "Heal", NULL);
     }
     else
     {
@@ -839,7 +845,7 @@ static int _healing_spell(int healed, bool divine_ability,
         else
         {
             simple_monster_message(monster, " turns neutral.");
-            mons_pacify(monster);
+            mons_pacify(monster, ATT_NEUTRAL);
 
             // Give a small piety return.
             if (pgain > 0)
@@ -1142,10 +1148,8 @@ void abjuration(int pow)
         if (mon->is_summoned(&duration))
         {
             int sockage = std::max(fuzz_value(abjdur, 60, 30), 40);
-#ifdef DEBUG_DIAGNOSTICS
-            mprf(MSGCH_DIAGNOSTICS, "%s abj: dur: %d, abj: %d",
+            dprf("%s abj: dur: %d, abj: %d",
                  mon->name(DESC_PLAIN).c_str(), duration, sockage);
-#endif
 
             bool shielded = false;
             // TSO and Trog's abjuration protection.
@@ -1327,7 +1331,7 @@ void extension(int pow)
 
 void ice_armour(int pow, bool extending)
 {
-    if (!player_light_armour())
+    if (!player_effectively_in_light_armour())
     {
         if (!extending)
             mpr("You are wearing too much armour.");

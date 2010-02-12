@@ -15,7 +15,6 @@
 #include <ctype.h>
 
 #include "externs.h"
-#include "options.h"
 
 #include "abyss.h"
 #include "artefact.h"
@@ -29,15 +28,14 @@
 #include "env.h"
 #include "food.h"
 #include "godabil.h"
+#include "item_use.h"
 #include "it_use2.h"
-#include "itemprop.h"
 #include "macro.h"
 #include "message.h"
 #include "menu.h"
 #include "misc.h"
 #include "mon-place.h"
 #include "mgen_data.h"
-#include "coord.h"
 #include "mutation.h"
 #include "notes.h"
 #include "ouch.h"
@@ -54,7 +52,7 @@
 #include "state.h"
 #include "stuff.h"
 #include "areas.h"
-#include "transfor.h"
+#include "transform.h"
 #include "tutorial.h"
 
 #ifdef UNIX
@@ -63,17 +61,18 @@
 
 enum ability_flag_type
 {
-    ABFLAG_NONE         = 0x00000000,
-    ABFLAG_BREATH       = 0x00000001, // ability uses DUR_BREATH_WEAPON
-    ABFLAG_DELAY        = 0x00000002, // ability has its own delay (ie recite)
-    ABFLAG_PAIN         = 0x00000004, // ability must hurt player (ie torment)
-    ABFLAG_PIETY        = 0x00000008, // ability has its own piety cost
-    ABFLAG_EXHAUSTION   = 0x00000010, // fails if you.exhausted
-    ABFLAG_INSTANT      = 0x00000020, // doesn't take time to use
-    ABFLAG_PERMANENT_HP = 0x00000040, // costs permanent HPs
-    ABFLAG_PERMANENT_MP = 0x00000080, // costs permanent MPs
-    ABFLAG_CONF_OK      = 0x00000100, // can use even if confused
-    ABFLAG_FRUIT        = 0x00000200  // ability requires fruit
+    ABFLAG_NONE           = 0x00000000,
+    ABFLAG_BREATH         = 0x00000001, // ability uses DUR_BREATH_WEAPON
+    ABFLAG_DELAY          = 0x00000002, // ability has its own delay (ie recite)
+    ABFLAG_PAIN           = 0x00000004, // ability must hurt player (ie torment)
+    ABFLAG_PIETY          = 0x00000008, // ability has its own piety cost
+    ABFLAG_EXHAUSTION     = 0x00000010, // fails if you.exhausted
+    ABFLAG_INSTANT        = 0x00000020, // doesn't take time to use
+    ABFLAG_PERMANENT_HP   = 0x00000040, // costs permanent HPs
+    ABFLAG_PERMANENT_MP   = 0x00000080, // costs permanent MPs
+    ABFLAG_CONF_OK        = 0x00000100, // can use even if confused
+    ABFLAG_FRUIT          = 0x00000200, // ability requires fruit
+    ABFLAG_VARIABLE_FRUIT = 0x00000400  // ability requires fruit or piety
 };
 
 static int  _find_ability_slot( ability_type which_ability );
@@ -145,8 +144,8 @@ ability_type god_abilities[MAX_NUM_GODS][MAX_GOD_ABILITIES] =
     { ABIL_JIYVA_CALL_JELLY, ABIL_NON_ABILITY, ABIL_NON_ABILITY,
       ABIL_JIYVA_SLIMIFY, ABIL_JIYVA_CURE_BAD_MUTATION },
     // Fedhas
-    { ABIL_FEDHAS_SUNLIGHT, ABIL_FEDHAS_PLANT_RING, ABIL_FEDHAS_RAIN,
-      ABIL_FEDHAS_SPAWN_SPORES, ABIL_FEDHAS_EVOLUTION },
+    { ABIL_FEDHAS_EVOLUTION, ABIL_FEDHAS_SUNLIGHT, ABIL_FEDHAS_PLANT_RING,
+      ABIL_FEDHAS_SPAWN_SPORES, ABIL_FEDHAS_RAIN},
     // Cheibriados
     { ABIL_NON_ABILITY, ABIL_CHEIBRIADOS_TIME_BEND, ABIL_NON_ABILITY,
       ABIL_CHEIBRIADOS_SLOUCH, ABIL_CHEIBRIADOS_TIME_STEP },
@@ -177,6 +176,7 @@ static const ability_def Ability_List[] =
       0, 0, 125, 0, ABFLAG_BREATH },
     { ABIL_BREATHE_STEAM, "Breathe Steam", 0, 0, 75, 0, ABFLAG_BREATH },
     { ABIL_TRAN_BAT, "Bat Form", 2, 0, 0, 0, ABFLAG_NONE },
+    { ABIL_BOTTLE_BLOOD, "Bottle Blood", 0, 0, 0, 0, ABFLAG_NONE }, // no costs
 
     { ABIL_SPIT_ACID, "Spit Acid", 0, 0, 125, 0, ABFLAG_NONE },
 
@@ -320,24 +320,27 @@ static const ability_def Ability_List[] =
 
     // Jiyva
     { ABIL_JIYVA_CALL_JELLY, "Request Jelly", 2, 0, 20, 1, ABFLAG_NONE },
-    { ABIL_JIYVA_JELLY_SHIELD, "Jelly Shield", 0, 0, 0, 0, ABFLAG_PIETY },
+    { ABIL_JIYVA_JELLY_PARALYSE, "Jelly Paralyse", 0, 0, 0, 0, ABFLAG_PIETY },
     { ABIL_JIYVA_SLIMIFY, "Slimify", 4, 0, 100, 8, ABFLAG_NONE },
     { ABIL_JIYVA_CURE_BAD_MUTATION, "Cure Bad Mutation",
       8, 0, 200, 15, ABFLAG_NONE },
 
     // Fedhas
     { ABIL_FEDHAS_FUNGAL_BLOOM, "Decomposition", 0, 0, 0, 0, ABFLAG_NONE },
+    { ABIL_FEDHAS_EVOLUTION, "Evolution", 2, 0, 0, 0, ABFLAG_VARIABLE_FRUIT},
     { ABIL_FEDHAS_SUNLIGHT, "Sunlight", 2, 0, 0, 0, ABFLAG_NONE},
-    { ABIL_FEDHAS_PLANT_RING, "Growth", 2, 0, 0, 1, ABFLAG_FRUIT},
-    { ABIL_FEDHAS_RAIN, "Rain", 4, 0, 100, 2, ABFLAG_NONE},
+    { ABIL_FEDHAS_PLANT_RING, "Growth", 2, 0, 0, 0, ABFLAG_FRUIT},
     { ABIL_FEDHAS_SPAWN_SPORES, "Reproduction", 4, 0, 50, 2, ABFLAG_NONE},
-    { ABIL_FEDHAS_EVOLUTION, "Evolution", 4, 0, 0, 2, ABFLAG_FRUIT},
+    { ABIL_FEDHAS_RAIN, "Rain", 4, 0, 100, 4, ABFLAG_NONE},
+
 
     // Cheibriados
-    { ABIL_CHEIBRIADOS_PONDEROUSIFY, "Make Ponderous", 2, 0, 0, 0, ABFLAG_NONE },
+    { ABIL_CHEIBRIADOS_PONDEROUSIFY, "Make Ponderous",
+      0, 0, 0, 0, ABFLAG_NONE },
     { ABIL_CHEIBRIADOS_TIME_BEND, "Bend Time", 3, 0, 50, 1, ABFLAG_NONE },
     { ABIL_CHEIBRIADOS_SLOUCH, "Slouch", 5, 0, 100, 5, ABFLAG_NONE },
-    { ABIL_CHEIBRIADOS_TIME_STEP, "Step From Time", 10, 0, 200, 10, ABFLAG_NONE },
+    { ABIL_CHEIBRIADOS_TIME_STEP, "Step From Time",
+      10, 0, 200, 10, ABFLAG_NONE },
 
     { ABIL_HARM_PROTECTION, "Protection From Harm", 0, 0, 0, 0, ABFLAG_NONE },
     { ABIL_HARM_PROTECTION_II, "Reliable Protection From Harm",
@@ -346,7 +349,7 @@ static const ability_def Ability_List[] =
     { ABIL_RENOUNCE_RELIGION, "Renounce Religion", 0, 0, 0, 0, ABFLAG_NONE },
 };
 
-const struct ability_def & get_ability_def( ability_type abil )
+const ability_def & get_ability_def(ability_type abil)
 {
     for (unsigned int i = 0;
          i < sizeof(Ability_List) / sizeof(Ability_List[0]); i++)
@@ -358,15 +361,15 @@ const struct ability_def & get_ability_def( ability_type abil )
     return (Ability_List[0]);
 }
 
-bool string_matches_ability_name(const std::string key)
+bool string_matches_ability_name(const std::string& key)
 {
     for (int i = ABIL_SPIT_POISON; i <= ABIL_RENOUNCE_RELIGION; ++i)
     {
-        const ability_def abil = get_ability_def((ability_type) i);
+        const ability_def abil = get_ability_def(static_cast<ability_type>(i));
         if (abil.ability == ABIL_NON_ABILITY)
             continue;
 
-        std::string name = lowercase_string(ability_name(abil.ability));
+        const std::string name = lowercase_string(ability_name(abil.ability));
         if (name.find(key) != std::string::npos)
             return (true);
     }
@@ -483,10 +486,17 @@ const std::string make_cost_description(ability_type ability)
     }
     if (abil.flags & ABFLAG_FRUIT)
     {
-        if(!ret.str().empty())
+        if (!ret.str().empty())
             ret << ", ";
 
         ret << "Fruit";
+    }
+    if (abil.flags & ABFLAG_VARIABLE_FRUIT)
+    {
+        if (!ret.str().empty())
+            ret << ", ";
+
+        ret << "Fruit or Piety";
     }
 
     // If we haven't output anything so far, then the effect has no cost
@@ -579,6 +589,11 @@ static talent _get_talent(ability_type ability, bool check_confused)
 
     case ABIL_TRAN_BAT:
         failure = 45 - (2 * you.experience_level);
+        break;
+
+    case ABIL_BOTTLE_BLOOD:
+        perfect = true;
+        failure = 0;
         break;
 
     case ABIL_RECHARGING:       // this is for deep dwarves {1KB}
@@ -682,6 +697,7 @@ static talent _get_talent(ability_type ability, bool check_confused)
     case ABIL_LUGONU_ABYSS_EXIT:
     case ABIL_JIYVA_CALL_JELLY:
     case ABIL_FEDHAS_SUNLIGHT:
+    case ABIL_FEDHAS_EVOLUTION:
         invoc = true;
         failure = 30 - (you.piety / 20) - (6 * you.skills[SK_INVOCATIONS]);
         break;
@@ -715,7 +731,6 @@ static talent _get_talent(ability_type ability, bool check_confused)
         break;
 
     case ABIL_YRED_ANIMATE_REMAINS:
-    case ABIL_CHEIBRIADOS_PONDEROUSIFY:
         invoc = true;
         failure = 40 - (you.piety / 20) - (3 * you.skills[SK_INVOCATIONS]);
         break;
@@ -755,7 +770,6 @@ static talent _get_talent(ability_type ability, bool check_confused)
 
     case ABIL_MAKHLEB_MAJOR_DESTRUCTION:
     case ABIL_FEDHAS_SPAWN_SPORES:
-    case ABIL_FEDHAS_RAIN:
     case ABIL_YRED_DRAIN_LIFE:
     case ABIL_CHEIBRIADOS_SLOUCH:
         invoc = true;
@@ -767,7 +781,7 @@ static talent _get_talent(ability_type ability, bool check_confused)
     case ABIL_OKAWARU_HASTE:
     case ABIL_MAKHLEB_GREATER_SERVANT_OF_MAKHLEB:
     case ABIL_LUGONU_CORRUPT:
-    case ABIL_FEDHAS_EVOLUTION:
+    case ABIL_FEDHAS_RAIN:
         invoc = true;
         failure = 70 - (you.piety / 25) - (you.skills[SK_INVOCATIONS] * 4);
         break;
@@ -810,6 +824,7 @@ static talent _get_talent(ability_type ability, bool check_confused)
         failure = 50 - (you.piety / 20) - (5 * you.skills[SK_EVOCATIONS]);
         break;
 
+    case ABIL_CHEIBRIADOS_PONDEROUSIFY:
     case ABIL_RENOUNCE_RELIGION:
         invoc = true;
         perfect = true;
@@ -845,11 +860,11 @@ std::vector<const char*> get_ability_names()
     return result;
 }
 
-static void _print_talent_description(talent tal)
+static void _print_talent_description(const talent& tal)
 {
     clrscr();
 
-    std::string name   = get_ability_def(tal.which).name;
+    const std::string& name = get_ability_def(tal.which).name;
 
     // XXX: The suffix is necessary to distinguish between similarly
     // named spells.  Yes, this is a hack.
@@ -975,11 +990,8 @@ static bool _check_ability_possible(const ability_def& abil,
     if (hungerCheck && you.species != SP_VAMPIRE)
     {
         const int expected_hunger = you.hunger - abil.food_cost * 2;
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS,
-             "hunger: %d, max. food_cost: %d, expected hunger: %d",
+        dprf("hunger: %d, max. food_cost: %d, expected hunger: %d",
              you.hunger, abil.food_cost * 2, expected_hunger);
-#endif
         // Safety margin for natural hunger, mutations etc.
         if (expected_hunger <= 150)
         {
@@ -1088,7 +1100,7 @@ static bool _check_ability_possible(const ability_def& abil,
         return (true);
 
     case ABIL_EVOKE_BLINK:
-        if (scan_artefacts(ARTP_PREVENT_TELEPORTATION, false))
+        if (item_blocks_teleport(false, false))
         {
             return (yesno("You cannot teleport right now. Try anyway?",
                           true, 'n'));
@@ -1178,6 +1190,7 @@ static bool _activate_talent(const talent& tal)
         case ABIL_DELAYED_FIREBALL:
         case ABIL_MUMMY_RESTORATION:
         case ABIL_TRAN_BAT:
+        case ABIL_BOTTLE_BLOOD:
             hungerCheck = false;
             break;
         default:
@@ -1956,12 +1969,7 @@ static bool _do_ability(const ability_def& abil)
     }
 
     case ABIL_FEDHAS_SUNLIGHT:
-        if (!sunlight())
-        {
-            canned_msg(MSG_NOTHING_HAPPENS);
-            return (false);
-        }
-
+        sunlight();
         exercise(SK_INVOCATIONS, 2 + random2(3));
         break;
 
@@ -1988,7 +1996,7 @@ static bool _do_ability(const ability_def& abil)
     case ABIL_FEDHAS_SPAWN_SPORES:
         if (!corpse_spores())
         {
-            canned_msg(MSG_NOTHING_HAPPENS);
+            mprf("No corpses are in range.");
             return (false);
         }
 
@@ -1997,10 +2005,7 @@ static bool _do_ability(const ability_def& abil)
 
     case ABIL_FEDHAS_EVOLUTION:
         if (!evolve_flora())
-        {
-            canned_msg(MSG_NOTHING_HAPPENS);
             return (false);
-        }
 
         exercise(SK_INVOCATIONS, 2 + random2(3));
         break;
@@ -2011,6 +2016,11 @@ static bool _do_ability(const ability_def& abil)
             crawl_state.zero_turns_taken();
             return (false);
         }
+        break;
+
+    case ABIL_BOTTLE_BLOOD:
+        if (!butchery(-1, true))
+            return (false);
         break;
 
     case ABIL_JIYVA_CALL_JELLY:
@@ -2027,23 +2037,15 @@ static bool _do_ability(const ability_def& abil)
         break;
     }
 
-    case ABIL_JIYVA_JELLY_SHIELD:
+    case ABIL_JIYVA_JELLY_PARALYSE:
         // Activated via prayer elsewhere.
         break;
 
     case ABIL_JIYVA_SLIMIFY:
     {
-        std::string msg;
-        int has_weapon = you.equip[EQ_WEAPON];
-
-        if (has_weapon == -1)
-            msg = "your " + you.hand_name(true);
-        else
-        {
-            item_def& weapon = *you.weapon();
-            msg = weapon.name(DESC_NOCAP_YOUR);
-        }
-
+        const item_def* const weapon = you.weapon();
+        const std::string msg = (weapon) ? weapon->name(DESC_NOCAP_YOUR)
+                                         : ("your " + you.hand_name(true));
         mprf(MSGCH_DURATION, "A thick mucus forms on %s.", msg.c_str());
         you.increase_duration(DUR_SLIMIFY,
                               you.skills[SK_INVOCATIONS] * 3 / 2 + 3,
@@ -2080,9 +2082,7 @@ static bool _do_ability(const ability_def& abil)
 
     case ABIL_CHEIBRIADOS_SLOUCH:
         mpr("You can feel time thicken.");
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "your speed is %d", player_movement_speed());
-#endif
+        dprf("your speed is %d", player_movement_speed());
         exercise(SK_INVOCATIONS, 4 + random2(4));
         cheibriados_slouch(0);
         break;
@@ -2118,10 +2118,8 @@ static void _pay_ability_costs(const ability_def& abil)
     const int piety_cost = abil.piety_cost.cost();
     const int hp_cost    = abil.hp_cost.cost(you.hp_max);
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Cost: mp=%d; hp=%d; food=%d; piety=%d",
+    dprf("Cost: mp=%d; hp=%d; food=%d; piety=%d",
          abil.mp_cost, hp_cost, food_cost, piety_cost );
-#endif
 
     if (abil.mp_cost)
     {
@@ -2319,6 +2317,11 @@ std::vector<talent> your_talents(bool check_confused)
         && you.attribute[ATTR_TRANSFORMATION] != TRAN_BAT)
     {
         _add_talent(talents, ABIL_TRAN_BAT, check_confused);
+    }
+
+    if (you.species == SP_VAMPIRE && you.experience_level >= 6)
+    {
+        _add_talent(talents, ABIL_BOTTLE_BLOOD, false);
     }
 
     if (!you.airborne() && !transform_changed_physiology())

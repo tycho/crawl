@@ -21,6 +21,7 @@
 #include "invent.h"
 #include "items.h"
 #include "kills.h"
+#include "l_libs.h"
 #include "libutil.h"
 #include "menu.h"
 #include "message.h"
@@ -51,9 +52,6 @@
 // Global
 StashTracker StashTrack;
 
-#define ST_MAJOR_VER ((unsigned char) 4)
-#define ST_MINOR_VER ((unsigned char) 8)
-
 void stash_init_new_level()
 {
     // If there's an existing stash level for Pan, blow it away.
@@ -65,13 +63,13 @@ std::string userdef_annotate_item(const char *s, const item_def *item,
                                   bool exclusive)
 {
 #ifdef CLUA_BINDINGS
-    if (exclusive)
-        lua_set_exclusive_item(item);
-    std::string ann;
-    if (!clua.callfn(s, "u>s", item, &ann) && !clua.error.empty())
+    lua_stack_cleaner cleaner(clua);
+    clua_push_item(clua, const_cast<item_def*>(item));
+    if (!clua.callfn(s, 1, 1) && !clua.error.empty())
         mprf(MSGCH_ERROR, "Lua error: %s", clua.error.c_str());
-    if (exclusive)
-        lua_set_exclusive_item(NULL);
+    std::string ann;
+    if (lua_isstring(clua, -1))
+        ann = luaL_checkstring(clua, -1);
     return (ann);
 #else
     return ("");
@@ -110,23 +108,23 @@ void maybe_update_stashes()
     }
 }
 
-bool is_stash(int x, int y)
+bool is_stash(const coord_def& c)
 {
     LevelStashes *ls = StashTrack.find_current_level();
     if (ls)
     {
-        Stash *s = ls->find_stash(x, y);
+        Stash *s = ls->find_stash(c);
         return (s && s->enabled);
     }
     return (false);
 }
 
-std::string get_stash_desc(int x, int y)
+std::string get_stash_desc(const coord_def& c)
 {
     LevelStashes *ls = StashTrack.find_current_level();
     if (ls)
     {
-        Stash *s = ls->find_stash(x, y);
+        Stash *s = ls->find_stash(c);
         if (s)
         {
             const std::string desc = s->description();
@@ -137,9 +135,9 @@ std::string get_stash_desc(int x, int y)
     return "";
 }
 
-void describe_stash(int x, int y)
+void describe_stash(const coord_def& c)
 {
-    std::string desc = get_stash_desc(x, y);
+    std::string desc = get_stash_desc(c);
     if (!desc.empty())
         mpr(desc.c_str(), MSGCH_EXAMINE_FILTER);
 }
@@ -150,14 +148,14 @@ std::vector<item_def> Stash::get_items() const
     return items;
 }
 
-std::vector<item_def> item_list_in_stash( coord_def pos )
+std::vector<item_def> item_list_in_stash(const coord_def& pos)
 {
     std::vector<item_def> ret;
 
     LevelStashes *ls = StashTrack.find_current_level();
     if (ls)
     {
-        Stash *s = ls->find_stash(pos.x, pos.y);
+        Stash *s = ls->find_stash(pos);
         if (s)
             ret = s->get_items();
     }
@@ -326,7 +324,7 @@ static bool _grid_has_mimic_item(const coord_def& pos)
 
 static bool _grid_has_perceived_item(const coord_def& pos)
 {
-    return (igrd(pos) != NON_ITEM || _grid_has_mimic_item(pos));
+    return (you.visible_igrd(pos) != NON_ITEM || _grid_has_mimic_item(pos));
 }
 
 static bool _grid_has_perceived_multiple_items(const coord_def& pos)
@@ -336,7 +334,7 @@ static bool _grid_has_perceived_multiple_items(const coord_def& pos)
     if (_grid_has_mimic_item(pos))
         ++count;
 
-    for (stack_iterator si(pos); si && count < 2; ++si)
+    for (stack_iterator si(pos, true); si && count < 2; ++si)
         ++count;
 
     return (count > 1);
@@ -361,7 +359,7 @@ void Stash::update()
         items.clear();
 
         // Now, grab all items on that square and fill our vector
-        for (stack_iterator si(p); si; ++si)
+        for (stack_iterator si(p, true); si; ++si)
             if (!is_filtered(*si))
                 add_item(*si);
 
@@ -380,20 +378,15 @@ void Stash::update()
 
         // There's something on this square. Take a squint at it.
         const item_def *pitem;
-        item_def mimic_item;
         if (_grid_has_mimic_item(p))
-        {
-            get_mimic_item(monster_at(p), mimic_item);
-            pitem = &mimic_item;
-        }
+            pitem = &get_mimic_item(monster_at(p));
         else
         {
-            pitem = &mitm[igrd(p)];
+            pitem = &mitm[you.visible_igrd(p)];
+            tutorial_first_item(*pitem);
         }
 
         const item_def& item = *pitem;
-
-        tutorial_first_item(item);
 
         if (!_grid_has_perceived_multiple_items(p))
             items.clear();
@@ -729,6 +722,8 @@ void Stash::add_item(const item_def &item, bool add_to_front)
     else
         items.push_back(item);
 
+    seen_item(item);
+
     if (!_is_rottable(item))
         return;
 
@@ -892,21 +887,15 @@ void ShopInfo::add_item(const item_def &sitem, unsigned price)
 
 std::string ShopInfo::shop_item_name(const shop_item &si) const
 {
-    char shopitem[ITEMNAME_SIZE * 2];
-
     const unsigned long oldflags = si.item.flags;
 
     if (shoptype_identifies_stock(static_cast<shop_type>(this->shoptype)))
         const_cast<shop_item&>(si).item.flags |= ISFLAG_IDENT_MASK;
 
-    const std::string itemname = Stash::stash_item_name(si.item);
-    snprintf(shopitem, sizeof shopitem, "%s (%u gold)",
-             itemname.c_str(), si.price);
-
     if (oldflags != si.item.flags)
         const_cast<shop_item&>(si).item.flags = oldflags;
 
-    return shopitem;
+    return make_stringf("%s (%u gold)", Stash::stash_item_name(si.item).c_str(), si.price);
 }
 
 std::string ShopInfo::shop_item_desc(const shop_item &si) const
@@ -1187,72 +1176,69 @@ level_id LevelStashes::where() const
     return m_place;
 }
 
-Stash *LevelStashes::find_stash(int x, int y)
+Stash *LevelStashes::find_stash(coord_def c)
 {
-    if (x == -1 || y == -1)
-    {
-        x = you.pos().x;
-        y = you.pos().y;
-    }
-    const int abspos = (GXM * y) + x;
+    // FIXME: is this really necessary?
+    if (c.x == -1 || c.y == -1)
+        c = you.pos();
+
+    const int abspos = (GXM * c.y) + c.x;
     stashes_t::iterator st = m_stashes.find(abspos);
     return (st == m_stashes.end()? NULL : &st->second);
 }
 
-const Stash *LevelStashes::find_stash(int x, int y) const
+const Stash *LevelStashes::find_stash(coord_def c) const
 {
-    if (x == -1 || y == -1)
-    {
-        x = you.pos().x;
-        y = you.pos().y;
-    }
-    const int abspos = (GXM * y) + x;
+    // FIXME: is this really necessary?
+    if (c.x == -1 || c.y == -1)
+        c = you.pos();
+
+    const int abspos = (GXM * c.y) + c.x;
     stashes_t::const_iterator st = m_stashes.find(abspos);
     return (st == m_stashes.end()? NULL : &st->second);
 }
 
-const ShopInfo *LevelStashes::find_shop(int x, int y) const
+const ShopInfo *LevelStashes::find_shop(const coord_def& c) const
 {
     for (unsigned i = 0; i < m_shops.size(); ++i)
-        if (m_shops[i].isAt(x, y))
+        if (m_shops[i].isAt(c))
             return (&m_shops[i]);
 
     return (NULL);
 }
 
-bool LevelStashes::shop_needs_visit(int x, int y) const
+bool LevelStashes::shop_needs_visit(const coord_def& c) const
 {
-    const ShopInfo *shop = find_shop(x, y);
+    const ShopInfo *shop = find_shop(c);
     return (shop && !shop->is_visited());
 }
 
-bool LevelStashes::needs_visit(int x, int y) const
+bool LevelStashes::needs_visit(const coord_def& c) const
 {
-    const Stash *s = find_stash(x, y);
+    const Stash *s = find_stash(c);
     if (s && (s->unverified() || s->pickup_eligible()))
         return (true);
 
-    return (shop_needs_visit(x, y));
+    return (shop_needs_visit(c));
 }
 
-ShopInfo &LevelStashes::get_shop(int x, int y)
+ShopInfo &LevelStashes::get_shop(const coord_def& c)
 {
     for (unsigned i = 0; i < m_shops.size(); ++i)
-    {
-        if (m_shops[i].isAt(x, y))
+        if (m_shops[i].isAt(c))
             return m_shops[i];
-    }
-    ShopInfo si(x, y);
-    si.set_name(shop_name(coord_def(x, y)));
+
+    ShopInfo si(c.x, c.y);
+    si.set_name(shop_name(c));
     m_shops.push_back(si);
-    return get_shop(x, y);
+    return get_shop(c);
 }
 
-// Updates the stash at (x,y). Returns true if there was a stash at (x,y), false
+// Updates the stash at p. Returns true if there was a stash at p, false
 // otherwise.
-bool LevelStashes::update_stash(int x, int y)
+bool LevelStashes::update_stash(const coord_def& c)
 {
-    Stash *s = find_stash(x, y);
+    Stash *s = find_stash(c);
     if (s)
     {
         s->update();
@@ -1271,7 +1257,7 @@ void LevelStashes::kill_stash(const Stash &s)
 
 void LevelStashes::no_stash(int x, int y)
 {
-    Stash *s = find_stash(x, y);
+    Stash *s = find_stash(coord_def(x, y));
     bool en = false;
     if (s)
     {
@@ -1294,7 +1280,7 @@ void LevelStashes::no_stash(int x, int y)
 
 void LevelStashes::add_stash(int x, int y)
 {
-    Stash *s = find_stash(x, y);
+    Stash *s = find_stash(coord_def(x, y));
     if (s)
     {
         s->update();
@@ -1472,12 +1458,12 @@ LevelStashes *StashTracker::find_current_level()
 }
 
 
-bool StashTracker::update_stash(int x, int y)
+bool StashTracker::update_stash(const coord_def& c)
 {
     LevelStashes *lev = find_current_level();
     if (lev)
     {
-        bool res = lev->update_stash(x, y);
+        bool res = lev->update_stash(c);
         if (!lev->stash_count())
             remove_level();
         return (res);
@@ -1509,7 +1495,7 @@ void StashTracker::add_stash(int x, int y, bool verbose)
 
     if (verbose)
     {
-        Stash *s = current.find_stash(x, y);
+        Stash *s = current.find_stash(coord_def(x, y));
         if (s && s->enabled)
             mpr("Added stash.");
     }
@@ -1545,12 +1531,8 @@ void StashTracker::write(std::ostream &os, bool identify) const
 
 void StashTracker::save(writer& outf) const
 {
-    // Write version info first - major + minor
-    marshallByte(outf, ST_MAJOR_VER);
-    marshallByte(outf, ST_MINOR_VER);
-
     // Time of last corpse update.
-    marshallFloat(outf, (float) last_corpse_update);
+    marshallLong(outf, last_corpse_update);
 
     // How many levels have we?
     marshallShort(outf, (short) levels.size());
@@ -1563,14 +1545,16 @@ void StashTracker::save(writer& outf) const
 
 void StashTracker::load(reader& inf)
 {
-    // Check version. Compatibility isn't important, since stash-tracking
-    // is non-critical.
-    unsigned char major = unmarshallByte(inf),
-                  minor = unmarshallByte(inf);
-    if (major != ST_MAJOR_VER || minor != ST_MINOR_VER) return ;
-
-    // Time of last corpse update.
-    last_corpse_update = (double) unmarshallFloat(inf);
+    if (inf.getMinorVersion() < TAG_MINOR_STASHVER)
+    {
+        // Stash version is now a part of the global save.
+        unmarshallByte(inf),
+        unmarshallByte(inf);
+        last_corpse_update = (long)unmarshallFloat(inf);
+    }
+    else
+        // Time of last corpse update.
+        last_corpse_update = unmarshallLong(inf);
 
     int count = unmarshallShort(inf);
 
@@ -1591,25 +1575,26 @@ void StashTracker::update_visible_stashes(
         return;
 
     LevelStashes *lev = find_current_level();
-    for (int cy = crawl_view.glos1.y; cy <= crawl_view.glos2.y; ++cy)
-        for (int cx = crawl_view.glos1.x; cx <= crawl_view.glos2.x; ++cx)
+    coord_def c;
+    for (c.y = crawl_view.glos1.y; c.y <= crawl_view.glos2.y; ++c.y)
+        for (c.x = crawl_view.glos1.x; c.x <= crawl_view.glos2.x; ++c.x)
         {
-            if (!in_bounds(cx, cy) || !you.see_cell(coord_def(cx, cy)))
+            if (!in_bounds(c) || !you.see_cell(c))
                 continue;
 
-            const dungeon_feature_type grid = grd[cx][cy];
-            if ((!lev || !lev->update_stash(cx, cy))
+            const dungeon_feature_type grid = grd(c);
+            if ((!lev || !lev->update_stash(c))
                 && mode == ST_AGGRESSIVE
-                && (_grid_has_perceived_item(coord_def(cx,cy))
+                && (_grid_has_perceived_item(c)
                     || !Stash::is_boring_feature(grid)))
             {
                 if (!lev)
                     lev = &get_current_level();
-                lev->add_stash(cx, cy);
+                lev->add_stash(c.x, c.y);
             }
 
             if (grid == DNGN_ENTER_SHOP)
-                get_shop(cx, cy);
+                get_shop(c);
         }
 
     if (lev && !lev->stash_count())
@@ -1620,7 +1605,7 @@ void StashTracker::update_visible_stashes(
 static std::string lastsearch;
 static input_history search_history(15);
 
-void StashTracker::show_stash_search_prompt()
+std::string StashTracker::stash_search_prompt()
 {
     std::vector<std::string> opts;
     if (!lastsearch.empty())
@@ -1638,10 +1623,7 @@ void StashTracker::show_stash_search_prompt()
     if (!prompt_qual.empty())
         prompt_qual = " [" + prompt_qual + "]";
 
-    mprf(MSGCH_PROMPT, "Search for what%s?", prompt_qual.c_str());
-    // Push the cursor down to the next line. Newline on the prompt will not
-    // do the trick on DOS.
-    mpr("", MSGCH_PROMPT);
+    return (make_stringf("Search for what%s? ", prompt_qual.c_str()));
 }
 
 class stash_search_reader : public line_reader
@@ -1720,9 +1702,9 @@ void StashTracker::search_stashes()
     stash_search_reader reader(buf, sizeof buf);
 
     bool validline = false;
+    msgwin_prompt(stash_search_prompt());
     while (true)
     {
-        show_stash_search_prompt();
 
         int ret = reader.read_line();
         if (!ret)
@@ -1740,6 +1722,7 @@ void StashTracker::search_stashes()
             break;
         }
     }
+    msgwin_reply(validline ? buf : "");
 
     mesclr();
     if (!validline || (!*buf && !lastsearch.length()))
@@ -1876,12 +1859,9 @@ void StashSearchMenu::draw_title()
                 title->quantity > 1? "es" : "",
                 sort_style);
 
-        char buf[200];
-        snprintf(buf, 200,
+        draw_title_suffix(formatted_string::parse_string(make_stringf(
                  "<lightgrey>  [<w>a-z</w>: %s  <w>?</w>/<w>!</w>: change action  <w>/</w>: change sort]",
-                 menu_action == ACT_EXECUTE ? "travel" : "examine");
-
-        draw_title_suffix(formatted_string::parse_string(buf), false);
+                 menu_action == ACT_EXECUTE ? "travel" : "examine")), false);
     }
 }
 
@@ -1999,11 +1979,10 @@ bool StashTracker::display_search_results(
 
 void StashTracker::update_corpses()
 {
-    if (you.elapsed_time - last_corpse_update < 20.0)
+    if (you.elapsed_time - last_corpse_update < 20)
         return;
 
-    const long rot_time = static_cast<long>((you.elapsed_time -
-                                             last_corpse_update) / 20.0);
+    const long rot_time = (you.elapsed_time - last_corpse_update) / 20;
 
     last_corpse_update = you.elapsed_time;
 

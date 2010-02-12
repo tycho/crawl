@@ -21,6 +21,7 @@
 #include "describe.h"
 #include "directn.h"
 #include "dungeon.h"
+#include "dgn-height.h"
 #include "exclude.h"
 #include "files.h"
 #include "initfile.h"
@@ -39,9 +40,14 @@
 #include "random.h"
 #include "religion.h"
 #include "spl-util.h"
+#include "spl-book.h"
 #include "stuff.h"
 #include "env.h"
 #include "tags.h"
+#ifdef USE_TILE
+#include "tiledef-dngn.h"
+#include "tiledef-player.h"
+#endif
 
 static const char *map_section_names[] = {
     "",
@@ -492,23 +498,53 @@ void map_lines::apply_grid_overlay(const coord_def &c)
                 dgn_set_grid_colour_at(gc, colour);
 
             const int property = (*overlay)(x, y).property;
-            if (testbits(property, FPROP_FORCE_EXCLUDE))
-                set_exclude(gc, 0, false, true);
-            else if (property >= FPROP_BLOODY)
+            if (property >= FPROP_BLOODY)
                  // Over-ride whatever property is already there.
                 env.pgrid(gc) |= property;
+
+            const int fheight = (*overlay)(x, y).height;
+            if (fheight != INVALID_HEIGHT)
+            {
+                if (!env.heightmap.get())
+                    dgn_initialise_heightmap();
+                dgn_height_at(gc) = fheight;
+            }
+
 #ifdef USE_TILE
-            const int floor = (*overlay)(x, y).floortile;
+            int floor = (*overlay)(x, y).floortile;
             if (floor)
             {
+                if (colour)
+                    floor = tile_dngn_coloured(floor, colour);
                 int offset = random2(tile_dngn_count(floor));
                 env.tile_flv(gc).floor = floor + offset;
             }
-            const int rock = (*overlay)(x, y).rocktile;
+            int rock = (*overlay)(x, y).rocktile;
             if (rock)
             {
+                if (colour)
+                    rock = tile_dngn_coloured(rock, colour);
                 int offset = random2(tile_dngn_count(rock));
                 env.tile_flv(gc).wall = rock + offset;
+            }
+            int tile = (*overlay)(x, y).tile;
+            if (tile)
+            {
+                if (colour)
+                    tile = tile_dngn_coloured(tile, colour);
+                int offset = random2(tile_dngn_count(tile));
+                if ((*overlay)(x, y).last_tile)
+                    offset = tile_dngn_count(tile) - 1;
+                if (grd(gc) == DNGN_FLOOR && !floor)
+                    env.tile_flv(gc).floor = tile + offset;
+                else if (grd(gc) == DNGN_ROCK_WALL && !rock)
+                    env.tile_flv(gc).wall = tile + offset;
+                else
+                {
+                    if ((*overlay)(x, y).no_random)
+                        offset = 0;
+                    env.tile_flv(gc).feat = tile + offset;
+                }
             }
 #endif
         }
@@ -669,12 +705,28 @@ std::string map_lines::add_colour(const std::string &sub)
 
 bool map_fprop_list::parse(const std::string &fp, int weight)
 {
-    const int fprop = fp == "none" ? FPROP_NONE : str_to_fprop(fp);
-    if (fprop == -1)
+    unsigned long fprop;
+
+    if (fp == "nothing")
+        fprop = FPROP_NONE;
+    else if (fp.empty())
+        return (false);
+    else if (str_to_fprop(fp) == FPROP_NONE)
         return false;
+    else
+        fprop = str_to_fprop(fp);
 
     push_back(map_weighted_fprop(fprop, weight));
     return true;
+}
+
+bool map_featheight_list::parse(const std::string &fp, int weight)
+{
+    const int thisheight = strict_aton(fp.c_str(), INVALID_HEIGHT);
+    if (thisheight == INVALID_HEIGHT)
+        return (false);
+    push_back(map_weighted_fheight(thisheight, weight));
+    return (true);
 }
 
 std::string map_lines::add_fproperty(const std::string &sub)
@@ -699,6 +751,31 @@ std::string map_lines::add_fproperty(const std::string &sub)
 
     fprop_spec spec(key, sep == ':', fprops);
     overlay_fprops(spec);
+
+    return ("");
+}
+
+std::string map_lines::add_fheight(const std::string &sub)
+{
+    std::string s = trimmed_string(sub);
+    if (s.empty())
+        return ("");
+
+    int sep = 0;
+    std::string key;
+    std::string substitute;
+
+    std::string err = mapdef_split_key_item(sub, &key, &sep, &substitute, -1);
+    if (!err.empty())
+        return (err);
+
+    map_featheight_list fheights;
+    err = parse_weighted_str(substitute, fheights);
+    if (!err.empty())
+        return (err);
+
+    fheight_spec spec(key, sep == ':', fheights);
+    overlay_fheights(spec);
 
     return ("");
 }
@@ -948,36 +1025,31 @@ void map_lines::subst(subst_spec &spec)
         subst(lines[y], spec);
 }
 
-void map_lines::overlay_colours(colour_spec &spec)
+void map_lines::bind_overlay()
 {
     if (!overlay.get())
         overlay.reset(new overlay_matrix(width(), height()));
+}
 
-    for (int y = 0, ysize = lines.size(); y < ysize; ++y)
-    {
-        std::string::size_type pos = 0;
-        while ((pos = lines[y].find_first_of(spec.key, pos)) != std::string::npos)
-        {
-            (*overlay)(pos, y).colour = spec.get_colour();
-            ++pos;
-        }
-    }
+void map_lines::overlay_colours(colour_spec &spec)
+{
+    bind_overlay();
+    for (iterator mi(*this, spec.key); mi; ++mi)
+        (*overlay)(*mi).colour = spec.get_colour();
 }
 
 void map_lines::overlay_fprops(fprop_spec &spec)
 {
-    if (!overlay.get())
-        overlay.reset(new overlay_matrix(width(), height()));
+    bind_overlay();
+    for (iterator mi(*this, spec.key); mi; ++mi)
+        (*overlay)(*mi).property |= spec.get_property();
+}
 
-    for (int y = 0, ysize = lines.size(); y < ysize; ++y)
-    {
-        std::string::size_type pos = 0;
-        while ((pos = lines[y].find_first_of(spec.key, pos)) != std::string::npos)
-        {
-            (*overlay)(pos, y).property |= spec.get_property();
-            ++pos;
-        }
-    }
+void map_lines::overlay_fheights(fheight_spec &spec)
+{
+    bind_overlay();
+    for (iterator mi(*this, spec.key); mi; ++mi)
+        (*overlay)(*mi).height = spec.get_height();
 }
 
 void map_lines::fill_mask_matrix(const std::string &glyphs,
@@ -1194,8 +1266,13 @@ void map_lines::overlay_tiles(tile_spec &spec)
         {
             if (spec.floor)
                 (*overlay)(pos, y).floortile = spec.get_tile();
+            else if (spec.feat)
+                (*overlay)(pos, y).tile = spec.get_tile();
             else
                 (*overlay)(pos, y).rocktile = spec.get_tile();
+
+            (*overlay)(pos, y).no_random = spec.no_random;
+            (*overlay)(pos, y).last_tile = spec.last_tile;
             ++pos;
         }
     }
@@ -1538,7 +1615,6 @@ std::string map_lines::add_key_mask(const std::string &s)
                          &keyed_mapspec::copy_mask);
 }
 
-
 std::vector<coord_def> map_lines::find_glyph(int gly) const
 {
     std::vector<coord_def> points;
@@ -1716,18 +1792,21 @@ bool map_tile_list::parse(const std::string &s, int weight)
     return true;
 }
 
-std::string map_lines::add_tile(const std::string &sub, bool is_floor)
+std::string map_lines::add_tile(const std::string &sub, bool is_floor, bool is_feat)
 {
     std::string s = trimmed_string(sub);
 
     if (s.empty())
         return ("");
 
+    bool no_random = strip_tag(s, "no_random");
+    bool last_tile = strip_tag(s, "last_tile");
+
     int sep = 0;
     std::string key;
     std::string substitute;
 
-    std::string err = mapdef_split_key_item(sub, &key, &sep, &substitute, -1);
+    std::string err = mapdef_split_key_item(s, &key, &sep, &substitute, -1);
     if (!err.empty())
         return (err);
 
@@ -1736,7 +1815,7 @@ std::string map_lines::add_tile(const std::string &sub, bool is_floor)
     if (!err.empty())
         return (err);
 
-    tile_spec spec(key, sep == ':', is_floor, list);
+    tile_spec spec(key, sep == ':', no_random, last_tile, is_floor, is_feat, list);
     overlay_tiles(spec);
 
     return ("");
@@ -1744,12 +1823,17 @@ std::string map_lines::add_tile(const std::string &sub, bool is_floor)
 
 std::string map_lines::add_rocktile(const std::string &sub)
 {
-    return add_tile(sub, false);
+    return add_tile(sub, false, false);
 }
 
 std::string map_lines::add_floortile(const std::string &sub)
 {
-    return add_tile(sub, true);
+    return add_tile(sub, true, false);
+}
+
+std::string map_lines::add_spec_tile(const std::string &sub)
+{
+    return add_tile(sub, false, true);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1775,6 +1859,59 @@ int tile_spec::get_tile()
 }
 
 #endif
+
+//////////////////////////////////////////////////////////////////////////
+// map_lines::iterator
+
+map_lines::iterator::iterator(map_lines &_maplines, const std::string &_key)
+    : maplines(_maplines), key(_key), p(0, 0)
+{
+    advance();
+}
+
+void map_lines::iterator::advance()
+{
+    const int height = maplines.height();
+    while (p.y < height)
+    {
+        std::string::size_type place = p.x;
+        if (place < maplines.lines[p.y].length())
+        {
+            place = maplines.lines[p.y].find_first_of(key, place);
+            if (place != std::string::npos)
+            {
+                p.x = place;
+                break;
+            }
+        }
+        ++p.y;
+        p.x = 0;
+    }
+}
+
+map_lines::iterator::operator bool() const
+{
+    return (p.y < maplines.height());
+}
+
+coord_def map_lines::iterator::operator *() const
+{
+    return (p);
+}
+
+coord_def map_lines::iterator::operator ++ ()
+{
+    p.x++;
+    advance();
+    return **this;
+}
+
+coord_def map_lines::iterator::operator ++ (int)
+{
+    coord_def here(**this);
+    ++*this;
+    return (here);
+}
 
 ///////////////////////////////////////////////
 // dlua_set_map
@@ -1989,6 +2126,8 @@ void map_def::write_index(writer& outf) const
     marshallString4(outf, place_loaded_from.filename);
     marshallLong(outf, place_loaded_from.lineno);
     marshallShort(outf, orient);
+    // XXX: This is a hack. See the comment in l_dgn.cc.
+    marshallShort(outf, static_cast<short>(border_fill_type));
     marshallLong(outf, chance_priority);
     marshallLong(outf, chance);
     marshallLong(outf, weight);
@@ -2005,6 +2144,8 @@ void map_def::read_index(reader& inf)
     unmarshallString4(inf, place_loaded_from.filename);
     place_loaded_from.lineno   = unmarshallLong(inf);
     orient       = static_cast<map_section_type>( unmarshallShort(inf) );
+    // XXX: Hack. See the comment in l_dgn.cc.
+    border_fill_type = static_cast<dungeon_feature_type>( unmarshallShort(inf) );
     chance_priority = unmarshallLong(inf);
     chance       = unmarshallLong(inf);
     weight       = unmarshallLong(inf);
@@ -3031,6 +3172,22 @@ mons_list::mons_spec_slot mons_list::parse_mons_spec(std::string spec)
         mspec.patrolling     = strip_tag(mon_str, "patrolling");
         mspec.band           = strip_tag(mon_str, "band");
 
+        const std::string att = strip_tag_prefix(mon_str, "att:");
+        if (att.empty() || att == "hostile")
+            mspec.attitude = ATT_HOSTILE;
+        else if (att == "friendly")
+            mspec.attitude = ATT_FRIENDLY;
+        else if (att == "good_neutral")
+            mspec.attitude = ATT_GOOD_NEUTRAL;
+        else if (att == "fellow_slime" || att == "strict_neutral")
+            mspec.attitude = ATT_STRICT_NEUTRAL;
+        else if (att == "neutral")
+            mspec.attitude = ATT_NEUTRAL;
+
+        // Useful for summoned monsters.
+        if (strip_tag(mon_str, "seen"))
+            mspec.extra_monster_flags |= MF_SEEN;
+
         if (!mon_str.empty() && isdigit(mon_str[0]))
         {
             // Look for space after initial digits.
@@ -3075,6 +3232,48 @@ mons_list::mons_spec_slot mons_list::parse_mons_spec(std::string spec)
         if (mspec.hp == TAG_UNFOUND)
             mspec.hp = 0;
 
+        int dur = strip_number_tag(mon_str, "dur:");
+        if (dur == TAG_UNFOUND)
+            dur = 0;
+        else if (dur < 1 || dur > 6)
+            dur = 0;
+
+        mspec.abjuration_duration = dur;
+
+        int summon_type = 0;
+        std::string s_type = strip_tag_prefix(mon_str, "sum:");
+        if (!s_type.empty())
+        {
+            // In case of spells!
+            s_type = replace_all_of(s_type, "_", " ");
+            summon_type = static_cast<int>(str_to_summon_type(s_type));
+            if (summon_type == SPELL_NO_SPELL)
+            {
+                error = make_stringf("bad monster summon type: \"%s\"",
+                                s_type.c_str());
+                return (slot);
+            }
+            if (mspec.abjuration_duration == 0)
+            {
+                error = "marked summon with no duration";
+                return (slot);
+            }
+        }
+
+        mspec.summon_type = summon_type;
+
+        std::string non_actor_summoner = strip_tag_prefix(mon_str, "nas:");
+        if (!non_actor_summoner.empty())
+        {
+            non_actor_summoner = replace_all_of(non_actor_summoner, "_", " ");
+            mspec.non_actor_summoner = non_actor_summoner;
+            if (mspec.abjuration_duration == 0)
+            {
+                error = "marked summon with no duration";
+                return (slot);
+            }
+        }
+
         std::string colour = strip_tag_prefix(mon_str, "col:");
         if (!colour.empty())
         {
@@ -3092,6 +3291,20 @@ mons_list::mons_spec_slot mons_list::parse_mons_spec(std::string spec)
                 }
             }
         }
+
+        std::string tile = strip_tag_prefix(mon_str, "tile:");
+#ifdef USE_TILE
+        if (!tile.empty())
+        {
+            unsigned int index;
+            if (!tile_player_index(tile.c_str(), index))
+            {
+                error = make_stringf("bad tile name: \"%s\".", tile.c_str());
+                return (slot);
+            }
+            mspec.props["monster_tile"] = short(index);
+        }
+#endif
 
         std::string name = strip_tag_prefix(mon_str, "name:");
         if (!name.empty())
@@ -3649,6 +3862,13 @@ static int str_to_ego(item_spec &spec, std::string ego_str)
         "exploding",
         "steel",
         "silver",
+        "electric",
+        "paralysis",
+        "slow",
+        "sleep",
+        "confusion",
+        "sickness",
+        "wrath",
         NULL
     };
 
@@ -3787,20 +4007,17 @@ item_spec item_list::parse_single_spec(std::string s)
         }
     }
 
-    if (s.find("damaged ") == 0)
+    if (strip_tag(s, "damaged"))
     {
         result.level = ISPEC_DAMAGED;
-        s = s.substr(8);
     }
-    if (s.find("cursed ") == 0)
+    if (strip_tag(s, "cursed"))
     {
         result.level = ISPEC_BAD; // damaged + cursed, actually
-        s = s.substr(7);
     }
-    if (s.find("randart ") == 0)
+    if (strip_tag(s, "randart"))
     {
         result.level = ISPEC_RANDART;
-        s = s.substr(8);
     }
 
     if (strip_tag(s, "no_uniq"))
@@ -3819,6 +4036,102 @@ item_spec item_list::parse_single_spec(std::string s)
             }
             result.allow_uniques = uniq;
         }
+    }
+
+    // XXX: This is nice-ish now, but could probably do with being improved.
+    if (strip_tag(s, "randbook"))
+    {
+        result.props["make_book_theme_randart"] = true;
+        // make_book_theme_randart requires the following properties:
+        // disc: <first discipline>, disc2: <optional second discipline>
+        // numspells: <total number of spells>, slevels: <maximum levels>
+        // spell: <include this spell>, owner:<name of owner>
+        // None of these are required, but if you don't intend on using any
+        // of them, use "any fixed theme book" instead.
+        short disc1 = 0;
+        short disc2 = 0;
+
+        std::string st_disc1 = strip_tag_prefix(s, "disc:");
+        if (!st_disc1.empty())
+        {
+            disc1 = school_by_name(st_disc1);
+            if (disc1 == SPTYP_NONE)
+            {
+                error = make_stringf("Bad spell school: %s", st_disc1.c_str());
+                return (result);
+            }
+        }
+
+        std::string st_disc2 = strip_tag_prefix(s, "disc2:");
+        if (!st_disc2.empty())
+        {
+            disc2 = school_by_name(st_disc2);
+            if (disc2 == SPTYP_NONE)
+            {
+                error = make_stringf("Bad spell school: %s", st_disc2.c_str());
+                return (result);
+            }
+        }
+
+        if (disc1 != 0 && disc2 != 0)
+        {
+            if (disciplines_conflict(disc1, disc2))
+            {
+                error = make_stringf("Bad combination of spell schools: %s & %s.",
+                                    st_disc1.c_str(), st_disc2.c_str());
+                return (result);
+            }
+        }
+
+        if (disc1 == 0 && disc2 != 0)
+        {
+            // Don't fail, just quietly swap. Any errors in disc1's syntax will
+            // have been caught above, anyway.
+            disc1 = disc2;
+            disc2 = 0;
+        }
+
+        short num_spells = strip_number_tag(s, "numspells:");
+        if (num_spells == TAG_UNFOUND)
+            num_spells = -1;
+        else if (num_spells <= 0 || num_spells > SPELLBOOK_SIZE)
+        {
+            error = make_stringf("Bad spellbook size: %d", num_spells);
+            return (result);
+        }
+
+        short slevels = strip_number_tag(s, "slevels:");
+        if (slevels == TAG_UNFOUND)
+            slevels = -1;
+        else if (slevels == 0)
+        {
+            error = make_stringf("Bad slevels: %d.", slevels);
+            return (result);
+        }
+
+        const std::string spell = replace_all_of(strip_tag_prefix(s, "spell:"),
+                                                "_", " ");
+        if (!spell.empty() && spell_by_name(spell) == SPELL_NO_SPELL)
+        {
+            error = make_stringf("Bad spell: %s", spell.c_str());
+            return (result);
+        }
+
+        const std::string owner = replace_all_of(strip_tag_prefix(s, "owner:"),
+                                                "_", " ");
+        result.props["randbook_disc1"] = disc1;
+        result.props["randbook_disc2"] = disc2;
+        result.props["randbook_num_spells"] = num_spells;
+        result.props["randbook_slevels"] = slevels;
+        result.props["randbook_spell"] = spell;
+        result.props["randbook_owner"] = owner;
+
+        result.base_type = OBJ_BOOKS;
+        // This is changed in make_book_theme_randart.
+        result.sub_type = BOOK_MINOR_MAGIC_I;
+        result.plus = -1;
+
+        return (result);
     }
 
     // Clean up after any tag brain damage.
@@ -4003,7 +4316,7 @@ void item_list::parse_raw_name(std::string name, item_spec &spec)
 
 item_list::item_spec_slot item_list::parse_item_spec(std::string spec)
 {
-    lowercase(spec);
+    // lowercase(spec);
 
     item_spec_slot list;
 
@@ -4077,18 +4390,36 @@ int colour_spec::get_colour()
 //////////////////////////////////////////////////////////////////////////
 // fprop_spec
 
-int fprop_spec::get_property()
+unsigned long fprop_spec::get_property()
 {
     if (fixed_prop != FPROP_NONE)
         return (fixed_prop);
 
-    int chosen = FPROP_NONE;
+    unsigned long chosen = FPROP_NONE;
     int cweight = 0;
     for (int i = 0, size = fprops.size(); i < size; ++i)
         if (x_chance_in_y(fprops[i].second, cweight += fprops[i].second))
             chosen = fprops[i].first;
     if (fix)
         fixed_prop = chosen;
+    return (chosen);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// fheight_spec
+
+int fheight_spec::get_height()
+{
+    if (fixed_height != INVALID_HEIGHT)
+        return (fixed_height);
+
+    int chosen = INVALID_HEIGHT;
+    int cweight = 0;
+    for (int i = 0, size = fheights.size(); i < size; ++i)
+        if (x_chance_in_y(fheights[i].second, cweight += fheights[i].second))
+            chosen = fheights[i].first;
+    if (fix)
+        fixed_height = chosen;
     return (chosen);
 }
 
@@ -4354,7 +4685,7 @@ std::string keyed_mapspec::set_mask(const std::string &s, bool garbage)
     {
         static std::string flag_list[] =
             {"vault", "no_item_gen", "no_monster_gen", "no_pool_fixup",
-             "no_secret_doors", "opaque", ""};
+             "no_secret_doors", "no_wall_fixup", "opaque", ""};
         map_mask = map_flags::parse(flag_list, s);
     }
     catch (const std::string &error)

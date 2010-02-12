@@ -41,7 +41,7 @@
 #include "state.h"
 #include "stuff.h"
 #include "env.h"
-#include "transfor.h"
+#include "transform.h"
 
 
 id_arr type_ids;
@@ -294,6 +294,54 @@ std::string item_def::name(description_level_type descrip,
     return buff.str();
 }
 
+// XXX: Basically duplicates the code found in item_def::name_aux.
+// This is not nice. But changing the code there is not currently 
+// an option. {due}
+const char* missile_brand_name (const item_def& item)
+{
+    switch (get_ammo_brand(item))
+    {
+    case SPMSL_FLAME:
+        return "flame";
+    case SPMSL_FROST:
+        return "frost";
+    case SPMSL_POISONED:
+        return "poison";
+    case SPMSL_CURARE:
+        return "curare";
+    case SPMSL_EXPLODING:
+        return "exploding";
+    case SPMSL_STEEL:
+        return "steel";
+    case SPMSL_SILVER:
+        return "silver";
+    case SPMSL_PARALYSIS:
+        return "paralysis";
+    case SPMSL_SLOW:
+        return "slowing";
+    case SPMSL_SLEEP:
+        return "sleeping";
+    case SPMSL_CONFUSION:
+        return "confusion";
+    case SPMSL_SICKNESS:
+        return "sickness";
+    case SPMSL_RAGE:
+        return "frenzy";
+    case SPMSL_RETURNING:
+        return "returning";
+    case SPMSL_CHAOS:
+        return "chaos";
+    case SPMSL_PENETRATION:
+        return "penetration";
+    case SPMSL_REAPING:
+        return "reaping";
+    case SPMSL_DISPERSAL:
+        return "dispersal";
+    case SPMSL_NORMAL:
+    default:
+        return "";
+    }
+}
 
 const char* weapon_brand_name(const item_def& item, bool terse)
 {
@@ -308,6 +356,7 @@ const char* weapon_brand_name(const item_def& item, bool terse)
     case SPWPN_DRAGON_SLAYING: return ((terse) ? " (slay drac)":" of dragon slaying");
     case SPWPN_VENOM: return ((terse) ? " (venom)" : " of venom");
     case SPWPN_PROTECTION: return ((terse) ? " (protect)" : " of protection");
+    case SPWPN_EVASION: return ((terse) ? " (evade)" : " of evasion");
     case SPWPN_DRAINING: return ((terse) ? " (drain)" : " of draining");
     case SPWPN_SPEED: return ((terse) ? " (speed)" : " of speed");
     case SPWPN_PAIN: return ((terse) ? " (pain)" : " of pain");
@@ -350,12 +399,13 @@ const char* weapon_brand_name(const item_def& item, bool terse)
 }
 
 
-static const char* armour_ego_name( special_armour_type sparm, bool terse )
+const char* armour_ego_name(const item_def& item, bool terse)
 {
     if (!terse)
     {
-        switch ( sparm )
+        switch (get_armour_ego_type(item))
         {
+        case SPARM_NORMAL:            return "";
         case SPARM_RUNNING:           return "running";
         case SPARM_FIRE_RESISTANCE:   return "fire resistance";
         case SPARM_COLD_RESISTANCE:   return "cold resistance";
@@ -382,8 +432,9 @@ static const char* armour_ego_name( special_armour_type sparm, bool terse )
     }
     else
     {
-        switch (sparm)
+        switch (get_armour_ego_type(item))
         {
+        case SPARM_NORMAL:            return "";
         case SPARM_RUNNING:           return " {run}";
         case SPARM_FIRE_RESISTANCE:   return " {rF+}";
         case SPARM_COLD_RESISTANCE:   return " {rC+}";
@@ -582,7 +633,6 @@ static const char* jewellery_type_name(int jeweltype)
     case RING_ICE:                   return "ring of ice";
     case RING_TELEPORT_CONTROL:      return "ring of teleport control";
     case AMU_RAGE:              return "amulet of rage";
-    case AMU_RESIST_SLOW:       return "amulet of resist slowing";
     case AMU_CLARITY:           return "amulet of clarity";
     case AMU_WARDING:           return "amulet of warding";
     case AMU_RESIST_CORROSION:  return "amulet of resist corrosion";
@@ -592,6 +642,8 @@ static const char* jewellery_type_name(int jeweltype)
     case AMU_INACCURACY:        return "amulet of inaccuracy";
     case AMU_RESIST_MUTATION:   return "amulet of resist mutation";
     case AMU_GUARDIAN_SPIRIT:   return "amulet of guardian spirit";
+    case AMU_FAITH:             return "amulet of faith";
+    case AMU_STASIS:            return "amulet of stasis";
     default: return "buggy jewellery";
     }
 }
@@ -615,6 +667,8 @@ static const char* ring_secondary_string(int s)
     default: return "";
     }
 }
+
+
 
 static const char* ring_primary_string(int p)
 {
@@ -873,9 +927,7 @@ static const char* book_type_name(int booktype)
     case BOOK_CANTRIPS:               return "Cantrips";
     case BOOK_PARTY_TRICKS:           return "Party Tricks";
     case BOOK_STALKING:               return "Stalking";
-    case BOOK_ELEMENTAL_MISSILES:     return "Elemental Missiles";
-    case BOOK_WARPED_MISSILES:        return "Warped Missiles";
-    case BOOK_DEVASTATING_MISSILES:   return "Devastating Missiles";
+    case BOOK_BRANDS:                 return "Brands";
     case BOOK_RANDART_LEVEL:          return "Fixed Level";
     case BOOK_RANDART_THEME:          return "Fixed Theme";
     default:                          return "Bugginess";
@@ -965,6 +1017,82 @@ const char* racial_description_string(const item_def& item, bool terse)
     }
 }
 
+std::string base_type_string (const item_def &item, bool known)
+{
+    return base_type_string(item.base_type, known);
+}
+
+std::string base_type_string (object_class_type type, bool known)
+{
+    switch (type)
+    {
+    case OBJ_WEAPONS: return "weapon";
+    case OBJ_MISSILES: return "missile";
+    case OBJ_ARMOUR: return "armour";
+    case OBJ_WANDS: return "wand";
+    case OBJ_FOOD: return "food";
+    case OBJ_SCROLLS: return "scroll";
+    case OBJ_JEWELLERY: return "jewellery";
+    case OBJ_POTIONS: return "potion";
+    case OBJ_BOOKS: return "book";
+    case OBJ_STAVES: return "staff";
+    case OBJ_ORBS: return "orb";
+    case OBJ_MISCELLANY: return "miscellaneous";
+    case OBJ_CORPSES: return "corpse";
+    case OBJ_GOLD: return "gold";
+    default: return "";
+    }
+}
+
+std::string sub_type_string (const item_def &item, bool known)
+{
+    return sub_type_string(item.base_type, item.sub_type);
+}
+
+std::string sub_type_string (object_class_type type, int sub_type, bool known)
+{
+    switch (type)
+    {
+    case OBJ_WEAPONS:  // deliberate fall through, as XXX_prop is a local
+    case OBJ_MISSILES: // variable to itemprop.cc.
+    case OBJ_ARMOUR:
+        return item_base_name(type, sub_type);
+    case OBJ_WANDS: return wand_type_name(sub_type);
+    case OBJ_FOOD: return food_type_name(sub_type);
+    case OBJ_SCROLLS: return scroll_type_name(sub_type);
+    case OBJ_JEWELLERY: return jewellery_type_name(sub_type);
+    case OBJ_POTIONS: return potion_type_name(sub_type);
+    case OBJ_BOOKS: return book_type_name(sub_type);
+    case OBJ_STAVES: return staff_type_name(sub_type);
+    case OBJ_MISCELLANY:
+        if (sub_type == MISC_RUNE_OF_ZOT)
+            return "rune of Zot";
+        else
+            return misc_type_name(sub_type, known);
+    // these repeat as base_type_string
+    case OBJ_ORBS: return "orb of Zot"; break;
+    case OBJ_CORPSES: return "corpse"; break;
+    case OBJ_GOLD: return "gold"; break;
+    default: return "";
+    }
+}
+
+std::string ego_type_string (const item_def &item)
+{
+    switch (item.base_type)
+    {
+    case OBJ_ARMOUR: return armour_ego_name(item, false);
+    case OBJ_WEAPONS:
+        // this is specialcased out of weapon_brand_name ("vampiric hand axe", etc)
+        if (get_weapon_brand(item) == SPWPN_VAMPIRICISM)
+            return "vampiricism";
+        else
+            return replace_all_of(weapon_brand_name(item, false), " of", "");
+    case OBJ_MISSILES: return missile_brand_name(item);
+    default: return "";
+    }
+}
+
 // gcc (and maybe the C standard) says that if you output
 // 0, even with showpos set, you get 0, not +0. This is a workaround.
 static void output_with_sign(std::ostream& os, int val)
@@ -1035,7 +1163,7 @@ std::string item_def::name_aux(description_level_type desc,
             // this behaviour, *please* make it so that there is an option
             // that maintains this behaviour. -- bwr
             // Nor for artefacts. Again, the state should be obvious. --jpeg
-            if (item_cursed(*this))
+            if (cursed())
                 buff << "cursed ";
             else if (Options.show_uncursed && !know_pluses
                      && (!know_type || !is_artefact(*this)))
@@ -1106,10 +1234,12 @@ std::string item_def::name_aux(description_level_type desc,
         if (know_brand)
             buff << weapon_brand_name(*this, terse);
 
-        if (know_curse && item_cursed(*this) && terse)
+        if (know_curse && cursed() && terse)
             buff << " (curse)";
         break;
 
+    // XXX: If changing the names of missiles, please update missile_brand_name.
+    // better yet, please destroy this travesty of code and do it a better way!
     case OBJ_MISSILES:
         brand = get_ammo_brand(*this);
 
@@ -1123,7 +1253,7 @@ std::string item_def::name_aux(description_level_type desc,
             case SPMSL_CURARE:
                 buff << ((terse) ? "curare " : "curare-tipped ");
                 break;
-            case SPMSL_EXPLODING:
+           case SPMSL_EXPLODING:
                 buff << ((terse) ? "explode " : "exploding ");
                 break;
             case SPMSL_STEEL:
@@ -1137,6 +1267,13 @@ std::string item_def::name_aux(description_level_type desc,
                 break;
             }
 
+        }
+
+        if (know_cosmetic
+            && get_equip_desc(*this) == ISFLAG_GLOWING
+            && !testbits(ignore_flags, ISFLAG_GLOWING))
+        {
+            buff << "glowing ";
         }
 
         if (know_pluses)
@@ -1167,6 +1304,24 @@ std::string item_def::name_aux(description_level_type desc,
             case SPMSL_STEEL:
             case SPMSL_SILVER:
                 break;
+            case SPMSL_PARALYSIS:
+                buff << ((terse) ? " (paralysis)" : " of paralysis");
+                break;
+            case SPMSL_SLOW:
+                buff << ((terse) ? " (slow)" : " of slowing");
+                break;
+            case SPMSL_SLEEP:
+                buff << ((terse) ? " (sleep)" : " of sleeping");
+                break;
+            case SPMSL_CONFUSION:
+                buff << ((terse) ? " (conf)" : " of confusion");
+                break;
+            case SPMSL_SICKNESS:
+                buff << ((terse) ? " (sick)" : " of sickening");
+                break;
+            case SPMSL_RAGE:
+                buff << ((terse) ? " (frenzy)" : " of frenzy");
+                break;
             case SPMSL_RETURNING:
                 buff << ((terse) ? " (return)" : " of returning");
                 break;
@@ -1182,9 +1337,6 @@ std::string item_def::name_aux(description_level_type desc,
             case SPMSL_DISPERSAL:
                 buff << ((terse) ? " (disperse)" : " of dispersal");
                 break;
-            case SPMSL_ELECTRIC:
-                buff << ((terse) ? " (shock)" : " of electricity");
-                break;
 
             default:
                 buff << " (buggy)";
@@ -1195,7 +1347,7 @@ std::string item_def::name_aux(description_level_type desc,
     case OBJ_ARMOUR:
         if (know_curse && !terse)
         {
-            if (item_cursed(*this))
+            if (cursed())
                 buff << "cursed ";
             else if (Options.show_uncursed && !know_pluses)
                 buff << "uncursed ";
@@ -1304,11 +1456,11 @@ std::string item_def::name_aux(description_level_type desc,
                 if (sub_type == ARM_NAGA_BARDING && sparm == SPARM_RUNNING)
                     buff << (terse ? "speed" : "speedy slithering");
                 else
-                    buff << armour_ego_name(sparm, terse);
+                    buff << armour_ego_name(*this, terse);
             }
         }
 
-        if (know_curse && item_cursed(*this) && terse)
+        if (know_curse && cursed() && terse)
             buff << " (curse)";
         break;
 
@@ -1460,7 +1612,7 @@ std::string item_def::name_aux(description_level_type desc,
 
         if (know_curse)
         {
-            if (item_cursed(*this))
+            if (cursed())
                 buff << "cursed ";
             else if (Options.show_uncursed && !terse
                      && (!is_randart || !know_type)
@@ -1618,6 +1770,17 @@ std::string item_def::name_aux(description_level_type desc,
         }
         else
         {
+            if (item_is_rod(*this) && know_type && know_pluses
+                && !basename && !qualname && !dbname)
+            {
+                short rmod = 0;
+                if (props.exists("rod_enchantment"))
+                    rmod = props["rod_enchantment"];
+
+                output_with_sign(buff, rmod);
+                buff << " ";
+            }
+
             buff << (item_is_rod(*this) ? "rod" : "staff")
                  << " of " << staff_type_name(item_typ);
         }
@@ -1783,6 +1946,7 @@ bool item_type_known( const item_def& item )
         int ammo_brand = get_ammo_brand(item);
         if (ammo_brand == SPMSL_POISONED
             || ammo_brand == SPMSL_CURARE
+            || (ammo_brand >= SPMSL_PARALYSIS && ammo_brand <= SPMSL_RAGE)
             || ammo_brand == SPMSL_STEEL
             || ammo_brand == SPMSL_SILVER)
         {
@@ -1976,6 +2140,7 @@ bool check_item_knowledge(bool quiet)
         InvMenu menu;
         menu.set_title("You recognise:");
         menu.set_flags(MF_NOSELECT);
+        menu.set_type(MT_KNOW);
         menu.load_items(items, discoveries_item_mangle);
         menu.show();
         redraw_screen();
@@ -2565,13 +2730,16 @@ bool is_useless_item(const item_def &item, bool temp)
         if (!item_type_known(item))
             return (false);
 
-        switch (get_weapon_brand(item))
+        if (you.undead_or_demonic() && is_holy_item(item))
         {
-        case SPWPN_HOLY_WRATH:
-            return (you.is_undead);
-        case SPWPN_PAIN:
-            return (temp && !you.skills[SK_NECROMANCY] && !is_artefact(item));
+            if (!temp && you.attribute[ATTR_TRANSFORMATION] == TRAN_LICH
+                && you.species != SP_DEMONSPAWN)
+            {
+                return (false);
+            }
+            return (true);
         }
+
         return (false);
 
     case OBJ_MISSILES:
@@ -2606,9 +2774,6 @@ bool is_useless_item(const item_def &item, bool temp)
         case SCR_RANDOM_USELESSNESS:
         case SCR_NOISE:
             return (true);
-        case SCR_TORMENT:
-            return (player_mutation_level(MUT_TORMENT_RESISTANCE)
-                    || !temp && you.species == SP_VAMPIRE);
         default:
             return (false);
         }
@@ -2682,14 +2847,20 @@ bool is_useless_item(const item_def &item, bool temp)
         {
         case AMU_RAGE:
             return (you.is_undead
-                        && (you.species != SP_VAMPIRE || temp
-                                     && you.hunger_state <= HS_SATIATED)
+                        && (you.species != SP_VAMPIRE
+                            || temp && you.hunger_state <= HS_SATIATED)
                     || you.religion == GOD_TROG);
 
         case AMU_THE_GOURMAND:
             return (player_likes_chunks(true)
-                       || (player_mutation_level(MUT_HERBIVOROUS) == 3)
-                       || you.species == SP_MUMMY);
+                      && player_mutation_level(MUT_SAPROVOROUS) == 3
+                      && you.species != SP_GHOUL // makes clean chunks
+                                                 // contaminated
+                    || player_mutation_level(MUT_HERBIVOROUS) == 3
+                    || you.species == SP_MUMMY);
+
+        case AMU_FAITH:
+            return (you.species == SP_DEMIGOD);
 
         case RING_LIFE_PROTECTION:
             return (player_prot_life(false, temp, false) == 3);

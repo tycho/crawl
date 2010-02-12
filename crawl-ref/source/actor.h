@@ -20,6 +20,11 @@ public:
     virtual int       mindex() const = 0;
     virtual actor_type atype() const = 0;
 
+    virtual monsters* as_monster() = 0;
+    virtual player* as_player() = 0;
+    virtual const monsters* as_monster() const = 0;
+    virtual const player* as_player() const = 0;
+
     virtual kill_category kill_alignment() const = 0;
     virtual god_type  deity() const = 0;
 
@@ -28,7 +33,19 @@ public:
     virtual bool is_summoned(int* duration = NULL,
                              int* summon_type = NULL) const = 0;
 
+    // [ds] Low-level moveto() - moves the actor without updating relevant
+    // grids, such as mgrd.
     virtual void moveto(const coord_def &c) = 0;
+
+    // High-level actor movement. If in doubt, use this. Returns false if the
+    // actor cannot be moved to the target, possibly because it is already
+    // occupied.
+    virtual bool move_to_pos(const coord_def &c) = 0;
+
+    virtual void apply_location_effects(const coord_def &oldpos,
+                                        killer_type killer = KILL_NONE,
+                                        int killernum = -1) = 0;
+
     virtual void set_position(const coord_def &c);
     virtual const coord_def& pos() const { return position; }
 
@@ -55,18 +72,23 @@ public:
 
     virtual size_type body_size(size_part_type psize = PSIZE_TORSO,
                                 bool base = false) const = 0;
-    virtual int       body_weight() const;
+    virtual int       body_weight(bool base = false) const;
     virtual int       total_weight() const = 0;
 
     virtual int       damage_brand(int which_attack = -1) = 0;
     virtual int       damage_type(int which_attack = -1) = 0;
     virtual item_def *weapon(int which_attack = -1) = 0;
-    virtual item_def *shield() = 0;
-    virtual item_def *slot_item(equipment_type eq) = 0;
-    // Just a wrapper; not to be overridden
-    const item_def *slot_item(equipment_type eq) const
+    // Yay for broken overloading.
+    const item_def *primary_weapon() const
     {
-        return const_cast<actor*>(this)->slot_item(eq);
+        return const_cast<actor*>(this)->weapon(0);
+    }
+    virtual item_def *shield() = 0;
+    virtual item_def *slot_item(equipment_type eq, bool include_melded) = 0;
+    // Just a wrapper; not to be overridden
+    const item_def *slot_item(equipment_type eq, bool include_melded) const
+    {
+        return const_cast<actor*>(this)->slot_item(eq, include_melded);
     }
     virtual bool has_equipped(equipment_type eq, int sub_type) const;
 
@@ -139,7 +161,7 @@ public:
 
     virtual bool is_icy() const = 0;
     virtual bool is_fiery() const = 0;
-    virtual void go_berserk(bool intentional) = 0;
+    virtual void go_berserk(bool intentional, bool potion = false) = 0;
     virtual bool can_mutate() const = 0;
     virtual bool can_safely_mutate() const = 0;
     virtual bool can_bleed() const = 0;
@@ -162,13 +184,16 @@ public:
     virtual void petrify(actor *attacker, int strength) = 0;
     virtual void slow_down(actor *attacker, int strength) = 0;
     virtual void confuse(actor *attacker, int strength) = 0;
+    virtual void put_to_sleep(actor *attacker, int strength) = 0;
     virtual void expose_to_element(beam_type element, int strength = 0) = 0;
     virtual void drain_stat(int stat, int amount, actor* attacker) { }
     virtual bool can_hibernate(bool holi_only = false) const;
     virtual void hibernate(int power = 0) = 0;
     virtual void check_awaken(int disturbance) = 0;
 
-    virtual bool wearing_light_armour(bool = false) const { return (true); }
+    virtual bool check_train_armour(int amount = 1);
+    virtual bool check_train_dodging(int amount = 1);
+
     virtual int  skill(skill_type sk, bool skill_bump = false) const
     {
         return (0);
@@ -205,6 +230,7 @@ public:
     virtual int res_poison() const = 0;
     virtual int res_rotting() const = 0;
     virtual int res_asphyx() const = 0;
+    virtual int res_water_drowning() const = 0;
     virtual int res_sticky_flame() const = 0;
     virtual int res_holy_energy(const actor *attacker) const = 0;
     virtual int res_negative_energy() const = 0;
@@ -257,6 +283,7 @@ public:
 
 protected:
     los_def los;
+    bool changed_los_center; // hack to reduce monster los recalculations
     los_def los_no_trans; // only being updated for player
 };
 

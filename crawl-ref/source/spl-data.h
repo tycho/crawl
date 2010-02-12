@@ -69,7 +69,7 @@
      1000,
      LOS_RADIUS, LOS_RADIUS,
      0,
-     "Pull items from where?",
+     "Apport",
      false,
      false
 },
@@ -108,7 +108,7 @@
      100,
      4, 4,
      0,
-     "Where would you like to place the cloud?",
+     NULL,
      false,
      false
 },
@@ -291,7 +291,8 @@
      7,
      0,
      -1, -1,
-     0,
+     -4,   // Just a bit noisier than Blink, to keep this spell relevant
+           // for stabbers. [rob]
      NULL,
      false,
      true
@@ -305,7 +306,7 @@
      200,
      6, 6,
      0,
-     "Where do you want to put it?",
+     NULL,
      true,
      false
 },
@@ -422,7 +423,7 @@
      200,
      LOS_RADIUS, LOS_RADIUS,
      4, // SPTYP_NONE spells have no default noise level
-     "Smite whom?",
+     "Smite",
      false,
      false
 },
@@ -526,7 +527,7 @@
      200,
      6, 6,
      0,
-     "Where do you want to put it?",
+     NULL,
      true,
      false
 },
@@ -539,7 +540,7 @@
      200,
      6, 6,
      0,
-     "Where?",
+     NULL,
      true,
      false
 },
@@ -552,7 +553,7 @@
      200,
      LOS_RADIUS, LOS_RADIUS,
      0,
-     "Where?",
+     NULL,
      true,
      false
 },
@@ -653,7 +654,7 @@
 {
     SPELL_SUMMON_HORRIBLE_THINGS, "Summon Horrible Things",
      SPTYP_SUMMONING,
-     SPFLAG_UNHOLY | SPFLAG_BATTLE,
+     SPFLAG_UNHOLY | SPFLAG_BATTLE | SPFLAG_CHAOTIC,
      8,
      200,
      -1, -1,
@@ -679,7 +680,7 @@
 {
    SPELL_ANIMATE_DEAD, "Animate Dead",
      SPTYP_NECROMANCY,
-     SPFLAG_AREA | SPFLAG_NEUTRAL,
+     SPFLAG_AREA | SPFLAG_NEUTRAL | SPFLAG_CORPSE_VIOLATING,
      4,
      0,
      -1, -1,
@@ -730,7 +731,7 @@
 {
     SPELL_ANIMATE_SKELETON, "Animate Skeleton",
      SPTYP_NECROMANCY,
-     SPFLAG_NONE,
+     SPFLAG_CORPSE_VIOLATING,
      1,
      0,
      -1, -1,
@@ -925,9 +926,9 @@
 {
     SPELL_FULSOME_DISTILLATION, "Fulsome Distillation",
      SPTYP_TRANSMUTATION | SPTYP_NECROMANCY,
-     SPFLAG_NONE,
+     SPFLAG_CORPSE_VIOLATING,
      1,
-     50,
+     0,
      -1, -1,
      0,
      NULL,
@@ -951,7 +952,7 @@
 {
     SPELL_TWISTED_RESURRECTION, "Twisted Resurrection",
      SPTYP_NECROMANCY,
-     SPFLAG_NONE,
+     SPFLAG_CHAOTIC | SPFLAG_CORPSE_VIOLATING,
      5,
      200,
      -1, -1,
@@ -977,7 +978,7 @@
 {
     SPELL_BONE_SHARDS, "Bone Shards",
      SPTYP_NECROMANCY,
-     SPFLAG_DIR_OR_TARGET,
+     SPFLAG_DIR_OR_TARGET | SPFLAG_CORPSE_VIOLATING,
      3,
      200,
      6, 6,
@@ -990,7 +991,7 @@
 {
     SPELL_BANISHMENT, "Banishment",
      SPTYP_TRANSLOCATION,
-     SPFLAG_DIR_OR_TARGET | SPFLAG_UNHOLY,
+     SPFLAG_DIR_OR_TARGET | SPFLAG_UNHOLY | SPFLAG_CHAOTIC,
      4,
      200,
      LOS_RADIUS, LOS_RADIUS,
@@ -1003,7 +1004,8 @@
 {
     SPELL_CIGOTUVIS_DEGENERATION, "Cigotuvi's Degeneration",
      SPTYP_TRANSMUTATION | SPTYP_NECROMANCY,
-     SPFLAG_DIR_OR_TARGET | SPFLAG_NOT_SELF,
+     SPFLAG_DIR_OR_TARGET | SPFLAG_NOT_SELF | SPFLAG_CHAOTIC
+     | SPFLAG_CORPSE_VIOLATING,
      5,
      200,
      LOS_RADIUS, LOS_RADIUS,
@@ -1029,7 +1031,7 @@
 {
     SPELL_SUBLIMATION_OF_BLOOD, "Sublimation of Blood",
      SPTYP_NECROMANCY,
-     SPFLAG_NONE,
+     SPFLAG_CORPSE_VIOLATING,
      2,
      200,
      -1, -1,
@@ -1287,23 +1289,10 @@
 },
 
 {
-    SPELL_POISON_AMMUNITION, "Poison Ammunition",
-     SPTYP_ENCHANTMENT | SPTYP_POISON,
-     SPFLAG_HELPFUL | SPFLAG_BATTLE,
-     4,
-     0,
-     -1, -1,
-     0,
-     NULL,
-     false,
-     true
-},
-
-{
     SPELL_POISON_WEAPON, "Poison Weapon",
      SPTYP_ENCHANTMENT | SPTYP_POISON,
      SPFLAG_HELPFUL | SPFLAG_BATTLE,
-     2,
+     3,
      0,
      -1, -1,
      0,
@@ -1484,7 +1473,7 @@
 {
     SPELL_NECROMUTATION, "Necromutation",
      SPTYP_TRANSMUTATION | SPTYP_NECROMANCY,
-     SPFLAG_HELPFUL,
+     SPFLAG_HELPFUL | SPFLAG_CORPSE_VIOLATING,
      8,
      200,
      -1, -1,
@@ -1952,7 +1941,7 @@
 {
     SPELL_SIMULACRUM, "Simulacrum",
      SPTYP_ICE | SPTYP_NECROMANCY,
-     SPFLAG_NONE,
+     SPFLAG_CORPSE_VIOLATING,
      6,
      200,
      -1, -1,
@@ -2499,94 +2488,107 @@
 },
 
 {
-    SPELL_FLAME_AMMUNITION, "Flame Ammunition",
-      SPTYP_ENCHANTMENT | SPTYP_FIRE,
-      SPFLAG_HELPFUL | SPFLAG_BATTLE,
-      3,
-      0,
-      -1,-1,
-      0,
-      NULL,
-      false,
-      true
+    SPELL_FAKE_MARA_SUMMON, "Mara Summon",
+     SPTYP_SUMMONING,
+     SPFLAG_MONSTER,
+     5,
+     0,
+     -1, -1,
+     0,
+     NULL,
+     false,
+     false
 },
 
 {
-    SPELL_FROST_AMMUNITION, "Frost Ammunition",
-      SPTYP_ENCHANTMENT | SPTYP_ICE,
-      SPFLAG_HELPFUL | SPFLAG_BATTLE,
-      3,
-      0,
-      -1,-1,
-      0,
-      NULL,
-      false,
-      true
+    SPELL_SUMMON_RAKSHASA, "Summon Rakshasa",
+     SPTYP_SUMMONING,
+     SPFLAG_MONSTER,
+     5,
+     0,
+     -1, -1,
+     0,
+     NULL,
+     false,
+     false
 },
 
 {
-    SPELL_SHOCKING_AMMUNITION, "Shocking Ammunition",
-        SPTYP_ENCHANTMENT | SPTYP_AIR,
-        SPFLAG_HELPFUL | SPFLAG_BATTLE,
-        5,
-        0,
-        -1,-1,
-        0,
-        NULL,
-        false,
-        true
+    SPELL_MISLEAD, "Mislead",
+     SPTYP_ENCHANTMENT,
+     SPFLAG_TARGET | SPFLAG_NOT_SELF,
+     5,
+     200,
+     LOS_RADIUS, LOS_RADIUS,
+     0,
+     NULL,
+     false,
+     false
 },
 
 {
-    SPELL_EXPLODING_AMMUNITION, "Exploding Ammunition",
-        SPTYP_ENCHANTMENT | SPTYP_FIRE | SPTYP_AIR,
-        SPFLAG_HELPFUL | SPFLAG_BATTLE,
-        5,
-        0,
-        -1,-1,
-        0,
-        NULL,
-        false,
-        true
+    SPELL_SUMMON_ILLUSION, "Summon Illusion",
+     SPTYP_SUMMONING,
+     SPFLAG_MONSTER,
+     5,
+     0,
+     -1, -1,
+     0,
+     NULL,
+     false,
+     false
 },
 
 {
-    SPELL_WARP_AMMUNITION, "Warp Ammunition",
-        SPTYP_ENCHANTMENT | SPTYP_TRANSLOCATION,
-        SPFLAG_HELPFUL | SPFLAG_BATTLE,
-        5,
-        0,
-        -1,-1,
-        0,
-        NULL,
-        false,
-        true
+    SPELL_PRIMAL_WAVE, "Primal Wave",
+     SPTYP_CONJURATION | SPTYP_ICE,
+     SPFLAG_DIR_OR_TARGET,
+     6,
+     200,
+     7, 7,
+     0,
+     NULL,
+     true,
+     false
 },
 
 {
-    SPELL_REAPING_AMMUNITION, "Reaping Ammunition",
-        SPTYP_ENCHANTMENT | SPTYP_NECROMANCY,
-        SPFLAG_HELPFUL | SPFLAG_BATTLE,
-        7,
-        0,
-        -1,-1,
-        0,
-        NULL,
-        false,
-        true
+    SPELL_CALL_TIDE, "Call Tide",
+     SPTYP_TRANSLOCATION,
+     SPFLAG_MONSTER,
+     7,
+     0,
+     -1, -1,
+     0,
+     NULL,
+     false,
+     false
 },
 
 {
-    SPELL_RETURNING_AMMUNITION, "Returning Ammunition",
-        SPTYP_ENCHANTMENT | SPTYP_TRANSLOCATION,
-        SPFLAG_HELPFUL | SPFLAG_BATTLE,
-        3,
-        0,
-        -1,-1,
-        0,
-        NULL,
-        false,
-        true
+    SPELL_IOOD, "Orb of Destruction",
+     SPTYP_CONJURATION,
+     SPFLAG_DIR_OR_TARGET | SPFLAG_NOT_SELF,
+     7,
+     200,
+     9, 9,
+     0,
+     NULL,
+     true,
+     false
+},
+
+{
+    SPELL_INK_CLOUD, "Ink Cloud",
+     SPTYP_CONJURATION | SPTYP_ICE, // it's a water spell
+     SPFLAG_MONSTER,
+     7,
+     0,
+     -1, -1,
+     0,
+     NULL,
+     false,
+     true
 },
 
 {

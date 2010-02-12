@@ -11,8 +11,10 @@
 
 #include "mon-util.h"
 
+#include "artefact.h"
 #include "beam.h"
 #include "colour.h"
+#include "coordit.h"
 #include "database.h"
 #include "directn.h"
 #include "fprop.h"
@@ -21,7 +23,11 @@
 #include "goditem.h"
 #include "itemname.h"
 #include "kills.h"
+#include "libutil.h"
+#include "mislead.h"
 #include "mon-behv.h"
+#include "mon-clone.h"
+#include "mon-iter.h"
 #include "mon-place.h"
 #include "coord.h"
 #include "mon-stuff.h"
@@ -33,6 +39,7 @@
 #include "stuff.h"
 #include "env.h"
 #include "terrain.h"
+#include "viewchar.h"
 
 //jmf: moved from inside function
 static FixedVector < int, NUM_MONSTERS > mon_entry;
@@ -75,7 +82,6 @@ dungeon_feature_type habitat2grid(habitat_type ht)
 {
     switch (ht)
     {
-    case HT_AMPHIBIOUS_WATER:
     case HT_WATER:
         return (DNGN_DEEP_WATER);
     case HT_LAVA:
@@ -83,7 +89,7 @@ dungeon_feature_type habitat2grid(habitat_type ht)
     case HT_ROCK:
         return (DNGN_ROCK_WALL);
     case HT_LAND:
-    case HT_AMPHIBIOUS_LAND:
+    case HT_AMPHIBIOUS:
     default:
         return (DNGN_FLOOR);
     }
@@ -148,7 +154,8 @@ void init_mon_name_cache()
             if (mon == MONS_RAKSHASA_FAKE
                 || mon == MONS_ARMOUR_MIMIC
                 || mon == MONS_SCROLL_MIMIC
-                || mon == MONS_POTION_MIMIC)
+                || mon == MONS_POTION_MIMIC
+                || mon == MONS_MARA_FAKE)
             {
                 // Keep previous entry.
                 continue;
@@ -246,6 +253,12 @@ void init_monster_symbols()
         if (md.colour)
             monster_symbols[md.type].colour = md.colour;
     }
+
+    monster_symbols[MONS_GOLD_MIMIC].glyph   = dchar_glyph(DCHAR_ITEM_GOLD);
+    monster_symbols[MONS_WEAPON_MIMIC].glyph = dchar_glyph(DCHAR_ITEM_WEAPON);
+    monster_symbols[MONS_ARMOUR_MIMIC].glyph = dchar_glyph(DCHAR_ITEM_ARMOUR);
+    monster_symbols[MONS_SCROLL_MIMIC].glyph = dchar_glyph(DCHAR_ITEM_SCROLL);
+    monster_symbols[MONS_POTION_MIMIC].glyph = dchar_glyph(DCHAR_ITEM_POTION);
 }
 
 const mon_resist_def &get_mons_class_resists(int mc)
@@ -274,23 +287,11 @@ mon_resist_def get_mons_resists(const monsters *mon)
     return (resists);
 }
 
-short mon_resist_def::get_resist_level(mon_resist_flags res_type) const
-{
-    switch (res_type)
-    {
-    case MR_RES_ELEC:    return elec;
-    case MR_RES_POISON:  return poison;
-    case MR_RES_FIRE:    return fire;
-    case MR_RES_STEAM:   return steam;
-    case MR_RES_COLD:    return cold;
-    case MR_RES_ACID:    return acid;
-    case MR_RES_ROTTING: return rotting;
-    default:             return (0);
-    }
-}
-
 monsters *monster_at(const coord_def &pos)
 {
+    if (!in_bounds(pos))
+        return NULL;
+
     const int mindex = mgrd(pos);
     return (mindex != NON_MONSTER ? &menv[mindex] : NULL);
 }
@@ -474,6 +475,15 @@ bool mons_is_stationary(const monsters *mon)
     return (mons_class_is_stationary(mon->type));
 }
 
+// Monsters that are worthless obstacles: not to
+// be attacked by default, but may be cut down to
+// get to target even if coaligned.
+bool mons_is_firewood(const monsters *mon)
+{
+    return (mons_is_stationary(mon)
+            && mons_class_flag(mon->type, M_NO_EXP_GAIN));
+}
+
 bool mons_is_fast(const monsters *mon)
 {
     int pspeed = 1000/player_movement_speed()/player_speed();
@@ -482,6 +492,11 @@ bool mons_is_fast(const monsters *mon)
         player_movement_speed(), pspeed, mon->speed);
 #endif
     return (mon->speed > pspeed);
+}
+
+bool mons_is_projectile(int mc)
+{
+    return (mc == MONS_ORB_OF_DESTRUCTION);
 }
 
 bool mons_is_insubstantial(int mc)
@@ -697,7 +712,8 @@ monster_type mons_species(int mc)
 monster_type mons_genus(int mc)
 {
     if (mc == RANDOM_DRACONIAN || mc == RANDOM_BASE_DRACONIAN
-        || mc == RANDOM_NONBASE_DRACONIAN)
+        || mc == RANDOM_NONBASE_DRACONIAN
+        || (mc == MONS_PLAYER_ILLUSION && player_genus(GENPC_DRACONIAN)))
     {
         return (MONS_DRACONIAN);
     }
@@ -732,6 +748,31 @@ monster_type draco_subspecies(const monsters *mon)
             return (MONS_PURPLE_DRACONIAN);
         default:
             break;
+        }
+    }
+
+    if (mon->type == MONS_PLAYER_ILLUSION)
+    {
+        switch (mon->ghost->species)
+        {
+        case SP_RED_DRACONIAN:
+            return MONS_RED_DRACONIAN;
+        case SP_WHITE_DRACONIAN:
+            return MONS_WHITE_DRACONIAN;
+        case SP_GREEN_DRACONIAN:
+            return MONS_GREEN_DRACONIAN;
+        case SP_YELLOW_DRACONIAN:
+            return MONS_YELLOW_DRACONIAN;
+        case SP_BLACK_DRACONIAN:
+            return MONS_BLACK_DRACONIAN;
+        case SP_PURPLE_DRACONIAN:
+            return MONS_PURPLE_DRACONIAN;
+        case SP_MOTTLED_DRACONIAN:
+            return MONS_MOTTLED_DRACONIAN;
+        case SP_PALE_DRACONIAN:
+            return MONS_PALE_DRACONIAN;
+        default:
+            return MONS_DRACONIAN;
         }
     }
 
@@ -823,8 +864,14 @@ bool mons_is_ghost_demon(int mc)
     return (mc == MONS_UGLY_THING
             || mc == MONS_VERY_UGLY_THING
             || mc == MONS_PLAYER_GHOST
+            || mc == MONS_PLAYER_ILLUSION
             || mc == MONS_DANCING_WEAPON
             || mc == MONS_PANDEMONIUM_DEMON);
+}
+
+bool mons_is_pghost(int mc)
+{
+    return (mc == MONS_PLAYER_GHOST || mc == MONS_PLAYER_ILLUSION);
 }
 
 bool mons_is_unique(int mc)
@@ -891,7 +938,7 @@ bool mons_class_can_regenerate(int mc)
 
 bool mons_can_regenerate(const monsters *mon)
 {
-    if (mon->type == MONS_PLAYER_GHOST && mon->ghost->species == SP_DEEP_DWARF)
+    if (mons_is_pghost(mon->type) && mon->ghost->species == SP_DEEP_DWARF)
         return (false);
 
     return (mons_class_can_regenerate(mon->type));
@@ -921,6 +968,11 @@ bool mons_is_zombified(const monsters *mon)
     return (mons_class_is_zombified(mon->type));
 }
 
+monster_type mons_base_type(const monsters *mon)
+{
+    return mons_is_zombified(mon) ? mon->base_monster : mon->type;
+}
+
 bool mons_class_can_be_zombified(int mc)
 {
     int ms = mons_species(mc);
@@ -936,7 +988,8 @@ bool mons_can_be_zombified(const monsters *mon)
 
 bool mons_class_can_use_stairs(int mc)
 {
-    return (!mons_class_is_zombified(mc) || mc == MONS_SPECTRAL_THING);
+    return ((!mons_class_is_zombified(mc) || mc == MONS_SPECTRAL_THING)
+            && mc != MONS_KRAKEN_TENTACLE);
 }
 
 bool mons_can_use_stairs(const monsters *mon)
@@ -1035,7 +1088,7 @@ mon_attack_def downscale_zombie_attack(const monsters *mons,
     }
     else if (mons->type == MONS_SPECTRAL_THING && coinflip())
         attk.flavour = AF_DRAIN_XP;
-    else
+    else if (attk.flavour != AF_REACH)
         attk.flavour = AF_PLAIN;
 
     attk.damage = downscale_zombie_damage(attk.damage);
@@ -1046,6 +1099,14 @@ mon_attack_def downscale_zombie_attack(const monsters *mons,
 mon_attack_def mons_attack_spec(const monsters *mon, int attk_number)
 {
     int mc = mon->type;
+
+    if (mc == MONS_KRAKEN_TENTACLE
+        && !invalid_monster_index(mon->number))
+    {
+        // Use the zombie, etc info from the kraken
+        mon = &menv[mon->number];
+    }
+
     const bool zombified = mons_is_zombified(mon);
 
     if (attk_number < 0 || attk_number > 3 || mon->has_hydra_multi_attack())
@@ -1063,7 +1124,7 @@ mon_attack_def mons_attack_spec(const monsters *mon, int attk_number)
         return (mon_attack_def::attk(0, AT_NONE));
     }
 
-    if (zombified)
+    if (zombified && mc != MONS_KRAKEN_TENTACLE)
         mc = mons_zombie_base(mon);
 
     ASSERT(smc);
@@ -1156,16 +1217,22 @@ flight_type mons_flies(const monsters *mon, bool randarts)
 
 bool mons_class_amphibious(int mc)
 {
-    habitat_type ht = mons_class_habitat(mc);
-    return (ht == HT_AMPHIBIOUS_LAND || ht == HT_AMPHIBIOUS_WATER);
+    return (mons_class_habitat(mc) == HT_AMPHIBIOUS);
 }
 
 bool mons_amphibious(const monsters *mon)
 {
-    const int montype = mons_is_zombified(mon) ? mons_zombie_base(mon)
-                                               : mon->type;
+    return (mons_class_amphibious(mons_base_type(mon)));
+}
 
-    return (mons_class_amphibious(montype));
+bool mons_class_flattens_trees(int mc)
+{
+    return (mc == MONS_LERNAEAN_HYDRA);
+}
+
+bool mons_flattens_trees(const monsters *mon)
+{
+    return mons_class_flattens_trees(mons_base_type(mon));
 }
 
 bool mons_class_wall_shielded(int mc)
@@ -1386,8 +1453,9 @@ monster_type random_draconian_monster_species()
 //     (is_unclean_spell() || is_chaotic_spell())
 //
 // FIXME: This is not true for one set of spellbooks; MST_WIZARD_IV
-// contains the unholy Banishment spell, but the other MST_WIZARD-type
-// spellbooks contain no unholy or evil spells.
+// contains the unholy and chaotic Banishment spell, but the other
+// MST_WIZARD-type spellbooks contain no unholy, evil, unclean or
+// chaotic spells.
 static bool _get_spellbook_list(mon_spellbook_type book[6],
                                 monster_type mon_type)
 {
@@ -1489,7 +1557,18 @@ void define_monster(int midx)
     define_monster(menv[midx]);
 }
 
-// Generate a shiny new and unscarred monster.
+// Never hand out DARKGREY as a monster colour, even if it is randomly
+// chosen.
+unsigned char random_monster_colour()
+{
+    unsigned char col = DARKGREY;
+    while (col == DARKGREY)
+        col = random_colour();
+
+    return (col);
+}
+
+// Generate a shiny, new and unscarred monster.
 void define_monster(monsters &mons)
 {
     int mcls                  = mons.type;
@@ -1517,7 +1596,7 @@ void define_monster(monsters &mons)
         hd = 4 + random2(4);
         ac = 3 + random2(7);
         ev = 7 + random2(6);
-        col = random_colour();
+        col = random_monster_colour();
         break;
 
     case MONS_ZOMBIE_SMALL:
@@ -1528,7 +1607,7 @@ void define_monster(monsters &mons)
         hd = 8 + random2(4);
         ac = 5 + random2avg(9, 2);
         ev = 3 + random2(5);
-        col = random_colour();
+        col = random_monster_colour();
         break;
 
     case MONS_ZOMBIE_LARGE:
@@ -1607,8 +1686,8 @@ void define_monster(monsters &mons)
         break;
     }
 
-    if (col == BLACK)
-        col = random_colour();
+    if (col == BLACK) // but never give out darkgrey to monsters
+        col = random_monster_colour();
 
     // Some calculations.
     hp     = hit_points(hd, m->hpdice[1], m->hpdice[2]);
@@ -1655,6 +1734,7 @@ void define_monster(monsters &mons)
         ghost.init_random_demon();
         mons.set_ghost(ghost);
         mons.pandemon_init();
+        mons.bind_spell_flags();
         break;
     }
 
@@ -1664,6 +1744,7 @@ void define_monster(monsters &mons)
         ghost.init_player_ghost();
         mons.set_ghost(ghost);
         mons.ghost_init();
+        mons.bind_spell_flags();
         break;
     }
 
@@ -1919,10 +2000,8 @@ habitat_type mons_habitat(const monsters *mon)
 habitat_type mons_class_primary_habitat(int mc)
 {
     habitat_type ht = mons_class_habitat(mc);
-    if (ht == HT_AMPHIBIOUS_LAND)
+    if (ht == HT_AMPHIBIOUS)
         ht = HT_LAND;
-    else if (ht == HT_AMPHIBIOUS_WATER)
-        ht = HT_WATER;
     return (ht);
 }
 
@@ -1935,9 +2014,9 @@ habitat_type mons_primary_habitat(const monsters *mon)
 habitat_type mons_class_secondary_habitat(int mc)
 {
     habitat_type ht = mons_class_habitat(mc);
-    if (ht == HT_AMPHIBIOUS_LAND)
+    if (ht == HT_AMPHIBIOUS)
         ht = HT_WATER;
-    else if (ht == HT_AMPHIBIOUS_WATER || ht == HT_ROCK)
+    else if (ht == HT_ROCK)
         ht = HT_LAND;
     return (ht);
 }
@@ -1960,27 +2039,31 @@ int mons_power(int mc)
     return (smc->hpdice[0]);
 }
 
-bool mons_aligned(int m1, int m2)
+bool mons_aligned(const actor *m1, const actor *m2)
 {
     mon_attitude_type fr1, fr2;
-    monsters *mon1, *mon2;
+    const monsters *mon1, *mon2;
 
-    if (m1 == MHITNOT || m2 == MHITNOT)
+    if (!m1 || !m2)
         return (true);
 
-    if (m1 == MHITYOU)
+    if (m1->atype() == ACT_PLAYER)
         fr1 = ATT_FRIENDLY;
     else
     {
-        mon1 = &menv[m1];
+        mon1 = static_cast<const monsters*>(m1);
+        if (mons_is_projectile(mon1->type))
+            return (true);
         fr1 = mons_attitude(mon1);
     }
 
-    if (m2 == MHITYOU)
+    if (m2->atype() == ACT_PLAYER)
         fr2 = ATT_FRIENDLY;
     else
     {
-        mon2 = &menv[m2];
+        mon2 = static_cast<const monsters*>(m2);
+        if (mons_is_projectile(mon2->type))
+            return (true);
         fr2 = mons_attitude(mon2);
     }
 
@@ -2010,7 +2093,8 @@ bool mons_wields_two_weapons(const monsters *mon)
 
 bool mons_self_destructs(const monsters *m)
 {
-    return (m->type == MONS_GIANT_SPORE || m->type == MONS_BALL_LIGHTNING);
+    return (m->type == MONS_GIANT_SPORE || m->type == MONS_BALL_LIGHTNING
+        || m->type == MONS_ORB_OF_DESTRUCTION);
 }
 
 int mons_base_damage_brand(const monsters *m)
@@ -2142,13 +2226,15 @@ void mons_stop_fleeing_from_sanctuary(monsters *monster)
         behaviour_event(monster, ME_EVAL, MHITYOU);
 }
 
-void mons_pacify(monsters *mon)
+void mons_pacify(monsters *mon, mon_attitude_type att)
 {
     // Make the monster permanently neutral.
-    mon->attitude = ATT_NEUTRAL;
+    mon->attitude = att;
     mon->flags |= MF_WAS_NEUTRAL;
 
-    if (!testbits(mon->flags, MF_GOT_HALF_XP) && !mon->is_summoned())
+    if (!testbits(mon->flags, MF_GOT_HALF_XP)
+        && !mon->is_summoned()
+        && !testbits(mon->flags, MF_NO_REWARD))
     {
         // Give the player half of the monster's XP.
         unsigned int exp_gain = 0, avail_gain = 0;
@@ -2221,7 +2307,7 @@ bool mons_should_fire(struct bolt &beam)
     if (_beneficial_beam_flavour(beam.flavour))
         return (_mons_should_fire_beneficial(beam));
 
-    // Friendly monsters shouldn't be targetting you: this will happen
+    // Friendly monsters shouldn't be targeting you: this will happen
     // often because the default behaviour for charmed monsters is to
     // have you as a target.  While foe_ratio will handle this, we
     // don't want a situation where a friendly dragon breathes through
@@ -2299,8 +2385,9 @@ bool ms_useful_fleeing_out_of_sight( const monsters *mon, spell_type monspell )
 
 bool ms_low_hitpoint_cast( const monsters *mon, spell_type monspell )
 {
-    bool targ_adj   = false;
-    bool targ_sanct = false;
+    bool targ_adj      = false;
+    bool targ_sanct    = false;
+    bool targ_friendly = false;
 
     if (mon->foe == MHITYOU || mon->foe == MHITNOT)
     {
@@ -2317,10 +2404,17 @@ bool ms_low_hitpoint_cast( const monsters *mon, spell_type monspell )
             targ_sanct = true;
     }
 
+    if (mon->foe == MHITYOU) {
+        targ_friendly = mon->wont_attack();
+    }
+    else {
+        targ_friendly = mons_aligned(mon, &menv[mon->foe]);
+    }
+
     switch (monspell)
     {
     case SPELL_TELEPORT_OTHER:
-        return !targ_sanct;
+        return !targ_sanct && !targ_friendly;
     case SPELL_TELEPORT_SELF:
         // Don't cast again if already about to teleport.
         return !mon->has_ench(ENCH_TP);
@@ -2329,15 +2423,18 @@ bool ms_low_hitpoint_cast( const monsters *mon, spell_type monspell )
         return true;
     case SPELL_BLINK_AWAY:
     case SPELL_BLINK_RANGE:
-        return true;
+        return !targ_friendly;
     case SPELL_BLINK_OTHER:
-        return !targ_sanct && targ_adj;
+        return !targ_sanct && targ_adj && !targ_friendly;
     case SPELL_BLINK:
         return targ_adj;
     case SPELL_TOMB_OF_DOROKLOHE:
         return true;
     case SPELL_NO_SPELL:
         return false;
+    case SPELL_INK_CLOUD:
+        if (mon->type == MONS_KRAKEN)
+            return true;
     default:
         return !targ_adj && spell_typematch(monspell, SPTYP_SUMMONING);
     }
@@ -2365,7 +2462,7 @@ bool ms_quick_get_away( const monsters *mon /*unused*/, spell_type monspell )
 bool ms_waste_of_time( const monsters *mon, spell_type monspell )
 {
     bool ret = false;
-    const actor *foe = mon->get_foe();
+    actor *foe = mon->get_foe();
 
     // Keep friendly summoners from spamming summons constantly.
     if (mon->friendly()
@@ -2389,6 +2486,13 @@ bool ms_waste_of_time( const monsters *mon, spell_type monspell )
     // handled here as well. - bwr
     switch (monspell)
     {
+    case SPELL_CALL_TIDE:
+        return (!player_in_branch(BRANCH_SHOALS)
+                || mon->has_ench(ENCH_TIDE)
+                || !foe
+                || (grd(mon->pos()) == DNGN_DEEP_WATER
+                    && grd(foe->pos()) == DNGN_DEEP_WATER));
+
     case SPELL_BRAIN_FEED:
         ret = (foe != &you);
         break;
@@ -2547,6 +2651,23 @@ bool ms_waste_of_time( const monsters *mon, spell_type monspell )
         break;
     }
 
+    case SPELL_MISLEAD:
+        if (you.duration[DUR_MISLED] > 10 && one_chance_in(3))
+            ret = true;
+
+        break;
+
+    case SPELL_SUMMON_ILLUSION:
+        if (!foe || !actor_is_illusion_cloneable(foe))
+            ret = true;
+        break;
+
+    case SPELL_FAKE_MARA_SUMMON:
+        if (count_mara_fakes() == 2)
+            ret = true;
+
+        break;
+
     case SPELL_NO_SPELL:
         ret = true;
         break;
@@ -2563,12 +2684,13 @@ static bool _ms_los_spell(spell_type monspell)
     // True, the tentacles _are_ summoned, but they are restricted to
     // water just like the kraken is, so it makes more sense not to
     // count them here.
-    if (SPELL_KRAKEN_TENTACLES)
+    if (monspell == SPELL_KRAKEN_TENTACLES)
         return (false);
 
     if (monspell == SPELL_SMITING
         || monspell == SPELL_AIRSTRIKE
         || monspell == SPELL_HAUNT
+        || monspell == SPELL_MISLEAD
         || spell_typematch(monspell, SPTYP_SUMMONING))
     {
         return (true);
@@ -2584,7 +2706,8 @@ static bool _ms_ranged_spell(spell_type monspell, bool attack_only = false,
     // Check for Smiting specially, so it's not filtered along
     // with the summon spells.
     if (attack_only
-        && (monspell == SPELL_SMITING || monspell == SPELL_AIRSTRIKE))
+        && (monspell == SPELL_SMITING || monspell == SPELL_AIRSTRIKE
+            || monspell == SPELL_MISLEAD))
     {
         return (true);
     }
@@ -2732,7 +2855,11 @@ const char *mons_pronoun(monster_type mon_type, pronoun_type variant,
     {
         gender = GENDER_FEMALE;
     }
-    else if (mons_is_unique(mon_type) && mon_type != MONS_PLAYER_GHOST)
+    // Mara's fakes aren't a unique, but should still be classified
+    // as male.
+    else if (mon_type == MONS_MARA_FAKE)
+        gender = GENDER_MALE;
+    else if (mons_is_unique(mon_type) && !mons_is_pghost(mon_type))
     {
         switch (mon_type)
         {
@@ -2812,7 +2939,8 @@ bool mons_has_smite_attack(const monsters *monster)
             || hspell_pass[i] == SPELL_SMITING
             || hspell_pass[i] == SPELL_HELLFIRE_BURST
             || hspell_pass[i] == SPELL_FIRE_STORM
-            || hspell_pass[i] == SPELL_AIRSTRIKE)
+            || hspell_pass[i] == SPELL_AIRSTRIKE
+            || hspell_pass[i] == SPELL_MISLEAD)
         {
             return (true);
         }
@@ -2936,6 +3064,13 @@ bool mons_can_pass(const monsters *mon, dungeon_feature_type grid)
     return (mons_class_can_pass(montype, grid));
 }
 
+void mons_remove_from_grid(const monsters *mon)
+{
+    const coord_def pos = mon->pos();
+    if (map_bounds(pos) && mgrd(pos) == mon->mindex())
+        mgrd(pos) = NON_MONSTER;
+}
+
 mon_inv_type equip_slot_to_mslot(equipment_type eq)
 {
     switch (eq)
@@ -3054,6 +3189,10 @@ std::string do_mon_str_replacements(const std::string &in_msg,
 
     if (s_type < 0 || s_type >= NUM_LOUDNESS || s_type == NUM_SHOUTS)
         s_type = mons_shouts(monster->type);
+
+    // FIXME: Handle player_genus in case it was not generalized to foe_genus.
+    msg = replace_all(msg, "@player_genus@", species_name(you.species, 1, true));
+    msg = replace_all(msg, "@player_genus_plural@", _pluralise_player_genus());
 
     std::string foe_species;
 
@@ -3223,6 +3362,8 @@ std::string do_mon_str_replacements(const std::string &in_msg,
                       monster->pronoun(PRONOUN_CAP_POSSESSIVE));
     msg = replace_all(msg, "@possessive@",
                       monster->pronoun(PRONOUN_NOCAP_POSSESSIVE));
+    msg = replace_all(msg, "@objective@",
+                      monster->pronoun(PRONOUN_OBJECTIVE));
 
     // Body parts.
     bool        can_plural = false;
@@ -3388,7 +3529,7 @@ static mon_body_shape _get_ghost_shape(const monsters *mon)
 
 mon_body_shape get_mon_shape(const monsters *mon)
 {
-    if (mon->type == MONS_PLAYER_GHOST)
+    if (mons_is_pghost(mon->type))
         return _get_ghost_shape(mon);
     else if (mons_is_zombified(mon))
         return get_mon_shape(mon->base_monster);
@@ -3451,7 +3592,7 @@ mon_body_shape get_mon_shape(const int type)
         return (MON_SHAPE_HUMANOID);
     case 'p': // ghosts
         if (type != MONS_INSUBSTANTIAL_WISP
-            && type != MONS_PLAYER_GHOST) // handled elsewhere
+            && !mons_is_pghost(type)) // handled elsewhere
         {
             return (MON_SHAPE_HUMANOID);
         }
@@ -3518,7 +3659,10 @@ mon_body_shape get_mon_shape(const int type)
     case 'M': // mummies
         return (MON_SHAPE_HUMANOID);
     case 'N': // nagas
-        return (MON_SHAPE_NAGA);
+        if (mons_genus(type) == MONS_GUARDIAN_SERPENT)
+            return (MON_SHAPE_SNAKE);
+        else
+            return (MON_SHAPE_NAGA);
     case 'O': // ogres
         return (MON_SHAPE_HUMANOID);
     case 'P': // plants
@@ -3623,101 +3767,57 @@ std::string get_mon_shape_str(const mon_body_shape shape)
     return (shape_names[shape]);
 }
 
-/////////////////////////////////////////////////////////////////////////
-// mon_resist_def
-
-mon_resist_def::mon_resist_def()
-    : elec(0), poison(0), fire(0), steam(0), cold(0), hellfire(0), acid(0),
-      asphyx(false), sticky_flame(false), rotting(false), pierce(0), slice(0),
-      bludgeon(0)
-{
-}
-
-short mon_resist_def::get_default_res_level(int resist, short level) const
-{
-    if (level != -100)
-        return level;
-    switch (resist)
-    {
-    case MR_RES_STEAM:
-    case MR_RES_ACID:
-        return 3;
-    case MR_RES_ELEC:
-        return 2;
-    default:
-        return 1;
-    }
-}
-
-mon_resist_def::mon_resist_def(int flags, short level)
-    : elec(0), poison(0), fire(0), steam(0), cold(0), hellfire(0), acid(0),
-      asphyx(false), sticky_flame(false), rotting(false), pierce(0), slice(0),
-      bludgeon(0)
-{
-    for (int i = 0; i < 32; ++i)
-    {
-        const short nl = get_default_res_level(1 << i, level);
-        switch (flags & (1 << i))
-        {
-        // resistances
-        case MR_RES_STEAM:    steam      =    3; break;
-        case MR_RES_ELEC:     elec       =   nl; break;
-        case MR_RES_POISON:   poison     =   nl; break;
-        case MR_RES_FIRE:     fire       =   nl; break;
-        case MR_RES_HELLFIRE: hellfire   =   nl; break;
-        case MR_RES_COLD:     cold       =   nl; break;
-        case MR_RES_ASPHYX:   asphyx     = true; break;
-        case MR_RES_ACID:     acid       =   nl; break;
-
-        // vulnerabilities
-        case MR_VUL_ELEC:     elec       = -nl;  break;
-        case MR_VUL_POISON:   poison     = -nl;  break;
-        case MR_VUL_FIRE:     fire       = -nl;  break;
-        case MR_VUL_COLD:     cold       = -nl;  break;
-
-        // resistance to certain damage types
-        case MR_RES_PIERCE:   pierce     = nl;   break;
-        case MR_RES_SLICE:    slice      = nl;   break;
-        case MR_RES_BLUDGEON: bludgeon   = nl;   break;
-
-        // vulnerability to certain damage types
-        case MR_VUL_PIERCE:   pierce     = -nl;  break;
-        case MR_VUL_SLICE:    slice      = -nl;  break;
-        case MR_VUL_BLUDGEON: bludgeon   = -nl;  break;
-
-        case MR_RES_STICKY_FLAME: sticky_flame = true; break;
-        case MR_RES_ROTTING:      rotting      = true; break;
-
-        default: break;
-        }
-    }
-}
-
-const mon_resist_def &mon_resist_def::operator |= (const mon_resist_def &o)
-{
-    elec        += o.elec;
-    poison      += o.poison;
-    fire        += o.fire;
-    cold        += o.cold;
-    hellfire    += o.hellfire;
-    asphyx       = asphyx       || o.asphyx;
-    acid        += o.acid;
-    pierce      += o.pierce;
-    slice       += o.slice;
-    bludgeon    += o.bludgeon;
-    sticky_flame = sticky_flame || o.sticky_flame;
-    rotting      = rotting      || o.rotting;
-    return (*this);
-}
-
-mon_resist_def mon_resist_def::operator | (const mon_resist_def &o) const
-{
-    mon_resist_def c(*this);
-    return (c |= o);
-}
-
 bool player_or_mon_in_sanct(const monsters* monster)
 {
     return (is_sanctuary(you.pos())
             || is_sanctuary(monster->pos()));
+}
+
+bool mons_landlubbers_in_reach(const monsters *monster)
+{
+    if (mons_has_ranged_spell(monster)
+        || mons_has_ranged_ability(monster)
+        || mons_has_ranged_attack(monster))
+    {
+        return (true);
+    }
+
+    const reach_type range = monster->reach_range();
+    actor *act;
+    for (radius_iterator ai(monster->pos(),
+                            range ? 2 : 1,
+                            (range == REACH_KNIGHT) ? C_ROUND : C_SQUARE,
+                            NULL,
+                            true);
+                         ai; ++ai)
+        if ((act = actor_at(*ai)) && !mons_aligned(monster, act))
+            return (true);
+
+    return (false);
+}
+
+int get_dist_to_nearest_monster()
+{
+    int minRange = LOS_RADIUS + 1;
+    for (radius_iterator ri(&you.get_los_no_trans(), true); ri; ++ri)
+    {
+        const monsters *mon = monster_at(*ri);
+        if (mon == NULL)
+            continue;
+
+        if (!mon->visible_to(&you) || mons_is_unknown_mimic(mon))
+            continue;
+
+        // Plants/fungi don't count.
+        if (mons_class_flag(mon->type, M_NO_EXP_GAIN))
+            continue;
+
+        if (mon->wont_attack())
+            continue;
+
+        int dist = grid_distance(you.pos(), *ri);
+        if (dist < minRange)
+            minRange = dist;
+    }
+    return (minRange);
 }

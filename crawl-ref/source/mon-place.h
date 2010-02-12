@@ -45,11 +45,13 @@ monster_type pick_local_zombifiable_monster_type(int power);
 
 class level_id;
 
-monster_type pick_random_monster(const level_id &place);
+monster_type pick_random_monster(const level_id &place,
+                                 bool *chose_ood_monster = NULL);
 
 monster_type pick_random_monster(const level_id &place,
                                  int power,
-                                 int &lev_mons);
+                                 int &lev_mons,
+                                 bool *chose_ood_monster);
 
 bool player_will_anger_monster(monster_type type, bool *holy = NULL,
                                bool *unholy = NULL, bool *lawful = NULL,
@@ -101,5 +103,9 @@ monsters* get_free_monster();
 
 bool can_place_on_trap(int mon_type, trap_type trap);
 bool mons_airborne(int mcls, int flies, bool paralysed);
+void mons_add_blame(monsters *mon, const std::string &blame_string);
+
+// Active monster band may influence gear generation on band followers.
+extern band_type active_monster_band;
 
 #endif  // MONPLACE_H

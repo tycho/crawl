@@ -37,20 +37,20 @@ enum tag_file_type   // file types supported by tag system
     TAGTYPE_PLAYER_NAME         // Used only to read the player name
 };
 
-enum tag_major_version
-{
-    TAG_MAJOR_START   = 5,
-    TAG_MAJOR_VERSION = 8
-};
+// Let CDO updaters know if the syntax changes.
+#define TAG_MAJOR_START     5
+#define TAG_MAJOR_VERSION  16
 
 // Minor version will be reset to zero when major version changes.
 enum tag_minor_version
 {
-    TAG_MINOR_RESET    = 0, // Minor tags were reset
-    TAG_MINOR_DISEASE  = 1, // you.disease changed to an integer
-    TAG_MINOR_MAPCELL_NOCOLOUR = 2, // map_cell::colour removed
-    TAG_MINOR_SHOWTYPE_EXTENDED = 3, // map_cell::object stores more data
-    TAG_MINOR_VERSION  = 3 // Current version.  (Keep equal to max.)
+    TAG_MINOR_RESET     = 0, // Minor tags were reset
+    TAG_MINOR_MSGWIN    = 1, // New message history format.
+    TAG_MINOR_CHEPONDER = 2, // Che prayer storing ponderousness.
+    TAG_MINOR_NOCHEPONDER = 3, // Reverted the previous change.
+    TAG_MINOR_INTTIME   = 4, // Elapsed time stored as longs (ints really).
+    TAG_MINOR_STASHVER  = 5, // Stashes using global save version, ints instead of floats.
+    TAG_MINOR_VERSION   = 5 // Current version.  (Keep equal to max.)
 };
 
 struct enum_info

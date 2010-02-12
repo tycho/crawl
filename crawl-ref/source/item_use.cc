@@ -35,6 +35,7 @@
 #include "food.h"
 #include "godabil.h"
 #include "goditem.h"
+#include "godpassive.h"
 #include "invent.h"
 #include "it_use2.h"
 #include "it_use3.h"
@@ -48,6 +49,7 @@
 #include "mon-behv.h"
 #include "mon-util.h"
 #include "mon-place.h"
+#include "mutation.h"
 #include "terrain.h"
 #include "mgen_data.h"
 #include "coord.h"
@@ -58,6 +60,7 @@
 #include "player.h"
 #include "quiver.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "shopping.h"
 #include "skills.h"
 #include "skills2.h"
@@ -73,7 +76,7 @@
 #include "stuff.h"
 #include "areas.h"
 #include "teleport.h"
-#include "transfor.h"
+#include "transform.h"
 #include "traps.h"
 #include "tutorial.h"
 #include "view.h"
@@ -87,7 +90,7 @@ static bool _handle_enchant_weapon( enchant_stat_type which_stat,
                                     bool quiet = false, int item_slot = -1 );
 static bool _handle_enchant_armour( int item_slot = -1 );
 
-static int  _fire_prompt_for_item(std::string& err);
+static int  _fire_prompt_for_item();
 static bool _fire_validate_item(int selected, std::string& err);
 
 // Rather messy - we've gathered all the can't-wield logic from wield_weapon()
@@ -112,7 +115,7 @@ bool can_wield(item_def *weapon, bool say_reason,
     if (!ignore_temporary_disability
         && you.weapon()
         && you.weapon()->base_type == OBJ_WEAPONS
-        && item_cursed(*you.weapon()))
+        && you.weapon()->cursed())
     {
         SAY(mpr("You can't unwield your weapon to draw a new one!"));
         return (false);
@@ -122,7 +125,7 @@ bool can_wield(item_def *weapon, bool say_reason,
     if (!weapon)
         return (true);
 
-    for (int i = EQ_CLOAK; i <= EQ_AMULET; i++)
+    for (int i = EQ_MIN_ARMOUR; i <= EQ_MAX_WORN; i++)
     {
         if (you.equip[i] != -1 && &you.inv[you.equip[i]] == weapon)
         {
@@ -174,13 +177,15 @@ bool can_wield(item_def *weapon, bool say_reason,
         return (false);
     }
 
-    if (you.hunger_state < HS_FULL
-            && get_weapon_brand(*weapon) == SPWPN_VAMPIRICISM
-            && you.species != SP_VAMPIRE)
+    if (!ignore_temporary_disability
+        && you.hunger_state < HS_FULL
+        && you.hunger < you_max_hunger() - 500 // ghouls
+        && get_weapon_brand(*weapon) == SPWPN_VAMPIRICISM
+        && you.species != SP_VAMPIRE && you.species != SP_MUMMY)
     {
         if (say_reason)
         {
-            mpr("You're too hungry to wield that.");
+            mpr("As you grasp it, you feel a great hunger.  Being not satiated, you stop.");
             // If it's a standard weapon, you know its ego now.
             if (!is_artefact(*weapon) && !is_blessed(*weapon)
                 && !item_type_known(*weapon))
@@ -320,15 +325,13 @@ bool wield_weapon(bool auto_wield, int slot, bool show_weff_messages,
 
     if (item_slot == PROMPT_GOT_SPECIAL)  // '-' or bare hands
     {
-        if (you.equip[EQ_WEAPON] != -1)
+        if (const item_def* wpn = you.weapon())
         {
-            item_def& wpn = *you.weapon();
             // Can we safely unwield this item?
-            if (has_warning_inscription(wpn, OPER_WIELD))
+            if (has_warning_inscription(*wpn, OPER_WIELD))
             {
-                std::string prompt = "Really unwield ";
-                prompt += wpn.name(DESC_INVENTORY);
-                prompt += '?';
+                const std::string prompt =
+                    "Really unwield " + wpn->name(DESC_INVENTORY) + "?";
                 if (!yesno(prompt.c_str(), false, 'n'))
                     return (false);
             }
@@ -366,12 +369,13 @@ bool wield_weapon(bool auto_wield, int slot, bool show_weff_messages,
     if (!safe_to_remove_or_wear(new_wpn, false))
         return (false);
 
-    // Go ahead and wield the weapon.
-    if (you.equip[EQ_WEAPON] != -1 && !unwield_item(show_weff_messages))
+    // Unwield any old weapon.
+    if (you.weapon() && !unwield_item(show_weff_messages))
         return (false);
 
     const unsigned int old_talents = your_talents(false).size();
 
+    // Go ahead and wield the weapon.
     you.equip[EQ_WEAPON] = item_slot;
 
     // Any oddness on wielding taken care of here.
@@ -410,21 +414,6 @@ static const char *shield_impact_degree(int impact)
                          : NULL);
 }
 
-static void warn_rod_shield_interference(const item_def &)
-{
-    const int leakage = rod_shield_leakage();
-    const char *leak_degree = shield_impact_degree(leakage);
-
-    // Any way to avoid the double entendre? :-)
-    if (leak_degree)
-    {
-        mprf(MSGCH_WARN,
-                "Your %s %sreduces the effectiveness of your rod.",
-                shield_base_name(you.shield()),
-                leak_degree);
-    }
-}
-
 static void warn_launcher_shield_slowdown(const item_def &launcher)
 {
     const int slowspeed =
@@ -454,14 +443,12 @@ void warn_shield_penalties()
     if (!you.shield())
         return;
 
-    // Warnings are limited to rods, bows, and quarterstaves at the moment.
+    // Warnings are limited to bows and quarterstaves at the moment.
     const item_def *weapon = you.weapon();
     if (!weapon)
         return;
 
-    if (item_is_rod(*weapon))
-        warn_rod_shield_interference(*weapon);
-    else if (is_range_weapon(*weapon))
+    if (is_range_weapon(*weapon))
         warn_launcher_shield_slowdown(*weapon);
     else if (weapon->base_type == OBJ_WEAPONS
              && weapon_skill(*weapon) == SK_STAVES)
@@ -515,6 +502,19 @@ void wield_effects(int item_wield_2, bool showMsgs)
             // Give curse status when wielded.
             // Right now that's always "uncursed". -- bwr
             set_ident_flags(item, ISFLAG_KNOW_CURSE);
+        }
+        // Automatically identify rods; you can do this by wielding and then
+        // evoking them, so do it automatically instead. We don't need to give
+        // a message either, as the game will do that automatically. {due}
+        if (item_is_rod(item))
+        {
+            if (!item_type_known(item))
+            {
+                set_ident_type( OBJ_STAVES, item.sub_type, ID_KNOWN_TYPE );
+                set_ident_flags( item, ISFLAG_KNOW_TYPE );
+            }
+            if (!item_ident( item, ISFLAG_KNOW_PLUSES))
+                set_ident_flags( item, ISFLAG_KNOW_PLUSES );
         }
         break;
     }
@@ -616,6 +616,10 @@ void wield_effects(int item_wield_2, bool showMsgs)
                     mpr("You feel protected!");
                     break;
 
+                case SPWPN_EVASION:
+                    mpr("You feel nimbler!");
+                    break;
+
                 case SPWPN_DRAINING:
                     mpr("You sense an unholy aura.");
                     break;
@@ -650,7 +654,6 @@ void wield_effects(int item_wield_2, bool showMsgs)
                     {
                         mpr("You feel an empty sense of dread.");
                     }
-
                     break;
 
                 case SPWPN_RETURNING:
@@ -658,7 +661,12 @@ void wield_effects(int item_wield_2, bool showMsgs)
                     break;
 
                 case SPWPN_PAIN:
-                    mpr("A searing pain shoots up your arm!");
+                    if(you.skills[SK_NECROMANCY] == 0)
+                        mpr("You have a feeling of ineptitude.");
+                    else if(you.skills[SK_NECROMANCY] <= 4)
+                        mpr("Pain shudders through your arm!");
+                    else
+                        mpr("A searing pain shoots up your arm!");
                     break;
 
                 case SPWPN_CHAOS:
@@ -708,7 +716,7 @@ void wield_effects(int item_wield_2, bool showMsgs)
             }
         }
 
-        if (item_cursed(item))
+        if (item.cursed())
         {
             mpr("It sticks to your hand!");
             int amusement = 16;
@@ -1046,7 +1054,7 @@ bool do_wear_armour(int item, bool quiet)
         && you.equip[EQ_CLOAK] != -1 && !cloak_is_being_removed())
     {
         if (you.equip[EQ_BODY_ARMOUR] != -1
-            && item_cursed(you.inv[you.equip[EQ_BODY_ARMOUR]]))
+            && you.inv[you.equip[EQ_BODY_ARMOUR]].cursed())
         {
             if (!quiet)
             {
@@ -1056,7 +1064,7 @@ bool do_wear_armour(int item, bool quiet)
             }
             return (false);
         }
-        if (!item_cursed(you.inv[you.equip[EQ_CLOAK]]))
+        if (!you.inv[you.equip[EQ_CLOAK]].cursed())
         {
             cloak = you.equip[EQ_CLOAK];
             if (!takeoff_armour(you.equip[EQ_CLOAK]))
@@ -1136,7 +1144,7 @@ bool takeoff_armour(int item)
     }
 
     // If we get here, we're wearing the item.
-    if (item_cursed(invitem))
+    if (invitem.cursed())
     {
         mprf("%s is stuck to your body!", invitem.name(DESC_CAP_YOUR).c_str());
         return (false);
@@ -1152,7 +1160,7 @@ bool takeoff_armour(int item)
     {
         if (you.equip[EQ_CLOAK] != -1 && !cloak_is_being_removed())
         {
-            if (!item_cursed(you.inv[you.equip[EQ_CLOAK]]))
+            if (!you.inv[you.equip[EQ_CLOAK]].cursed())
             {
                 cloak = you.equip[ EQ_CLOAK ];
                 if (!takeoff_armour(you.equip[EQ_CLOAK]))
@@ -1218,7 +1226,7 @@ int get_next_fire_item(int current, int direction)
     {
         if (fire_order[i] == current)
         {
-            unsigned next =
+            unsigned int next =
                 (i + direction + fire_order.size()) % fire_order.size();
             return fire_order[next];
         }
@@ -1226,65 +1234,91 @@ int get_next_fire_item(int current, int direction)
     return fire_order[0];
 }
 
-class fire_target_behaviour : public targetting_behaviour
+class fire_target_behaviour : public targeting_behaviour
 {
 public:
     fire_target_behaviour()
-        : m_slot(-1), selected_from_inventory(false), need_prompt(false),
-          chosen_ammo(false)
+        : chosen_ammo(false),
+          selected_from_inventory(false),
+          need_redraw(false)
     {
         m_slot = you.m_quiver->get_fire_item(&m_noitem_reason);
+        set_prompt();
     }
 
-    // targetting_behaviour API
+    // targeting_behaviour API
     virtual command_type get_command(int key = -1);
-    virtual bool should_redraw();
-    virtual void mark_ammo_nonchosen();
-
-    void message_ammo_prompt(const std::string* pre_text = 0);
+    virtual bool should_redraw() const { return need_redraw; }
+    virtual void clear_redraw()        { need_redraw = false; }
+    virtual void update_top_prompt(std::string* p_top_prompt);
 
 public:
+    const item_def* active_item() const;
+    // FIXME: these should be privatized and given accessors.
     int m_slot;
-    std::string m_noitem_reason;
-    bool selected_from_inventory;
-    bool need_prompt;
     bool chosen_ammo;
+
+private:
+    void set_prompt();
+    void cycle_fire_item(bool forward);
+    void pick_fire_item_from_inventory();
+    void display_help();
+
+    std::string prompt;
+    std::string m_noitem_reason;
+    std::string internal_prompt;
+    bool selected_from_inventory;
+    bool need_redraw;
 };
 
-void fire_target_behaviour::message_ammo_prompt(const std::string* pre_text)
+void fire_target_behaviour::update_top_prompt(std::string* p_top_prompt)
 {
+    *p_top_prompt = internal_prompt;
+}
+
+const item_def* fire_target_behaviour::active_item() const
+{
+    if (m_slot == -1)
+        return NULL;
+    else
+        return &you.inv[m_slot];
+}
+
+void fire_target_behaviour::set_prompt()
+{
+    std::string old_prompt = internal_prompt; // Keep for comparison at the end.
+    internal_prompt.clear();
+
+    // Figure out if we have anything else to cycle to.
     const int next_item = get_next_fire_item(m_slot, +1);
-    bool no_other_items = (next_item == -1 || next_item == m_slot);
-
-    mesclr();
-
-    if (pre_text)
-        mpr(pre_text->c_str());
+    const bool no_other_items = (next_item == -1 || next_item == m_slot);
 
     std::ostringstream msg;
-    if (m_slot == -1)
+
+    // Build the action.
+    if (!active_item())
+    {
         msg << "Firing ";
+    }
     else
     {
-        const item_def& item_def = you.inv[m_slot];
         const launch_retval projected = is_launched(&you, you.weapon(),
-                                                    item_def);
-
-        if (projected == LRET_FUMBLED)
-            msg << "Awkwardly throwing ";
-        else if (projected == LRET_LAUNCHED)
-            msg << "Firing ";
-        else if (projected == LRET_THROWN)
-            msg << "Throwing ";
-        else
-            msg << "Buggy ";
+                                                    *active_item());
+        switch (projected)
+        {
+        case LRET_FUMBLED:  msg << "Awkwardly throwing "; break;
+        case LRET_LAUNCHED: msg << "Firing ";             break;
+        case LRET_THROWN:   msg << "Throwing ";           break;
+        }
     }
 
+    // And a key hint.
     msg << (no_other_items ? "(i - inventory)"
                            : "(i - inventory. (,) - cycle)")
         << ": ";
 
-    if (m_slot == -1)
+    // Describe the selected item for firing.
+    if (!active_item())
     {
         msg << "<red>" << m_noitem_reason << "</red>";
     }
@@ -1292,28 +1326,58 @@ void fire_target_behaviour::message_ammo_prompt(const std::string* pre_text)
     {
         const char* colour = (selected_from_inventory ? "lightgrey" : "w");
         msg << "<" << colour << ">"
-            << you.inv[m_slot].name(DESC_INVENTORY_EQUIP)
+            << active_item()->name(DESC_INVENTORY_EQUIP)
             << "</" << colour << ">";
     }
 
-    formatted_message_history(tagged_string_substr(msg.str(),
-                                                   0, crawl_view.msgsz.x),
-                              MSGCH_PROMPT);
+    // Write it out.
+    internal_prompt += tagged_string_substr(msg.str(), 0, crawl_view.msgsz.x);
+
+    // Never unset need_redraw here, because we might have cleared the
+    // screen or something else which demands a redraw.
+    if (internal_prompt != old_prompt)
+        need_redraw = true;
 }
 
-bool fire_target_behaviour::should_redraw()
+// Cycle to the next (forward == true) or previous (forward == false)
+// fire item.
+void fire_target_behaviour::cycle_fire_item(bool forward)
 {
-    if (need_prompt)
+    const int next = get_next_fire_item(m_slot, forward ? 1 : -1);
+    if (next != m_slot && next != -1)
     {
-        need_prompt = false;
-        return (true);
+        m_slot = next;
+        selected_from_inventory = false;
+        chosen_ammo = true;
     }
-    return (false);
+    set_prompt();
 }
 
-void fire_target_behaviour::mark_ammo_nonchosen()
+void fire_target_behaviour::pick_fire_item_from_inventory()
 {
-    chosen_ammo = false;
+    need_redraw = true;
+    std::string err;
+    const int selected = _fire_prompt_for_item();
+    if (selected >= 0 && _fire_validate_item(selected, err))
+    {
+        m_slot = selected;
+        selected_from_inventory = true;
+        chosen_ammo = true;
+    }
+    else if (!err.empty())
+    {
+        mpr(err);
+        more();
+    }
+    set_prompt();
+}
+
+void fire_target_behaviour::display_help()
+{
+    show_targeting_help();
+    redraw_screen();
+    need_redraw = true;
+    set_prompt();
 }
 
 command_type fire_target_behaviour::get_command(int key)
@@ -1323,47 +1387,14 @@ command_type fire_target_behaviour::get_command(int key)
 
     switch (key)
     {
-    case '(':
-    case CONTROL('N'):
-    case ')':
-    case CONTROL('P'):
-    {
-        const int direction = (key == CONTROL('P') || key == ')') ? -1 : +1;
-        const int next = get_next_fire_item(m_slot, direction);
-        if (next != m_slot && next != -1)
-        {
-            m_slot = next;
-            selected_from_inventory = false;
-            chosen_ammo = true;
-        }
-        // Do this stuff unconditionally to make the prompt redraw.
-        message_ammo_prompt();
-        need_prompt = true;
-        return (CMD_NO_CMD);
-    }
-    case 'i':
-    {
-        std::string err;
-        const int selected = _fire_prompt_for_item(err);
-        if (selected >= 0 && _fire_validate_item(selected, err))
-        {
-            m_slot = selected;
-            selected_from_inventory = true;
-            chosen_ammo = true;
-        }
-        message_ammo_prompt( err.length() ? &err : NULL );
-        need_prompt = true;
-        return (CMD_NO_CMD);
-    }
-    case '?':
-        show_targetting_help();
-        redraw_screen();
-        message_ammo_prompt();
-        need_prompt = true;
-        return (CMD_NO_CMD);
+    case '(': case CONTROL('N'): cycle_fire_item(true);  return (CMD_NO_CMD);
+    case ')': case CONTROL('P'): cycle_fire_item(false); return (CMD_NO_CMD);
+    case 'i': pick_fire_item_from_inventory(); return (CMD_NO_CMD);
+    case '?': display_help(); return (CMD_NO_CMD);
+    case CMD_TARGET_CANCEL: chosen_ammo = false; break;
     }
 
-    return targetting_behaviour::get_command(key);
+    return targeting_behaviour::get_command(key);
 }
 
 static bool _fire_choose_item_and_target(int& slot, dist& target,
@@ -1384,14 +1415,14 @@ static bool _fire_choose_item_and_target(int& slot, dist& target,
         beh.m_slot = slot;
     }
 
-    beh.message_ammo_prompt();
+    direction_chooser_args args;
+    args.mode = TARG_HOSTILE;
+    args.needs_path = !teleport;
+    args.behaviour = &beh;
 
-    // XXX: This stuff should be done by direction()!
-    message_current_target();
-    direction( target, DIR_NONE, TARG_HOSTILE, -1, false, !teleport, true, false,
-               NULL, &beh );
+    direction(target, args);
 
-    if (beh.m_slot == -1)
+    if (!beh.active_item())
     {
         canned_msg(MSG_OK);
         return (false);
@@ -1403,7 +1434,7 @@ static bool _fire_choose_item_and_target(int& slot, dist& target,
         return (false);
     }
 
-    you.m_quiver->on_item_fired(you.inv[beh.m_slot], beh.chosen_ammo);
+    you.m_quiver->on_item_fired(*beh.active_item(), beh.chosen_ammo);
     you.redraw_quiver = true;
     slot = beh.m_slot;
 
@@ -1413,14 +1444,10 @@ static bool _fire_choose_item_and_target(int& slot, dist& target,
 // Bring up an inventory screen and have user choose an item.
 // Returns an item slot, or -1 on abort/failure
 // On failure, returns error text, if any.
-static int _fire_prompt_for_item(std::string& err)
+static int _fire_prompt_for_item()
 {
     if (inv_count() < 1)
-    {
-        // canned_msg(MSG_NOTHING_CARRIED);         // Hmmm...
-        err = "You aren't carrying anything.";
         return -1;
-    }
 
     int slot = prompt_invent_item( "Fire/throw which item? (* to show all)",
                                    MT_INVLIST,
@@ -1428,10 +1455,8 @@ static int _fire_prompt_for_item(std::string& err)
                                    NULL, OPER_FIRE );
 
     if (slot == PROMPT_ABORT || slot == PROMPT_NOTHING)
-    {
-        err = "Nothing selected.";
         return -1;
-    }
+
     return slot;
 }
 
@@ -1440,7 +1465,7 @@ static bool _fire_validate_item(int slot, std::string &err)
 {
     if (slot == you.equip[EQ_WEAPON]
         && you.inv[slot].base_type == OBJ_WEAPONS
-        && item_cursed(you.inv[slot]))
+        && you.inv[slot].cursed())
     {
         err = "That weapon is stuck to your hand!";
         return (false);
@@ -1546,7 +1571,7 @@ void throw_item_no_quiver()
     }
 
     std::string warn;
-    int slot = _fire_prompt_for_item(warn);
+    int slot = _fire_prompt_for_item();
 
     if (slot == -1)
     {
@@ -1674,16 +1699,6 @@ bool elemental_missile_beam(int launcher_brand, int ammo_brand)
     return (element != 0);
 }
 
-static int _item_to_skill_level(const item_def *item)
-{
-    skill_type type = range_skill(*item);
-
-    if (type == SK_DARTS || type == SK_SLINGS)
-        return (you.skills[type] + you.skills[SK_THROWING]);
-
-    return (2 * you.skills[type]);
-}
-
 static bool _poison_hit_victim(bolt& beam, actor* victim, int dmg, int corpse)
 {
     if (!victim->alive() || victim->res_poison() > 0)
@@ -1696,43 +1711,10 @@ static bool _poison_hit_victim(bolt& beam, actor* victim, int dmg, int corpse)
 
     actor* agent = beam.agent();
 
-    if (agent->atype() == ACT_MONSTER)
+    if (dmg > 0 || beam.ench_power == AUTOMATIC_HIT
+                   && x_chance_in_y(90 - 3 * victim->armour_class(), 100))
     {
-        if (dmg > 0 || beam.ench_power == AUTOMATIC_HIT
-                       && x_chance_in_y(90 - 3 * victim->armour_class(), 100))
-        {
-            levels = 1 + random2(3);
-        }
-    }
-    else
-    {
-        if (beam.ench_power == AUTOMATIC_HIT
-            && x_chance_in_y(90 - 3 * victim->armour_class(), 100))
-        {
-            levels = 2;
-        }
-        else if (random2(dmg) > random2(victim->armour_class()))
-            levels = 1;
-
-        int num_success = 0;
-        if (YOU_KILL(beam.thrower))
-        {
-            const int skill_level = _item_to_skill_level(beam.item);
-            if (x_chance_in_y(skill_level + 25, 50))
-                num_success++;
-            if (x_chance_in_y(skill_level, 50))
-                num_success++;
-        }
-        else
-            num_success = 1;
-
-        if (num_success == 0)
-            return (false);
-        else
-        {
-            if (num_success == 2)
-                levels++;
-        }
+        levels = 1 + random2(3);
     }
 
     if (levels <= 0)
@@ -1757,13 +1739,30 @@ static bool _item_penetrates_victim(const bolt &beam, const actor *victim,
 static bool _silver_damages_victim(bolt &beam, actor* victim, int &dmg,
                                    std::string &dmg_msg)
 {
-    if (victim->undead_or_demonic() || victim->is_chaotic())
+    const int mutated = how_mutated(true, true);
+
+    if (victim->holiness() == MH_UNDEAD
+        || victim->is_chaotic()
+        || (victim == &you && player_is_shapechanged()))
     {
         dmg *= 2;
-
-        if (!beam.is_tracer && you.can_see(victim))
-           dmg_msg = "The silver sears " + victim->name(DESC_NOCAP_THE) + "!";
     }
+    else if (victim == &you && mutated > 0)
+    {
+        int multiplier = 100 + (mutated * 5);
+
+        if (multiplier > 200)
+            multiplier = 200;
+
+        dmg = (dmg * multiplier) / 100;
+    }
+    else
+    {
+        return (false);
+    }
+
+    if (!beam.is_tracer && you.can_see(victim))
+       dmg_msg = "The silver sears " + victim->name(DESC_NOCAP_THE) + "!";
 
     return (false);
 }
@@ -1836,7 +1835,7 @@ static bool _dispersal_hit_victim(bolt& beam, actor* victim, int dmg,
         place_cloud(CLOUD_TLOC_ENERGY, you.pos(), 1 + random2(3), KC_YOU);
 
         victim->moveto(pos);
-        mpr("You blink!");
+        canned_msg(MSG_YOU_BLINK);
     }
     else
     {
@@ -1930,10 +1929,151 @@ static bool _blessed_hit_victim(bolt &beam, actor* victim, int &dmg,
     return (false);
 }
 
+int _blowgun_power_roll (bolt &beam)
+{
+    actor* agent = beam.agent();
+    int base_power = 0;
+    int blowgun_base = 0;
+
+    if (agent->atype() == ACT_MONSTER)
+    {
+        monsters* mons = static_cast<monsters*>(agent);
+        base_power += mons->hit_dice;
+        blowgun_base += (*mons).launcher()->plus;
+    }
+    else
+    {
+        base_power += you.skills[SK_THROWING];
+        blowgun_base += (you.weapon())->plus;
+    }
+
+    return (base_power + blowgun_base);
+}
+
+bool _blowgun_check (bolt &beam, actor* victim, bool message = true)
+{
+    actor* agent = beam.agent();
+
+    if (agent->atype() == ACT_MONSTER)
+        return (true);
+
+    monsters* mons = static_cast<monsters*>(victim);
+
+    int skill = you.skills[SK_THROWING];
+    int enchantment = (you.weapon())->plus;
+
+    // You have a really minor chance of hitting with no skills or good
+    // enchants.
+    if (mons->hit_dice < 15 && random2(100) <= 2)
+        return (true);
+
+    int resist_roll = 2 + random2(4 + skill + enchantment);
+
+    dprf("Brand rolled %d against monster HD: %d.", resist_roll, mons->hit_dice);
+
+    if (resist_roll < mons->hit_dice)
+    {
+        simple_monster_message(mons, " resists!");
+        return (false);
+    }
+
+    return (true);
+}
+
+static bool _paralysis_hit_victim (bolt& beam, actor* victim, int dmg,
+                                  int corpse)
+{
+    if (beam.is_tracer)
+        return (false);
+
+    if (!_blowgun_check(beam, victim))
+        return (false);
+
+    int blowgun_power = _blowgun_power_roll(beam);
+    victim->paralyse(beam.agent(), 5 + random2(blowgun_power));
+    return (true);
+}
+
+static bool _sleep_hit_victim (bolt& beam, actor* victim, int dmg,
+                                  int corpse)
+{
+    if (beam.is_tracer)
+        return (false);
+
+    if (!_blowgun_check(beam, victim))
+        return (false);
+
+    int blowgun_power = _blowgun_power_roll(beam);
+    victim->put_to_sleep(beam.agent(), 5 + random2(blowgun_power));
+    return (true);
+}
+
+static bool _confusion_hit_victim (bolt &beam, actor* victim, int dmg,
+                                   int corpse)
+{
+    if (beam.is_tracer)
+        return (false);
+
+    if (!_blowgun_check(beam, victim))
+        return (false);
+
+    int blowgun_power = _blowgun_power_roll(beam);
+    victim->confuse(beam.agent(), 5 + random2(blowgun_power));
+    return (true);
+}
+
+static bool _slow_hit_victim (bolt &beam, actor* victim, int dmg,
+                                   int corpse)
+{
+    if (beam.is_tracer)
+        return (false);
+
+    if (!_blowgun_check(beam, victim))
+        return (false);
+
+    int blowgun_power = _blowgun_power_roll(beam);
+    victim->slow_down(beam.agent(), 5 + random2(blowgun_power));
+    return (true);
+}
+
+static bool _sickness_hit_victim (bolt &beam, actor* victim, int dmg,
+                                   int corpse)
+{
+    if (beam.is_tracer)
+        return (false);
+
+    if (!_blowgun_check(beam, victim))
+        return (false);
+
+    int blowgun_power = _blowgun_power_roll(beam);
+    victim->sicken(40 + random2(blowgun_power));
+    return (true);
+}
+
+static bool _rage_hit_victim (bolt &beam, actor* victim, int dmg,
+                                   int corpse)
+{
+    if (beam.is_tracer)
+        return (false);
+
+    if (!_blowgun_check(beam, victim))
+        return (false);
+
+    if (victim->atype() == ACT_MONSTER)
+    {
+        monsters* mons = static_cast<monsters*>(victim);
+        mons->go_frenzy();
+    }
+    else
+        victim->go_berserk(false);
+
+    return (true);
+}
+
 bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
                         std::string &ammo_name, bool &returning)
 {
-    dungeon_char_type zapsym = DCHAR_SPACE;
+    dungeon_char_type zapsym = NUM_DCHAR_TYPES;
     switch (item.base_type)
     {
     case OBJ_WEAPONS:    zapsym = DCHAR_FIRED_WEAPON;  break;
@@ -1951,7 +2091,7 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
     default: break;
     }
 
-    beam.type = dchar_glyph(zapsym);
+    beam.glyph = dchar_glyph(zapsym);
     beam.was_missile = true;
 
     returning = get_weapon_brand(item) == SPWPN_RETURNING
@@ -1974,11 +2114,12 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
         beam.thrower       = KILL_MON_MISSILE;
     }
 
-    beam.item     = &item;
-    beam.source   = agent->pos();
-    beam.colour   = item.colour;
-    beam.flavour  = BEAM_MISSILE;
-    beam.is_beam  = false;
+    beam.item         = &item;
+    beam.effect_known = item_ident(item, ISFLAG_KNOW_TYPE);
+    beam.source       = agent->pos();
+    beam.colour       = item.colour;
+    beam.flavour      = BEAM_MISSILE;
+    beam.is_beam      = false;
     beam.aux_source.clear();
 
     beam.can_see_invis = agent->can_see_invisible();
@@ -2011,46 +2152,52 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
     if (launcher != NULL)
         bow_brand = get_weapon_brand(*launcher);
 
-    int  ammo_brand = get_ammo_brand(item);
-    bool poisoned   = ammo_brand == SPMSL_POISONED;
+    int ammo_brand = get_ammo_brand(item);
 
-    if (bow_brand == SPWPN_VENOM && ammo_brand != SPMSL_CURARE)
+    // Launcher brand does not affect ammunition.
+    if (ammo_brand != SPMSL_NORMAL && bow_brand != SPWPN_NORMAL)
     {
-        if (ammo_brand == SPMSL_NORMAL)
-            item.special = SPMSL_POISONED;
-
-        poisoned = true;
+        // But not for Nessos.
+        if (agent->atype() == ACT_MONSTER)
+        {
+            const monsters* mon = static_cast<const monsters*>(agent);
+            if (mon->type != MONS_NESSOS)
+                bow_brand = SPWPN_NORMAL;
+        }
+        else
+            bow_brand = SPWPN_NORMAL;
     }
 
-    const bool exploding    = ammo_brand == SPMSL_EXPLODING;
-    const bool penetrating  = (!exploding
-                               && (bow_brand  == SPWPN_PENETRATION
-                                   || ammo_brand == SPMSL_PENETRATION));
+    bool poisoned   = (bow_brand == SPWPN_VENOM
+                        || ammo_brand == SPMSL_POISONED);
+
+    const bool exploding    = (ammo_brand == SPMSL_EXPLODING);
+    const bool penetrating  = (bow_brand  == SPWPN_PENETRATION
+                                || ammo_brand == SPMSL_PENETRATION);
     const bool silver       = (ammo_brand == SPMSL_SILVER);
     const bool disperses    = (ammo_brand == SPMSL_DISPERSAL);
     const bool reaping      = (bow_brand  == SPWPN_REAPING
-                               || ammo_brand == SPMSL_REAPING)
-                              && bow_brand != SPWPN_HOLY_WRATH;
-    const bool charged      = bow_brand  == SPWPN_ELECTROCUTION
-                                || ammo_brand == SPMSL_ELECTRIC;
-    const bool blessed      = bow_brand == SPWPN_HOLY_WRATH
-                              && ammo_brand != SPMSL_REAPING;
+                               || ammo_brand == SPMSL_REAPING);
+    const bool charged      = bow_brand  == SPWPN_ELECTROCUTION;
+    const bool blessed      = bow_brand == SPWPN_HOLY_WRATH;
+
+    const bool paralysis    = ammo_brand == SPMSL_PARALYSIS;
+    const bool slow         = ammo_brand == SPMSL_SLOW;
+    const bool sleep        = ammo_brand == SPMSL_SLEEP;
+    const bool confusion    = ammo_brand == SPMSL_CONFUSION;
+    const bool sickness     = ammo_brand == SPMSL_SICKNESS;
+    const bool rage         = ammo_brand == SPMSL_RAGE;
 
     ASSERT(!exploding || !is_artefact(item));
 
     beam.name = item.name(DESC_PLAIN, false, false, false);
 
-    // Print type of item as influenced by launcher.
-    item_def ammo = item;
-
     // The chief advantage here is the extra damage this does
     // against susceptible creatures.
 
-    // Note: weapons & ammo of eg fire are not cumulative
-    // ammo of fire and weapons of frost don't work together,
-    // and vice versa.
-
     // Note that bow_brand is known since the bow is equipped.
+
+    bool beam_changed = false;
 
     // Chaos overides flame and frost/ice.
     if (bow_brand == SPWPN_CHAOS || ammo_brand == SPMSL_CHAOS)
@@ -2065,41 +2212,67 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
         beam.effect_known = false;
 
         beam.flavour = BEAM_CHAOS;
-        beam.name    = "chaos";
+        if (ammo_brand != SPMSL_CHAOS)
+        {
+            beam.name    += " of chaos";
+            ammo_name    += " of chaos";
+        }
+        else
+        {
+            set_ident_flags (item, ISFLAG_KNOW_TYPE);
+            beam_changed = true;
+        }
         beam.colour  = ETC_RANDOM;
-
-        ammo.special = SPMSL_CHAOS;
     }
     else if ((bow_brand == SPWPN_FLAME || ammo_brand == SPMSL_FLAME)
              && ammo_brand != SPMSL_FROST && bow_brand != SPWPN_FROST)
     {
         beam.flavour = BEAM_FIRE;
-        beam.name    = "flame";
-        beam.colour  = RED;
+        if (ammo_brand != SPMSL_FLAME)
+        {
+            beam.name    += " of flame";
+            ammo_name    += " of flame";
+        }
+        else
+        {
+            set_ident_flags (item, ISFLAG_KNOW_TYPE);
+            beam_changed = true;
+        }
 
-        ammo.special = SPMSL_FLAME;
+        beam.colour  = RED;
     }
     else if ((bow_brand == SPWPN_FROST || ammo_brand == SPMSL_FROST)
              && ammo_brand != SPMSL_FLAME && bow_brand != SPWPN_FLAME)
     {
         beam.flavour = BEAM_COLD;
-        beam.name    = "frost";
+        if (ammo_brand != SPMSL_FROST)
+        {
+            beam.name    += " of frost";
+            ammo_name   += " of frost";
+        }
+        else
+        {
+            set_ident_flags (item, ISFLAG_KNOW_TYPE);
+            beam_changed = true;
+        }
         beam.colour  = WHITE;
-
-        ammo.special = SPMSL_FROST;
     }
 
-    ASSERT(beam.flavour == BEAM_MISSILE || !is_artefact(item));
+    if (beam_changed)
+        beam.name = item.name(DESC_PLAIN, false, false, false);
 
-    ammo_name = ammo.name(DESC_PLAIN);
+    ammo_name = item.name(DESC_PLAIN);
+
+    ASSERT(beam.flavour == BEAM_MISSILE || !is_artefact(item));
 
     if (silver)
         beam.damage_funcs.push_back(_silver_damages_victim);
     if (poisoned)
         beam.hit_funcs.push_back(_poison_hit_victim);
-    if (penetrating) {
+    if (penetrating)
+    {
         beam.range_funcs.push_back(_item_penetrates_victim);
-        beam.hit_verb = "passes through";
+        beam.hit_verb = "pierces through";
     }
     if (reaping)
         beam.hit_funcs.push_back(_reaping_hit_victim);
@@ -2110,40 +2283,52 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
     if (blessed)
         beam.damage_funcs.push_back(_blessed_hit_victim);
 
-    if (reaping && ammo.special != SPMSL_REAPING)
+    // New needle brands have no affect when thrown without launcher.
+    if (launcher != NULL)
+    {
+        if (paralysis)
+            beam.hit_funcs.push_back(_paralysis_hit_victim);
+        if (slow)
+            beam.hit_funcs.push_back(_slow_hit_victim);
+        if (sleep)
+            beam.hit_funcs.push_back(_sleep_hit_victim);
+        if (confusion)
+            beam.hit_funcs.push_back(_confusion_hit_victim);
+        if (sickness)
+            beam.hit_funcs.push_back(_sickness_hit_victim);
+        if (rage)
+            beam.hit_funcs.push_back(_rage_hit_victim);
+    }
+
+    if (reaping && item.special != SPMSL_REAPING)
     {
         beam.name = "shadowy " + beam.name;
         ammo_name = "shadowy " + ammo_name;
     }
 
-    if (disperses && ammo.special != SPMSL_DISPERSAL)
+    if (disperses && item.special != SPMSL_DISPERSAL)
     {
         beam.name = "dispersing " + beam.name;
         ammo_name = "dispersing " + ammo_name;
     }
 
-    if (poisoned && ammo.special != SPMSL_POISONED)
+    // XXX: This doesn't make sense, but it works.
+    if (poisoned && item.special != SPMSL_POISONED)
     {
-        beam.name = "poison "   + beam.name;
+        beam.name = "poisoned " + beam.name;
         ammo_name = "poisoned " + ammo_name;
     }
 
-    if (penetrating && ammo.special != SPMSL_PENETRATION)
+    if (penetrating && item.special != SPMSL_PENETRATION)
     {
         beam.name = "penetrating " + beam.name;
         ammo_name = "penetrating " + ammo_name;
     }
 
-    if (silver && ammo.special != SPMSL_SILVER)
+    if (silver && item.special != SPMSL_SILVER)
     {
         beam.name = "silvery " + beam.name;
         ammo_name = "silvery " + ammo_name;
-    }
-
-    if (charged && ammo.special != SPMSL_ELECTRIC)
-    {
-        beam.name = "charged " + beam.name;
-        ammo_name = "charged " + ammo_name;
     }
 
     if (blessed)
@@ -2168,11 +2353,11 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
              expl->name   += " fragments";
 
              const std::string short_name =
-                 ammo.name(DESC_PLAIN, false, false, false, false,
+                 item.name(DESC_PLAIN, false, false, false, false,
                            ISFLAG_IDENT_MASK | ISFLAG_COSMETIC_MASK
                            | ISFLAG_RACIAL_MASK);
 
-             expl->name = replace_all(expl->name, ammo.name(DESC_PLAIN),
+             expl->name = replace_all(expl->name, item.name(DESC_PLAIN),
                                       short_name);
          }
          expl->name = "explosion of " + expl->name;
@@ -2180,7 +2365,7 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
          beam.special_explosion = expl;
     }
 
-    if (exploding && ammo.special != SPMSL_EXPLODING)
+    if (exploding && item.special != SPMSL_EXPLODING)
     {
         beam.name = "exploding " + beam.name;
         ammo_name = "exploding " + ammo_name;
@@ -2190,8 +2375,7 @@ bool setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
     {
         returning = false;
 
-        beam.type = dchar_glyph(DCHAR_FIRED_BOLT);
-        beam.name = "bolt of " + beam.name;
+        beam.glyph = dchar_glyph(DCHAR_FIRED_BOLT);
     }
 
     if (!is_artefact(item))
@@ -2313,10 +2497,6 @@ void throw_noise(actor* act, const bolt &pbolt, const item_def &ammo)
         level = 1;
         msg   = "You hear a whirring sound.";
         break;
-    case WPN_HAND_CROSSBOW:
-        level = 3;
-        msg   = "You hear a small twanging sound.";
-        break;
      case WPN_BOW:
         level = 5;
         msg   = "You hear a twanging sound.";
@@ -2374,8 +2554,9 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
         thr = *target;
     else
     {
-        message_current_target();
-        direction(thr, DIR_NONE, TARG_HOSTILE);
+        direction_chooser_args args;
+        args.mode = TARG_HOSTILE;
+        direction(thr, args);
 
         if (!thr.isValid)
         {
@@ -2459,6 +2640,12 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
     // For the tracer, use max_range. For the actual shot, use range.
     pbolt.range = max_range;
 
+    // Save the special explosion (exploding missiles) for later.
+    // Need to clear this if unknown to avoid giving away the explosion.
+    bolt* expl = pbolt.special_explosion;
+    if (!pbolt.effect_known)
+        pbolt.special_explosion = NULL;
+
     // Don't do the tracing when using Portaled Projectile, or when confused.
     if (!teleport && !you.confused())
     {
@@ -2490,8 +2677,9 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
     }
     pbolt.is_tracer = false;
 
-    // Use real range for firing.
+    // Reset values.
     pbolt.range = range;
+    pbolt.special_explosion = expl;
 
     bool unwielded = false;
     if (throw_2 == you.equip[EQ_WEAPON] && thrown.quantity == 1)
@@ -2577,13 +2765,10 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
         if (wepClass == OBJ_MISSILES && wepType == MI_NEEDLE)
             pbolt.ench_power = AUTOMATIC_HIT;
 
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS,
-                "Base hit == %d; Base damage == %d "
+        dprf(   "Base hit == %d; Base damage == %d "
                 "(item %d + launcher %d)",
                         baseHit, baseDam,
                         item_base_dam, lnch_base_dam);
-#endif
 
         // Fix ammo damage bonus, since missiles only use inv_plus.
         ammoDamBonus = ammoHitBonus;
@@ -2625,9 +2810,7 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
         effSkill    = shoot_skill;
 
         const int speed = launcher_final_speed(launcher, you.shield());
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "Final launcher speed: %d", speed);
-#endif
+        dprf("Final launcher speed: %d", speed);
         you.time_taken = speed * you.time_taken / 100;
 
         // [dshaligram] Improving missile weapons:
@@ -2690,9 +2873,9 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
 
         // Blowguns take a _very_ steady hand; a lot of the bonus
         // comes from dexterity.  (Dex bonus here as well as below.)
-        case SK_DARTS:
+        case SK_THROWING:
             baseHit -= 2;
-            exercise(SK_DARTS, (coinflip()? 2 : 1));
+            exercise(SK_THROWING, (coinflip()? 2 : 1));
             exHitBonus += (effSkill * 3) / 2 + you.dex / 2;
 
             // No extra damage for blowguns.
@@ -2738,25 +2921,8 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
 
             dice_mult = dice_mult * (22 + random2(1 + effSkill)) / 22;
 
-            if (lnchType == WPN_HAND_CROSSBOW)
-            {
-                exHitBonus -= 2;
-                dice_mult = dice_mult * 26 / 30;
-            }
-            break;
-
         default:
             break;
-        }
-
-        // Slings and Darts train Throwing a bit.
-        if (launcher_skill == SK_SLINGS || launcher_skill == SK_DARTS)
-        {
-            if (coinflip())
-                exercise(SK_THROWING, 1);
-
-            // They also get a minor tohit boost from throwing skill.
-            exHitBonus += you.skills[SK_THROWING] / 5;
         }
 
         if (bow_brand == SPWPN_VORPAL)
@@ -2804,7 +2970,6 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
     {
         switch (lnchType)
         {
-            case WPN_HAND_CROSSBOW:
             case WPN_CROSSBOW:
                 if (returning && !one_chance_in(1 + skill_bump(SK_CROSSBOWS)))
                     did_return = true;
@@ -2819,7 +2984,7 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
                     did_return = true;
                 break;
             case WPN_BLOWGUN:
-                if (returning && !one_chance_in(1 + skill_bump(SK_DARTS)))
+                if (returning && !one_chance_in(1 + skill_bump(SK_THROWING)))
                     did_return = true;
                 break;
             default:
@@ -2925,13 +3090,12 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
                 break;
 
             case MI_DART:
-                exHitBonus  = you.skills[SK_DARTS] * 2;
-                exHitBonus += (you.skills[SK_THROWING] * 2) / 3;
-                exDamBonus  = you.skills[SK_DARTS] / 3;
-                exDamBonus += you.skills[SK_THROWING] / 5;
+                // Darts also using throwing skills, now.
+                exHitBonus += skill_bump(SK_THROWING);
+                exDamBonus += you.skills[SK_THROWING] * 3 / 5;
 
                 // exercise skills
-                exercise(SK_DARTS, 1 + random2avg(3, 2));
+                exercise(SK_THROWING, 1 + random2avg(3, 2));
                 break;
 
             case MI_JAVELIN:
@@ -3029,12 +3193,10 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
             // Throwing needles is now seriously frowned upon; it's difficult
             // to grip a fiddly little needle, and not penalising it cheapens
             // blowguns.
-            exHitBonus -= (30 - you.skills[SK_DARTS]) / 3;
-            baseHit    -= (30 - you.skills[SK_DARTS]) / 3;
-#ifdef DEBUG_DIAGNOSTICS
-            mprf(MSGCH_DIAGNOSTICS, "Needle base hit = %d, exHitBonus = %d",
+            exHitBonus -= (30 - you.skills[SK_THROWING]) / 3;
+            baseHit    -= (30 - you.skills[SK_THROWING]) / 3;
+            dprf("Needle base hit = %d, exHitBonus = %d",
                     baseHit, exHitBonus);
-#endif
         }
     }
 
@@ -3065,13 +3227,10 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
 
     scale_dice(pbolt.damage);
 
-#if DEBUG_DIAGNOSTICS
-    mprf( MSGCH_DIAGNOSTICS,
-            "H:%d+%d;a%dl%d.  D:%d+%d;a%dl%d -> %d,%dd%d",
+    dprf(   "H:%d+%d;a%dl%d.  D:%d+%d;a%dl%d -> %d,%dd%d",
               baseHit, exHitBonus, ammoHitBonus, lnchHitBonus,
               baseDam, exDamBonus, ammoDamBonus, lnchDamBonus,
               pbolt.hit, pbolt.damage.num, pbolt.damage.size );
-#endif
 
     // Create message.
     mprf( "%s %s%s %s.",
@@ -3109,7 +3268,7 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
         pbolt.fire();
 
         // The item can be destroyed before returning.
-        if (did_return && thrown_object_destroyed(&item, pbolt.target, true))
+        if (did_return && thrown_object_destroyed(&item, pbolt.target))
             did_return = false;
     }
 
@@ -3123,6 +3282,13 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
     {
         did_god_conduct(DID_NECROMANCY, 2,
                         bow_brand == SPWPN_REAPING || ammo_brand_known);
+        did_god_conduct(DID_CORPSE_VIOLATION, 2,
+                        bow_brand == SPWPN_REAPING || ammo_brand_known);
+    }
+
+    if (ammo_brand == SPMSL_RAGE)
+    {
+        did_god_conduct(DID_HASTY, 6 + random2(3), ammo_brand_known);
     }
 
     if (did_return)
@@ -3174,8 +3340,7 @@ bool throw_it(bolt &pbolt, int throw_2, bool teleport, int acc_bonus,
     return (hit);
 }
 
-bool thrown_object_destroyed(item_def *item, const coord_def& where,
-                             bool returning)
+bool thrown_object_destroyed(item_def *item, const coord_def& where)
 {
     ASSERT(item != NULL);
 
@@ -3240,22 +3405,6 @@ bool thrown_object_destroyed(item_def *item, const coord_def& where,
     // destruction: plus / (1 + plus) chance of survival.
     bool destroyed = (chance == 0) ? false : (one_chance_in(chance)
                                               && one_chance_in(item->plus + 1));
-    bool hostile_grid = feat_destroys_items(grd(where));
-
-    // Non-returning items thrown into item-destroying grids are always
-    // destroyed.  Returning items are only destroyed if they would have
-    // been randomly destroyed anyway.
-    if (returning && !destroyed)
-        hostile_grid = false;
-
-    if (hostile_grid)
-    {
-        if (player_can_hear(where))
-            mprf(MSGCH_SOUND, feat_item_destruction_message(grd(where)));
-
-        item_was_destroyed(*item, NON_MONSTER);
-        destroyed = true;
-    }
 
     return destroyed;
 }
@@ -3289,7 +3438,6 @@ void jewellery_wear_effects(item_def &item)
     case RING_SUSTENANCE:
     case RING_SLAYING:
     case RING_WIZARDRY:
-    case RING_REGENERATION:
     case RING_TELEPORT_CONTROL:
         break;
 
@@ -3424,6 +3572,14 @@ void jewellery_wear_effects(item_def &item)
         }
         break;
 
+    case AMU_FAITH:
+        if (you.religion != GOD_NO_GOD)
+        {
+            mpr("You feel a surge of divine interest.", MSGCH_GOD);
+            ident = ID_KNOWN_TYPE;
+        }
+        break;
+
     case AMU_THE_GOURMAND:
         // What's this supposed to achieve? (jpeg)
         you.duration[DUR_GOURMAND] = 0;
@@ -3448,13 +3604,21 @@ void jewellery_wear_effects(item_def &item)
         }
         break;
 
+    case RING_REGENERATION:
+        // To be exact, bloodless vampires should get the id only after they
+        // drink anything.  Not worth complicating the code, IMHO. [1KB]
+        if (player_mutation_level(MUT_SLOW_HEALING) < 3)
+            ident = ID_KNOWN_TYPE;
+        break;
+
     }
 
     // Artefacts have completely different appearance than base types
     // so we don't allow them to make the base types known.
     if (artefact)
     {
-        use_artefact(item);
+        bool show_msgs = true;
+        use_artefact(item, &show_msgs);
 
         if (learn_pluses && (item.plus != 0 || item.plus2 != 0))
             set_ident_flags(item, ISFLAG_KNOW_PLUSES);
@@ -3476,7 +3640,7 @@ void jewellery_wear_effects(item_def &item)
             set_ident_flags(item, ISFLAG_EQ_JEWELLERY_MASK);
     }
 
-    if (item_cursed(item))
+    if (item.cursed())
     {
         mprf("Oops, that %s feels deathly cold.",
              jewellery_is_amulet(item)? "amulet" : "ring");
@@ -3502,10 +3666,10 @@ void jewellery_wear_effects(item_def &item)
 
 static int _prompt_ring_to_remove(int new_ring)
 {
-    const item_def *left  = you.slot_item(EQ_LEFT_RING);
-    const item_def *right = you.slot_item(EQ_RIGHT_RING);
+    const item_def *left  = you.slot_item(EQ_LEFT_RING, true);
+    const item_def *right = you.slot_item(EQ_RIGHT_RING, true);
 
-    if (item_cursed(*left) && item_cursed(*right))
+    if (left->cursed() && right->cursed())
     {
         mprf("You're already wearing two cursed rings!");
         return (-1);
@@ -3521,8 +3685,9 @@ static int _prompt_ring_to_remove(int new_ring)
          "You're wearing two rings. Remove which one? (%c/%c/<</>/Esc)",
          lslot, rslot);
 
-    mprf(" < or %s", left->name(DESC_INVENTORY).c_str());
+    mprf(" << or %s", left->name(DESC_INVENTORY).c_str());
     mprf(" > or %s", right->name(DESC_INVENTORY).c_str());
+    flush_prev_message();
 
     // Deactivate choice from tile inventory.
     // FIXME: We need to be able to get the choice (item letter)
@@ -3722,10 +3887,10 @@ bool safe_to_remove_or_wear(const item_def &item, bool remove,
 // Does not do amulets.
 static bool _swap_rings(int ring_slot)
 {
-    const item_def* lring = you.slot_item(EQ_LEFT_RING);
-    const item_def* rring = you.slot_item(EQ_RIGHT_RING);
+    const item_def* lring = you.slot_item(EQ_LEFT_RING, true);
+    const item_def* rring = you.slot_item(EQ_RIGHT_RING, true);
 
-    if (item_cursed(*lring) && item_cursed(*rring))
+    if (lring->cursed() && rring->cursed())
     {
         mprf("You're already wearing two cursed rings!");
         return (false);
@@ -3739,7 +3904,7 @@ static bool _swap_rings(int ring_slot)
         && lring->plus2 == rring->plus2
         && !is_artefact(*lring) && !is_artefact(*rring))
     {
-        if (item_cursed(*lring))
+        if (lring->cursed())
             unwanted = you.equip[EQ_RIGHT_RING];
         else
             unwanted = you.equip[EQ_LEFT_RING];
@@ -3799,14 +3964,15 @@ bool puton_item(int item_slot)
         return (false);
     }
 
-    const bool lring = (you.slot_item(EQ_LEFT_RING)  != NULL);
-    const bool rring = (you.slot_item(EQ_RIGHT_RING) != NULL);
+    const bool lring = (you.slot_item(EQ_LEFT_RING, true)  != NULL);
+    const bool rring = (you.slot_item(EQ_RIGHT_RING, true) != NULL);
     const bool is_amulet = jewellery_is_amulet(item);
 
     if (!is_amulet)     // i.e. it's a ring
     {
-        const item_def* gloves = you.slot_item(EQ_GLOVES);
-        if (gloves && item_cursed(*gloves))
+        const item_def* gloves = you.slot_item(EQ_GLOVES, false);
+        // Cursed gloves cannot be removed.
+        if (gloves && gloves->cursed())
         {
             mpr("You can't take your gloves off to put on a ring!");
             return (false);
@@ -3815,7 +3981,7 @@ bool puton_item(int item_slot)
         if (lring && rring)
             return _swap_rings(item_slot);
     }
-    else if (item_def* amulet = you.slot_item(EQ_AMULET))
+    else if (item_def* amulet = you.slot_item(EQ_AMULET, true))
     {
         // Remove the previous one.
         if (!check_warning_inscriptions(*amulet, OPER_REMOVE)
@@ -3910,6 +4076,27 @@ bool puton_ring(int slot)
     return puton_item(item_slot);
 }
 
+void remove_amulet_of_faith(item_def &item)
+{
+    if (you.religion != GOD_NO_GOD
+        && you.religion != GOD_XOM)
+    {
+        simple_god_message(" seems less interested in you.");
+
+        const int piety_loss = div_rand_round(you.piety, 3);
+        // Piety penalty for removing the Amulet of Faith.
+        if (you.piety - piety_loss > 10)
+        {
+            mprf(MSGCH_GOD,
+                 "%s leaches power out of you as you remove it.",
+                 item.name(DESC_CAP_YOUR).c_str());
+            dprf("%s: piety leach: %d",
+                 item.name(DESC_PLAIN).c_str(), piety_loss);
+            lose_piety(piety_loss);
+        }
+    }
+}
+
 void jewellery_remove_effects(item_def &item, bool mesg)
 {
     // The ring/amulet must already be removed from you.equip at this point.
@@ -3983,6 +4170,10 @@ void jewellery_remove_effects(item_def &item, bool mesg)
         you.duration[DUR_GOURMAND] = 0;
         break;
 
+    case AMU_FAITH:
+        remove_amulet_of_faith(item);
+        break;
+
     case AMU_GUARDIAN_SPIRIT:
         if (you.species == SP_DEEP_DWARF)
             mpr("Your magic begins regenerating once more.");
@@ -4020,7 +4211,7 @@ bool remove_ring(int slot, bool announce)
     }
 
     if (you.equip[EQ_GLOVES] != -1
-        && item_cursed( you.inv[you.equip[EQ_GLOVES]] )
+        && you.inv[you.equip[EQ_GLOVES]] .cursed()
         && you.equip[EQ_AMULET] == -1)
     {
         mpr("You can't take your gloves off to remove any rings!");
@@ -4077,14 +4268,14 @@ bool remove_ring(int slot, bool announce)
     }
 
     if (!check_warning_inscriptions(you.inv[you.equip[hand_used]],
-                                         OPER_REMOVE))
+                                    OPER_REMOVE))
     {
         canned_msg(MSG_OK);
         return (false);
     }
 
     if (you.equip[EQ_GLOVES] != -1
-        && item_cursed( you.inv[you.equip[EQ_GLOVES]] )
+        && you.inv[you.equip[EQ_GLOVES]] .cursed()
         && (hand_used == EQ_LEFT_RING || hand_used == EQ_RIGHT_RING))
     {
         mpr("You can't take your gloves off to remove any rings!");
@@ -4097,7 +4288,7 @@ bool remove_ring(int slot, bool announce)
         return (false);
     }
 
-    if (item_cursed( you.inv[you.equip[hand_used]] ))
+    if (you.inv[you.equip[hand_used]] .cursed())
     {
         if (announce)
         {
@@ -4150,7 +4341,7 @@ static bool _dont_use_invis()
     }
     else if (get_contamination_level() > 0
              && !yesno("Invisibility will do you no good right now; "
-                       "use anyways?"))
+                       "use anyway?", false, 'n'))
     {
         return (true);
     }
@@ -4170,7 +4361,7 @@ void zap_wand(int slot)
     dist zap_wand;
     int item_slot;
 
-    // Unless the character knows the type of the wand, the targetting
+    // Unless the character knows the type of the wand, the targeting
     // system will default to enemies. -- [ds]
     targ_mode_type targ_mode = TARG_HOSTILE;
 
@@ -4262,8 +4453,13 @@ void zap_wand(int slot)
 
     int tracer_range = (alreadyknown && wand.sub_type != WAND_RANDOM_EFFECTS) ?
                         _wand_range(type_zapped) : _max_wand_range();
-    message_current_target();
-    direction(zap_wand, DIR_NONE, targ_mode, tracer_range);
+    const std::string zap_title =
+        "Zapping: " + get_menu_colour_prefix_tags(wand, DESC_INVENTORY);
+    direction_chooser_args args;
+    args.mode = targ_mode;
+    args.range = tracer_range;
+    args.top_prompt = zap_title;
+    direction(zap_wand, args);
 
     if (!zap_wand.isValid)
     {
@@ -4275,7 +4471,7 @@ void zap_wand(int slot)
     if (alreadyknown && zap_wand.target == you.pos())
     {
         if (wand.sub_type == WAND_TELEPORTATION
-            && scan_artefacts(ARTP_PREVENT_TELEPORTATION, false))
+            && item_blocks_teleport(false, false))
         {
             mpr("You cannot teleport right now.");
             return;
@@ -4298,15 +4494,19 @@ void zap_wand(int slot)
 
 
     if (you.confused())
-        zap_wand.target = you.pos() + coord_def(random2(13)-6, random2(13)-6);
+    {
+        zap_wand.target = you.pos() + coord_def(random_range(-6, 6),
+                                                random_range(-6, 6));
+    }
 
     if (wand.sub_type == WAND_RANDOM_EFFECTS)
         beam.effect_known = false;
 
-    beam.source = you.pos();
+    beam.source   = you.pos();
+    beam.attitude = ATT_FRIENDLY;
     beam.set_target(zap_wand);
 
-    bool aimed_at_self = (beam.target == you.pos());
+    const bool aimed_at_self = (beam.target == you.pos());
 
     // Check whether we may hit friends, use "safe" values for random effects
     // and unknown wands (highest possible range, and unresistable beam
@@ -4422,6 +4622,15 @@ void prompt_inscribe_item()
     inscribe_item(you.inv[item_slot], true);
 }
 
+static void _vampire_corpse_help()
+{
+    if (you.species != SP_VAMPIRE)
+        return;
+
+    if (check_blood_corpses_on_ground() || count_corpses_in_pack(true) > 0)
+        mpr("If it's blood you're after, try <w>e</w>.");
+}
+
 void drink(int slot)
 {
     if (you.is_undead == US_UNDEAD)
@@ -4441,6 +4650,7 @@ void drink(int slot)
     if (inv_count() == 0)
     {
         canned_msg(MSG_NOTHING_CARRIED);
+        _vampire_corpse_help();
         return;
     }
 
@@ -4453,6 +4663,7 @@ void drink(int slot)
     if (player_in_bat_form())
     {
        canned_msg(MSG_PRESENT_FORM);
+        _vampire_corpse_help();
        return;
     }
 
@@ -4463,14 +4674,20 @@ void drink(int slot)
                                   true, true, true, 0, -1, NULL,
                                   OPER_QUAFF);
         if (prompt_failed(slot))
+        {
+            _vampire_corpse_help();
             return;
+        }
     }
 
     item_def& potion = you.inv[slot];
 
     if (potion.base_type != OBJ_POTIONS)
     {
-        mpr("You can't drink that!");
+        if (you.species == SP_VAMPIRE && potion.base_type == OBJ_CORPSES)
+            eat_food(slot);
+        else
+            mpr("You can't drink that!");
         return;
     }
 
@@ -4555,14 +4772,14 @@ bool _drink_fountain()
     potion_type fountain_effect = POT_WATER;
     if (feat == DNGN_FOUNTAIN_BLUE)
     {
-        if (!yesno("Drink from the fountain?"))
+        if (!yesno("Drink from the fountain?", true, 'n'))
             return (false);
 
         mpr("You drink the pure, clear water.");
     }
     else if (feat == DNGN_FOUNTAIN_BLOOD)
     {
-        if (!yesno("Drink from the fountain of blood?"))
+        if (!yesno("Drink from the fountain of blood?", true, 'n'))
             return (false);
 
         mpr("You drink the blood.");
@@ -4570,7 +4787,7 @@ bool _drink_fountain()
     }
     else
     {
-        if (!yesno("Drink from the sparkling fountain?"))
+        if (!yesno("Drink from the sparkling fountain?", true, 'n'))
             return (false);
 
         mpr("You drink the sparkling water.");
@@ -4696,13 +4913,18 @@ static bool _vorpalise_weapon()
             mprf("%s's heaviness feels very stable.", itname.c_str());
         break;
 
+    case SPWPN_FLAME:
     case SPWPN_FLAMING:
         mprf("%s is engulfed in an explosion of flames!", itname.c_str());
         immolation(10, IMMOLATION_SPELL, you.pos(), true, &you);
         break;
 
+    case SPWPN_FROST:
     case SPWPN_FREEZING:
-        mprf("%s glows brilliantly blue for a moment.", itname.c_str());
+        if (get_weapon_brand(wpn) == SPWPN_FROST)
+            mprf("%s is covered with a thick layer of frost!", itname.c_str());
+        else
+            mprf("%s glows brilliantly blue for a moment.", itname.c_str());
         cast_refrigeration(60);
         break;
 
@@ -4766,7 +4988,7 @@ bool enchant_weapon(enchant_stat_type which_stat, bool quiet, item_def &wpn)
         return (false);
     }
 
-    const bool is_cursed = item_cursed(wpn);
+    const bool is_cursed = wpn.cursed();
 
     // Missiles only have one stat.
     if (wpn.base_type == OBJ_MISSILES)
@@ -4877,7 +5099,7 @@ bool enchant_armour(int &ac_change, bool quiet, item_def &arm)
         return (false);
     }
 
-    const bool is_cursed = item_cursed(arm);
+    const bool is_cursed = arm.cursed();
 
     // Turn hides into mails where applicable.
     // NOTE: It is assumed that armour which changes in this way does
@@ -5009,7 +5231,7 @@ static void handle_read_book(int item_slot)
 
         if (ltr < 'a' || ltr > 'h')     //jmf: was 'g', but 8=h
         {
-            mesclr(true);
+            mesclr();
             return;
         }
 
@@ -5017,7 +5239,7 @@ static void handle_read_book(int item_slot)
                                                      letter_to_index(ltr));
         if (spell == SPELL_NO_SPELL)
         {
-            mesclr(true);
+            mesclr();
             return;
         }
 
@@ -5344,12 +5566,13 @@ void read_scroll(int slot)
         // Doesn't destroy scrolls anymore, so no special check needed. (jpeg)
         immolation(10, IMMOLATION_SCROLL, you.pos(), alreadyknown, &you);
         bad_effect = true;
+        more();
         break;
 
     case SCR_CURSE_WEAPON:
         if (!you.weapon()
             || you.weapon()->base_type != OBJ_WEAPONS
-            || item_cursed(*you.weapon()))
+            || you.weapon()->cursed())
         {
             canned_msg(MSG_NOTHING_HAPPENS);
             id_the_scroll = false;
@@ -5377,7 +5600,7 @@ void read_scroll(int slot)
         {
             item_def& wpn = *you.weapon();
 
-            const bool is_cursed = item_cursed(wpn);
+            const bool is_cursed = wpn.cursed();
 
             if (wpn.base_type != OBJ_WEAPONS && wpn.base_type != OBJ_MISSILES
                 || !is_cursed
@@ -5483,9 +5706,9 @@ void read_scroll(int slot)
         // make sure there's something to curse first
         int count = 0;
         int affected = EQ_WEAPON;
-        for (int i = EQ_CLOAK; i <= EQ_BODY_ARMOUR; i++)
+        for (int i = EQ_MIN_ARMOUR; i <= EQ_MAX_ARMOUR; i++)
         {
-            if (you.equip[i] != -1 && !item_cursed(you.inv[you.equip[i]]))
+            if (you.equip[i] != -1 && !you.inv[you.equip[i]].cursed())
             {
                 count++;
                 if (one_chance_in(count))
@@ -5579,7 +5802,7 @@ void examine_object(void)
 
     describe_item( you.inv[item_slot], true );
     redraw_screen();
-    mesclr(true);
+    mesclr();
 }                               // end original_name()
 
 void use_artefact(unsigned char item_wield_2, bool *show_msgs)
@@ -5639,15 +5862,17 @@ void use_artefact(item_def &item, bool *show_msgs, bool unmeld)
         }
     }
 
-    if (proprt[ARTP_MAGICAL_POWER])
+    if (proprt[ARTP_PONDEROUS])
     {
-        you.redraw_magic_points = true;
-        if (!known[ARTP_MAGICAL_POWER])
-        {
-            mprf("You feel your mana capacity %s.",
-                 proprt[ARTP_MAGICAL_POWER] > 0? "increase" : "decrease");
-            artefact_wpn_learn_prop(item, ARTP_MAGICAL_POWER);
-        }
+        mpr("You feel rather ponderous.");
+        che_handle_change(CB_PONDEROUS, 1);
+    }
+
+    if (proprt[ARTP_MAGICAL_POWER] && !known[ARTP_MAGICAL_POWER])
+    {
+        mprf("You feel your mana capacity %s.",
+             proprt[ARTP_MAGICAL_POWER] > 0? "increase" : "decrease");
+        artefact_wpn_learn_prop(item, ARTP_MAGICAL_POWER);
     }
 
     // Modify ability scores.
@@ -5689,7 +5914,7 @@ void use_artefact(item_def &item, bool *show_msgs, bool unmeld)
         artefact_wpn_learn_prop(item, ARTP_BERSERK);
     }
 
-    if (!unmeld && !item_cursed(item) && proprt[ARTP_CURSED] > 0
+    if (!unmeld && !item.cursed() && proprt[ARTP_CURSED] > 0
          && one_chance_in(proprt[ARTP_CURSED]))
     {
         do_curse_item( item, false );
@@ -5698,16 +5923,6 @@ void use_artefact(item_def &item, bool *show_msgs, bool unmeld)
 
     if (proprt[ARTP_NOISES])
         you.attribute[ATTR_NOISES] = 1;
-
-    if (proprt[ARTP_SPIRIT_SHIELD])
-    {
-        set_mp(0, false);
-        mpr("You feel the spirits watch over you.");
-        if (you.species == SP_DEEP_DWARF)
-            mpr("Now linked to your health, your magic stops regenerating.");
-
-        artefact_wpn_learn_prop(item, ARTP_SPIRIT_SHIELD);
-    }
 
     if (!alreadyknown && Options.autoinscribe_artefacts)
         add_autoinscription(item, artefact_auto_inscription(item));
@@ -5718,15 +5933,63 @@ void use_artefact(item_def &item, bool *show_msgs, bool unmeld)
         // there is a dangerous monster nearby...
         xom_is_stimulated(128);
     }
+
+    // Let's try this here instead of up there.
+    if (proprt[ARTP_MAGICAL_POWER])
+        calc_mp();
 #undef unknown_proprt
 }
 
 bool wearing_slot(int inv_slot)
 {
-    for (int i = EQ_CLOAK; i <= EQ_AMULET; ++i)
+    for (int i = EQ_MIN_ARMOUR; i <= EQ_MAX_WORN; ++i)
         if (inv_slot == you.equip[i])
             return (true);
 
+    return (false);
+}
+
+bool item_blocks_teleport(bool calc_unid, bool permit_id)
+{
+    return (scan_artefacts(ARTP_PREVENT_TELEPORTATION, calc_unid)
+            || stasis_blocks_effect(calc_unid, permit_id, NULL));
+}
+
+bool stasis_blocks_effect(bool calc_unid,
+                          bool identify,
+                          const char *msg, int noise,
+                          const char *silenced_msg)
+{
+    if (wearing_amulet(AMU_STASIS, calc_unid))
+    {
+        item_def *amulet = you.slot_item(EQ_AMULET, false);
+
+        if (msg)
+        {
+            const std::string name(amulet? amulet->name(DESC_CAP_YOUR) :
+                                   "Something");
+            const std::string message =
+                make_stringf(msg, name.c_str());
+
+            if (noise)
+            {
+                if (!noisy(noise, you.pos(), message.c_str())
+                    && silenced_msg)
+                {
+                    mprf(silenced_msg, name.c_str());
+                }
+            }
+            else
+            {
+                mpr(message.c_str());
+            }
+        }
+
+        // In all cases, the amulet auto-ids if requested.
+        if (amulet && identify)
+            set_ident_type(*amulet, ID_KNOWN_TYPE);
+        return (true);
+    }
     return (false);
 }
 
@@ -5879,7 +6142,8 @@ void tile_item_use(int idx)
 
         case OBJ_BOOKS:
             if (item.sub_type == BOOK_MANUAL
-                || item.sub_type == BOOK_DESTRUCTION)
+                || item.sub_type == BOOK_DESTRUCTION
+                || you.skills[SK_SPELLCASTING] == 0)
             {
                 if (check_warning_inscriptions(item, OPER_READ))
                     handle_read_book(idx);

@@ -34,6 +34,7 @@ void cluaopen_globals(lua_State *ls);
 #define MAPMARK_METATABLE "dgn.mapmark"
 #define MAPGRD_METATABLE "dgn.mapgrd"
 #define MAPGRD_COL_METATABLE "dgn.mapgrdcol"
+#define ITEM_METATABLE "item.itemaccess"
 
 /*
  * Libraries and loaders for dlua, accessed from init_dungeon_lua().
@@ -51,6 +52,7 @@ extern const struct luaL_reg dgn_mons_dlib[];
 extern const struct luaL_reg dgn_subvault_dlib[];
 extern const struct luaL_reg dgn_tile_dlib[];
 extern const struct luaL_reg feat_dlib[];
+extern const struct luaL_reg spells_dlib[];
 extern const struct luaL_reg los_dlib[];
 extern const struct luaL_reg mapmarker_dlib[];
 
@@ -67,7 +69,7 @@ void dluaopen_file(lua_State *ls);
 void dluaopen_mapgrd(lua_State *ls);
 void dluaopen_monsters(lua_State *ls);
 void dluaopen_you(lua_State *ls);
-
+void dluaopen_dgn(lua_State *ls);
 
 /*
  * Some shared helper functions.
@@ -75,5 +77,10 @@ void dluaopen_you(lua_State *ls);
 class map_lines;
 int dgn_map_add_transform(lua_State *ls,
           std::string (map_lines::*add)(const std::string &s));
+
+void clua_push_item(lua_State *ls, item_def *item);
+
+class monster_info;
+void lua_push_moninf(lua_State *ls, monster_info *mi);
 
 #endif

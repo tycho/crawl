@@ -90,8 +90,8 @@ Items
  d-k - item array item. See section below on ITEM: arrays for more info.
 
 NOTE: The P (place a rune here with 1/3 chance) and R (place a honeycomb with
-      2/3 chance or else a royal jelly) symbols have been deprecated. You can
-      (and should) produce the desired behaviour using
+      2/3 chance or else a royal jelly) symbols have been removed. You can
+      produce the desired behaviour using
       SUBST: P = O..
       KITEM: R = w:2 honeycomb / w:1 royal jelly
 
@@ -100,10 +100,13 @@ Monsters
  0 - normal monster
  9 - +5 depth monster
  8 - (+2) * 2 depth monster (aargh!). Can get golden dragons and titans
-     this way.
+     this way.[*]
  1-7 - monster array monster. See section below on MONS: arrays for more
      information
 
+[*]  (using '0', '9', and '8' in portal vaults will use monsters from the
+      level that the portal was entered from, unless a random monster list
+      has been set)
 
 H.   Header information
 =======================
@@ -277,7 +280,7 @@ PLACE:    Used to specify certain special levels. Existing special levels
 
           PLACE can be used with random vaults and minivaults for testing them.
 
-TAGS:     Tags go an a TAGS: line and are space-separated. You can have several
+TAGS:     Tags go on a TAGS: line and are space-separated. You can have several
           TAGS: lines, or use \ for very long ones. Valid tags are:
           * "allow_dup": Vaults are normally used only once per game. If you
              have a vault that can be used more than once, use allow_dup to tell
@@ -487,8 +490,38 @@ ITEM:     (list of items, separated by comma)
           Limitations: You can't specify specific pluses or number of charges.
           You also can't lay down corpses, skeletons, or chunks.
 
-          You can place multiple items on the same square by using the KITEM
-          directive. See that section for more information.
+          Randart spell books
+          -------------------
+
+          You can specify random artefact spell books using:
+
+          * "any fixed theme book" will generate a book with a fixed theme
+            (set of spell schools).
+          * "any fixed level book" will generate a book with a fixed set of
+            spells around the same level.
+
+          You can further specify artefact spell books using "randbook" and any
+          combination of the following tags:
+
+          * "disc:spell_school", the first spell school that should be included
+            in the book. For example, "disc:earth" or "disc:ice".
+          * "disc2:spell_school" an optional second spell school that can be
+            included in the book. Note: specifying two spell schools doesn't
+            mean that they will both definitely be included, just that they
+            might be.
+          * "numspells:number" a number of spells to include in the book. Will
+            not always be followed.
+          * "slevels:max_levels" the total, combined level of spells to include
+            in the book. "slevels:6" will use three level two spells, two level
+            three spells, a level two and a level four spell, and so on.
+          * "spell:spell" a spell to include in the book. All of "_" will be
+            replaced with " " and will be parsed as such.
+          * "owner:name" will be used to generate the title of the book if
+            provided. For example, "owner:Roxanne" may create "Roxanne's
+            Treatise on Mountains".
+
+          NOTE: You can place multiple items on the same square by using the
+          KITEM directive. See that section for more information.
 
 MONS:     (list of monsters)
           These are used to help place specific monsters at specific places
@@ -523,6 +556,23 @@ MONS:     (list of monsters)
 
           The colour "any" can be given, in which case a random colour
           will be chosen when the monster is placed.
+
+          You can override the displayed monster tile using the "tile:"
+          specifier as follows:
+              MONS: rat tile:mons_giant_bat
+
+          In tiles version, this would create a monster that uses the
+          'mons_giant_bat' tile, but is otherwise identical to a rat.
+          Obviously, this substition of one monster onto another should
+          never be used, but it can be useful for customised vault monsters
+          if an alternate tile exists. In ASCII mode, this will do nothing.
+
+      You can set the monster's faction by specifying "att:" one of:
+          * att:hostile -- the default
+          * att:friendly -- tame, will follow you
+          * att:neutral -- hostile to both you and att:hostile monsters
+          * att:good_neutral -- hostile to att:hostile
+          * att:fellow_slime -- tame, won't follow you
 
           Note that 8, 9, 0 also place monsters (see the table).
 
@@ -580,6 +630,9 @@ MONS:     (list of monsters)
           spec to choose the same alternative.  If a monster is given
           a random launcher, there is no way to force the ammo type to
           match the launcher type.
+
+          Overriding Monster Names:
+          -------------------------
 
           Individual monsters can be given names as follows:
               MONS: kobold name:Durwent
@@ -647,6 +700,9 @@ MONS:     (list of monsters)
 
           Monster names should be used very sparingly.
 
+          Overriding Monster Stats:
+          -------------------------
+
           Further monster customisation can be made by using "hd" and "hp".
           These two tags allow you to completely overwrite the original hit dice
           and hit points of a monster:
@@ -661,6 +717,23 @@ MONS:     (list of monsters)
 
           Creates a kobold with 20 hit points. This is also useful for monsters
           (such as statues) which come with non-randomised HP values.
+
+          Monsters can be marked as summoned by using "dur" and "sum" tags. The
+          "dur" tag accepts an integer between 1 and 6 inclusive. The "sum" tag
+          accepts the name of a spell (parsed as per the spells tag, described
+          below) or any of "clone" (Rakshasa), "animate" (from animate dead),
+          "chaos" (made from pure chaos), "miscast" (summoned from by spell
+          miscast effect), "zot" (summoned by a Zot trap), "wrath" (summoned by
+          a god in an act of retribution), "aid" (summoned by a god in order to
+          give aid).
+
+          Of the spells, "shadow_creatures" has the most significant effect, in
+          that monsters will dissipate into the shadows rather than disappear in
+          a puff of smoke. Using non-summoning spells will also have no effect.
+
+          Tagging a monster with "seen" will override the system and force that
+          player to be marked as already viewed; this means that it won't
+          generate messages such as "XYZ comes into view".
 
           Overriding Monster Spells:
           --------------------------
@@ -716,6 +789,32 @@ MONS:     (list of monsters)
           source/dat/database/monspell.txt.
 
 
+FHEIGHT:  xyz = 40
+
+          FHEIGHT sets the height in the level's heightmap for any
+          specified features. If the level does not already have a heightmap,
+          a heightmap will be attached to it when the dungeon builder
+          sees FHEIGHT used.
+
+          Heightmaps are currently only useful in the Shoals, as a means of
+          influencing how the tide interacts with your vault. The Shoals
+          heightmap uses these heights when the tide's height is 0, i.e.
+          at neutral tide:
+               >= 0     Floor
+               >= -14   Shallow water
+               <= -15   Deep water
+
+          In general, you do not need to use explicit FHEIGHT lines in
+          your vaults. The Shoals dungeon builder will automatically
+          assign suitable heights to features in vaults. FHEIGHT is
+          primarily useful to override the default heights of
+          features. If you use FHEIGHT to set nonstandard heights for
+          features such as deep water (if you want deep water at
+          heights > 0, for instance), you must also use KPROP to set
+          the no_tide flag on that square, or the Shoals level builder
+          will undo your height changes.
+
+
 COLOUR:   . = green / blue:5 / red / none
           COLOUR: allows you to attach explicit colours to any feature.
           Explicit colours will override the default colour for that
@@ -735,9 +834,9 @@ COLOUR:   . = green / blue:5 / red / none
           the COLOUR will transfer to the resulting transformed glyph.
 
           There are two types of colour available: base and "elemental".
-          Available base colours are as follows: blue, green, cyan, 
-          red, magenta, brown, lightgrey, darkgrey, lightblue, lightgreen, 
-          lightcyan, lightred, lightmagenta, yellow and white. 
+          Available base colours are as follows: blue, green, cyan,
+          red, magenta, brown, lightgrey, darkgrey, lightblue, lightgreen,
+          lightcyan, lightred, lightmagenta, yellow and white.
 
           Elemental colours are: fire, ice, earth, electricity, air, poison,
           water, magic, mutagenic, warp, enchant, heal, holy, dark, death,
@@ -747,6 +846,9 @@ COLOUR:   . = green / blue:5 / red / none
 
           Even more so than base colours, elemental colours should be used
           very, very, very sparingly.
+
+          Colours apply automatically to floor and rock wall tiles, although
+          not all branches have coloured variations for their tile set.
 
 FTILE:    . = floor_grass:20 / floor_dirt / none
           Similar to COLOUR, FTILE allows you to attach explicit floor
@@ -765,9 +867,31 @@ FTILE:    . = floor_grass:20 / floor_dirt / none
 
           Like COLOUR, this should be used sparingly.
 
+          If COLOUR is also specified and there is a coloured variation
+          of this tile, then it will be used.
+
 RTILE:    x = wall_hive:15 / wall_lair / none
           Identical to FTILE, but for rock walls.  Not useful for anything
           but the rock wall feature.
+
+TILE:     x = wall_flesh
+          Identical to FTILE and RTILE in syntax, but closer to COLOUR in
+          functionality. Instead of replacing the floor or relevant rock tiles,
+          this can be used to replace the tile used for any specific feature.
+
+          This can be used in combination with FTILE and RTILE to change the
+          appearance of features. It can only be used with previously specified
+          tiles, however.
+
+          Like COLOUR and FTILE, this should be used sparingly and to good
+          effect.
+
+          If COLOUR is also specified and there is a coloured variation
+          of this tile, then it will be used.
+
+          To override doors, use the specific tile set in combination with the
+          "no_random" specifier. Example:
+              + = no_random dngn_fleshy_orifice
 
 SHUFFLE:  def, 12/3?
           This allows you to randomly permute glyphs on the map. There are
@@ -911,6 +1035,8 @@ KMASK:    Z = no_monster_gen
              entry vaults.
           * "no_pool_fixup": prevents a water square next to land from being
              randomly converted from deep water (the default) to shallow.
+          * "no_wall_fixup": prevents (rock) walls from being converted to
+             the level's default wall type, such as in Vaults.
           * "no_secret_doors": prevents a door from randomly being turned
              into a secret door.
 
@@ -941,10 +1067,7 @@ KPROP:    x = bloody
           Available properties are:
 
           * "bloody": Causes features to appear as though splattered with
-             blood. This should be used very, very sparingly!   
-          * "force_exclude": Forces a single grid square or feature to be an 
-             exclusion in auto-explore and automatic travel. Will be coloured
-             red in the overmap.
+             blood. This should be used very, very sparingly!
           * "no_cloud_gen": Prevents clouds from being generated over this
              feature (usually lava).  Does not stop fog generators or clouds
              entering from nearby squares.
@@ -955,6 +1078,7 @@ KPROP:    x = bloody
              you back!". Should be used sparingly.
           * "no_tele_into": Combines the above no_rtele_into and no_ctele_into
              in one flag, and disallows both random and controlled teleports.
+          * "no_tide": Shoals tides will not affect this square.
 
 KITEM:    ? = potion of healing / potion of restore abilities
           KITEM: places the specified item at all occurrences of the

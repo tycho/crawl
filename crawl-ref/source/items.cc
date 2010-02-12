@@ -32,6 +32,7 @@
 #include "effects.h"
 #include "env.h"
 #include "food.h"
+#include "godprayer.h"
 #include "hiscores.h"
 #include "invent.h"
 #include "it_use2.h"
@@ -41,9 +42,8 @@
 #include "libutil.h"
 #include "message.h"
 #include "misc.h"
-#include "mon-place.h"
-#include "mon-stuff.h"
 #include "mon-util.h"
+#include "mon-stuff.h"
 #include "mutation.h"
 #include "notes.h"
 #include "options.h"
@@ -64,6 +64,7 @@
 #include "terrain.h"
 #include "travel.h"
 #include "tutorial.h"
+#include "viewchar.h"
 #include "viewgeom.h"
 #include "xom.h"
 
@@ -635,10 +636,6 @@ int item_name_specialness(const item_def& item)
         return ( branded ? 1 : 0 );
     }
 
-    // Missiles don't get name descriptors.
-    if (item.base_type == OBJ_MISSILES)
-        return 0;
-
     std::string itname = item.name(DESC_PLAIN, false, false, false);
     lowercase(itname);
 
@@ -671,7 +668,7 @@ void item_check(bool verbose)
 
     std::vector<const item_def*> items;
 
-    item_list_on_square( items, igrd(you.pos()), true );
+    item_list_on_square( items, you.visible_igrd(you.pos()), true );
 
     if (items.empty())
     {
@@ -692,7 +689,7 @@ void item_check(bool verbose)
 
     if (static_cast<int>(items.size()) >= Options.item_stack_summary_minimum)
     {
-        std::vector<unsigned short int> item_chars;
+        std::vector<unsigned int> item_chars;
         for (unsigned int i = 0; i < items.size() && i < 50; ++i)
         {
             glyph g = get_item_glyph(items[i]);
@@ -718,22 +715,21 @@ void item_check(bool verbose)
                 cur_state = specialness;
             }
 
-            out_string += static_cast<unsigned char>(item_chars[i] / 0x100);
+            out_string += stringize_glyph(item_chars[i] / 0x100);
             if (i + 1 < item_chars.size()
                 && (item_chars[i] / 0x100) != (item_chars[i+1] / 0x100))
             {
                 out_string += ' ';
             }
         }
-        formatted_mpr(formatted_string::parse_string(out_string),
-                      MSGCH_FLOOR_ITEMS);
+        mprnojoin(out_string, MSGCH_FLOOR_ITEMS);
         done_init_line = true;
     }
 
-    if (verbose || static_cast<int>(items.size() + 1) < crawl_view.msgsz.y)
+    if (verbose || items.size() <= msgwin_lines() - 1)
     {
         if (!done_init_line)
-            strm << "Things that are here:" << std::endl;
+            mprnojoin("Things that are here:", MSGCH_FLOOR_ITEMS);
         for (unsigned int i = 0; i < items.size(); ++i)
         {
             item_def it(*items[i]);
@@ -1171,7 +1167,7 @@ void pickup()
         return;
     }
 
-    int o = igrd(you.pos());
+    int o = you.visible_igrd(you.pos());
     const int num_nonsquelched = _count_nonsquelched_items(o);
 
     if (o == NON_ITEM)
@@ -1266,7 +1262,7 @@ bool is_stackable_item( const item_def &item )
         return (false);
 
     if (item.base_type == OBJ_MISSILES
-        || (item.base_type == OBJ_FOOD && item.sub_type != FOOD_CHUNK)
+        || item.base_type == OBJ_FOOD
         || item.base_type == OBJ_SCROLLS
         || item.base_type == OBJ_POTIONS
         || item.base_type == OBJ_UNKNOWN_II
@@ -1303,14 +1299,26 @@ bool items_similar(const item_def &item1, const item_def &item2, bool ignore_ide
     // These classes also require pluses and special.
     if (item1.base_type == OBJ_WEAPONS         // only throwing weapons
         || item1.base_type == OBJ_MISSILES
-        || item1.base_type == OBJ_MISCELLANY)  // only runes
+        || item1.base_type == OBJ_MISCELLANY   // only runes
+        || item1.base_type == OBJ_FOOD)        // chunks
     {
         if (item1.plus != item2.plus
             || item1.plus2 != item2.plus2
-            || item1.special != item2.special)
+            || ((item1.base_type == OBJ_FOOD && item2.sub_type == FOOD_CHUNK) ?
+                // Reject chunk merge if chunk ages differ by more than 5
+                abs(item1.special - item2.special) > 5
+                // Non-chunk item specials must match exactly.
+                : item1.special != item2.special))
         {
             return (false);
         }
+    }
+
+    // Missiles need to be of the same brand, not just plusses.
+    if (item1.base_type == OBJ_MISSILES
+        && get_ammo_brand(item1) != get_ammo_brand(item2))
+    {
+        return (false);
     }
 
     // Check the ID flags.
@@ -1461,6 +1469,7 @@ int find_free_slot(const item_def &i)
 
 static void _got_item(item_def& item, int quant)
 {
+    seen_item(item);
     shopping_list.cull_identical_items(item);
 
     if (!is_rune(item))
@@ -1719,7 +1728,10 @@ void mark_items_non_pickup_at(const coord_def &pos)
 //
 // Done this way in the hopes that it will be obvious from
 // calling code that "obj" is possibly modified.
-bool move_item_to_grid( int *const obj, const coord_def& p )
+//
+// Returns false on error or level full - cases where you
+// keep the item.
+bool move_item_to_grid( int *const obj, const coord_def& p, bool silent )
 {
     ASSERT(in_bounds(p));
 
@@ -1729,6 +1741,15 @@ bool move_item_to_grid( int *const obj, const coord_def& p )
         return (false);
 
     item_def& item(mitm[ob]);
+
+    if (feat_destroys_item(grd(p), mitm[ob], !silenced(p) && !silent))
+    {
+        item_was_destroyed(item, NON_MONSTER);
+        destroy_item(ob);
+        ob = NON_ITEM;
+
+        return (true);
+    }
 
     // If it's a stackable type...
     if (is_stackable_item( item ))
@@ -1761,7 +1782,7 @@ bool move_item_to_grid( int *const obj, const coord_def& p )
         while (item.quantity > 1)
         {
             // If we can't copy the items out, we lose the surplus.
-            if (copy_item_to_grid(item, p, 1, false))
+            if (copy_item_to_grid(item, p, 1, false, true))
                 --item.quantity;
             else
                 item.quantity = 1;
@@ -1809,14 +1830,21 @@ void move_item_stack_to_grid( const coord_def& from, const coord_def& to )
 }
 
 
-// Returns quantity dropped.
+// Returns false iff no items could be dropped.
 bool copy_item_to_grid( const item_def &item, const coord_def& p,
-                        int quant_drop, bool mark_dropped )
+                        int quant_drop, bool mark_dropped, bool silent )
 {
     ASSERT(in_bounds(p));
 
     if (quant_drop == 0)
         return (false);
+
+    if (feat_destroys_item(grd(p), item, !silenced(p) && !silent))
+    {
+        item_was_destroyed(item, NON_MONSTER);
+
+        return (true);
+    }
 
     // default quant_drop == -1 => drop all
     if (quant_drop < 0)
@@ -1864,7 +1892,7 @@ bool copy_item_to_grid( const item_def &item, const coord_def& p,
         origin_set_unknown(new_item);
     }
 
-    move_item_to_grid( &new_item_idx, p );
+    move_item_to_grid( &new_item_idx, p, true );
     if (is_blood_potion(item)
         && item.quantity != quant_drop) // partial drop only
     {
@@ -1898,6 +1926,36 @@ bool move_top_item( const coord_def &pos, const coord_def &dest )
     return (true);
 }
 
+const item_def* top_item_at(const coord_def& where, bool allow_mimic_item)
+{
+    if (allow_mimic_item)
+    {
+        const monsters* mon = monster_at(where);
+        if (mon && mons_is_unknown_mimic(mon))
+            return &get_mimic_item(mon);
+    }
+
+    const int link = you.visible_igrd(where);
+    return (link == NON_ITEM) ? NULL : &mitm[link];
+}
+
+bool multiple_items_at(const coord_def& where, bool allow_mimic_item)
+{
+    int found_count = 0;
+
+    if (allow_mimic_item)
+    {
+        const monsters* mon = monster_at(where);
+        if (mon && mons_is_unknown_mimic(mon))
+            ++found_count;
+    }
+
+    for (stack_iterator si(where); si && found_count < 2; ++si)
+        ++found_count;
+
+    return (found_count > 1);
+}
+
 bool drop_item( int item_dropped, int quant_drop, bool try_offer )
 {
     if (quant_drop < 0 || quant_drop > you.inv[item_dropped].quantity)
@@ -1921,13 +1979,13 @@ bool drop_item( int item_dropped, int quant_drop, bool try_offer )
 
     if (item_dropped == you.equip[EQ_WEAPON]
         && you.inv[item_dropped].base_type == OBJ_WEAPONS
-        && item_cursed( you.inv[item_dropped] ))
+        && you.inv[item_dropped] .cursed())
     {
         mpr("That object is stuck to you!");
         return (false);
     }
 
-    for (int i = EQ_CLOAK; i <= EQ_BODY_ARMOUR; i++)
+    for (int i = EQ_MIN_ARMOUR; i <= EQ_MAX_ARMOUR; i++)
     {
         if (item_dropped == you.equip[i] && you.equip[i] != -1)
         {
@@ -1966,9 +2024,8 @@ bool drop_item( int item_dropped, int quant_drop, bool try_offer )
 
     const dungeon_feature_type my_grid = grd(you.pos());
 
-    if (!feat_destroys_items(my_grid)
-        && !copy_item_to_grid( you.inv[item_dropped],
-                               you.pos(), quant_drop, true ))
+    if (!copy_item_to_grid( you.inv[item_dropped],
+                            you.pos(), quant_drop, true, true ))
     {
         mpr("Too many items on this level, not dropping the item.");
         return (false);
@@ -1977,13 +2034,15 @@ bool drop_item( int item_dropped, int quant_drop, bool try_offer )
     mprf("You drop %s.",
          quant_name(you.inv[item_dropped], quant_drop, DESC_NOCAP_A).c_str());
 
-    if (feat_destroys_items(my_grid))
-    {
-        if (!silenced(you.pos()))
-            mprf(MSGCH_SOUND, feat_item_destruction_message(my_grid));
+    bool quiet = silenced(you.pos());
 
-        item_was_destroyed(you.inv[item_dropped], NON_MONSTER);
-    }
+    // If you drop an item in as a merfolk, it is below the water line and
+    // makes no noise falling.
+    if (you.swimming())
+        quiet = true;
+
+    if (feat_destroys_item(my_grid, you.inv[item_dropped], !quiet))
+        ;
     else if (strstr(you.inv[item_dropped].inscription.c_str(), "=s") != 0)
         StashTrack.add_stash();
 
@@ -2010,7 +2069,6 @@ bool drop_item( int item_dropped, int quant_drop, bool try_offer )
 
 static std::string _drop_menu_invstatus(const Menu *menu)
 {
-    char buf[100];
     const int cap = carrying_capacity(BS_UNENCUMBERED);
 
     std::string s_newweight;
@@ -2024,15 +2082,13 @@ static std::string _drop_menu_invstatus(const Menu *menu)
             newweight -= item_mass(*item) * se[i]->selected_qty;
         }
 
-        snprintf(buf, sizeof buf, ">%.0f", newweight * BURDEN_TO_AUM);
-        s_newweight = buf;
+        s_newweight = make_stringf(">%.0f", newweight * BURDEN_TO_AUM);
     }
 
-    snprintf(buf, sizeof buf, "(Inv: %.0f%s/%.0f aum)",
+    return (make_stringf("(Inv: %.0f%s/%.0f aum)",
              you.burden * BURDEN_TO_AUM,
              s_newweight.c_str(),
-             cap * BURDEN_TO_AUM);
-    return (buf);
+             cap * BURDEN_TO_AUM));
 }
 
 static std::string _drop_menu_title(const Menu *menu, const std::string &oldt)
@@ -2081,7 +2137,6 @@ mon_inv_type get_mon_equip_slot(const monsters* mon, const item_def &item)
 
 static std::string _drop_selitem_text( const std::vector<MenuEntry*> *s )
 {
-    char buf[130];
     bool extraturns = false;
 
     if (s->empty())
@@ -2098,11 +2153,10 @@ static std::string _drop_selitem_text( const std::vector<MenuEntry*> *s )
         }
     }
 
-    snprintf( buf, sizeof buf, " (%lu%s turn%s)",
+    return (make_stringf( " (%lu%s turn%s)",
                 (unsigned long) (s->size()),
                 extraturns? "+" : "",
-                s->size() > 1? "s" : "" );
-    return buf;
+                s->size() > 1? "s" : "" ));
 }
 
 std::vector<SelItem> items_for_multidrop;
@@ -2292,11 +2346,23 @@ static bool _is_option_autopickup(const item_def &item, std::string &iname)
             return Options.force_autopickup[i].second;
 
 #ifdef CLUA_BINDINGS
-    if (clua.callbooleanfn(false, "ch_force_autopickup", "us",
-                           &item, iname.c_str()))
-    {
+    bool res = clua.callbooleanfn(false, "ch_force_autopickup", "is",
+                                        &item, iname.c_str());
+    if (!clua.error.empty())
+        mprf(MSGCH_ERROR, "ch_force_autopickup failed: %s",
+             clua.error.c_str());
+
+    if (res)
         return (true);
-    }
+
+    res = clua.callbooleanfn(false, "ch_deny_autopickup", "is",
+                             &item, iname.c_str());
+    if (!clua.error.empty())
+        mprf(MSGCH_ERROR, "ch_deny_autopickup failed: %s",
+             clua.error.c_str());
+
+    if (res)
+        return (false);
 #endif
 
     return (Options.autopickups & (1L << item.base_type));
@@ -2313,9 +2379,8 @@ bool item_needs_autopickup(const item_def &item)
     if ((item.flags & ISFLAG_THROWN) && Options.pickup_thrown)
         return (true);
 
-    if ((item.flags & ISFLAG_DROPPED) && !Options.pickup_dropped) {
+    if ((item.flags & ISFLAG_DROPPED) && !Options.pickup_dropped)
         return (false);
-    }
 
     std::string itemname;
     return _is_option_autopickup(item, itemname);
@@ -2564,7 +2629,7 @@ static void _do_autopickup()
         return;
     }
 
-    int o = igrd(you.pos());
+    int o = you.visible_igrd(you.pos());
 
     std::string pickup_warning;
     while (o != NON_ITEM)
@@ -2827,7 +2892,7 @@ int item_def::book_number() const
 
 bool item_def::cursed() const
 {
-    return (item_cursed(*this));
+    return (flags & ISFLAG_CURSED);
 }
 
 bool item_def::launched_by(const item_def &launcher) const
@@ -2923,6 +2988,48 @@ bool item_def::held_by_monster() const
 bool item_def::is_valid() const
 {
     return (base_type != OBJ_UNASSIGNED && quantity > 0);
+}
+
+// The Orb of Zot and unique runes are considered critical.
+bool item_def::is_critical() const
+{
+    if (!is_valid())
+        return (false);
+
+    if (base_type == OBJ_ORBS)
+        return (true);
+
+    return (base_type == OBJ_MISCELLANY
+            && sub_type == MISC_RUNE_OF_ZOT
+            && plus != RUNE_DEMONIC
+            && plus != RUNE_ABYSSAL);
+}
+
+// Is item something that no one would usually bother enchanting?
+bool item_def::is_mundane() const
+{
+    switch (base_type)
+    {
+    case OBJ_WEAPONS:
+        if (sub_type == WPN_CLUB
+            || sub_type == WPN_GIANT_CLUB
+            || sub_type == WPN_GIANT_SPIKED_CLUB
+            || sub_type == WPN_KNIFE)
+        {
+            return (true);
+        }
+        break;
+
+    case OBJ_ARMOUR:
+        if (sub_type == ARM_ANIMAL_SKIN)
+            return (true);
+        break;
+
+    default:
+        break;
+    }
+
+    return (false);
 }
 
 static void _rune_from_specs(const char* _specs, item_def &item)
@@ -3333,8 +3440,7 @@ bool get_item_by_name(item_def *item, char* specs,
     case OBJ_ARMOUR:
     {
         char buf[80];
-        mpr("What ego type? ", MSGCH_PROMPT);
-        get_input_line( buf, sizeof( buf ) );
+        msgwin_get_line_autohist("What ego type? ", buf, sizeof(buf));
 
         if (buf[0] != '\0')
         {

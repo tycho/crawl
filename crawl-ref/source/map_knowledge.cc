@@ -3,6 +3,7 @@
 #include "map_knowledge.h"
 
 #include "coordit.h"
+#include "dgn-overview.h"
 #include "dgnevent.h"
 #include "directn.h"
 #include "env.h"
@@ -10,7 +11,7 @@
 #include "mon-util.h"
 #include "notes.h"
 #include "options.h"
-#include "overmap.h"
+#include "show.h"
 #include "showsymb.h"
 #include "stuff.h"
 #include "terrain.h"
@@ -25,11 +26,12 @@
 #define MAP_DETECTED_ITEM       0x10
 #define MAP_GRID_KNOWN          0xFF
 
-unsigned map_cell::glyph() const
+unsigned map_cell::glyph(bool clean_map) const
 {
     if (!object)
         return (' ');
-    if (object.cls < SH_MONSTER)
+    if ((clean_map && object.is_cleanable_monster())
+         || object.cls < SH_MONSTER)
     {
         const feature_def &fdef = get_feature_def(object);
         return ((flags & MAP_SEEN_FLAG) ? fdef.symbol : fdef.magic_symbol);
@@ -60,7 +62,7 @@ bool map_cell::seen() const
 
 unsigned get_map_knowledge_char(int x, int y)
 {
-    return env.map_knowledge[x][y].glyph();
+    return env.map_knowledge[x][y].glyph(Options.clean_map);
 }
 
 show_type get_map_knowledge_obj(int x, int y)
@@ -205,7 +207,16 @@ void clear_map(bool clear_detected_items, bool clear_detected_monsters)
             continue;
 #endif
 
-        set_map_knowledge_obj(p, show_type(env.map_knowledge(p).feat()));
+        show_type plain = env.map_knowledge(p).object;
+
+        // If it's an immobile monster or a feature, don't erase.
+        if ((plain.cls != SH_MONSTER || plain.is_cleanable_monster())
+            && plain.cls != SH_FEATURE)
+        {
+            plain = show_type(plain.feat);
+        }
+
+        set_map_knowledge_obj(p, to_knowledge(plain));
         set_map_knowledge_detected_mons(p, false);
         set_map_knowledge_detected_item(p, false);
 
@@ -268,7 +279,7 @@ void set_terrain_seen( int x, int y )
             // which is found.
             || ((feat == DNGN_ENTER_ABYSS || feat == DNGN_ENTER_PANDEMONIUM
                  || feat == DNGN_ENTER_HELL)
-                && overmap_knows_num_portals(feat) > 1)
+                && overview_knows_num_portals(feat) > 1)
             // There are at least three Zot entrances, and they're always
             // on D:27, so ignore them.
             || feat == DNGN_ENTER_ZOT;

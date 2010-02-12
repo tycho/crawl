@@ -20,6 +20,7 @@
 #include "ghost.h"
 #include "godabil.h"
 #include "it_use2.h"
+#include "libutil.h"
 #include "message.h"
 #include "misc.h"
 #include "mon-util.h"
@@ -31,7 +32,6 @@
 #include "mon-stuff.h"
 #include "mutation.h"
 #include "ouch.h"
-#include "quiver.h"
 #include "religion.h"
 #include "spells1.h"
 #include "spells2.h"
@@ -40,7 +40,7 @@
 #include "spl-mis.h"
 #include "stash.h"
 #include "state.h"
-#include "transfor.h"
+#include "transform.h"
 #include "shout.h"
 #include "xom.h"
 
@@ -91,8 +91,9 @@ static bool _okawaru_random_servant()
                                  : MONS_TITAN);            //  5%
 
     return (create_monster(
-                    mgen_data::hostile_at(mon_type, "the fury of Okawaru",
-                        true, 0, 0, you.pos(), 0, GOD_OKAWARU)) != -1);
+                mgen_data::hostile_at(mon_type, "the fury of Okawaru",
+                                      true, 6, MON_SUMM_WRATH, you.pos(), 0,
+                                      GOD_OKAWARU)) != -1);
 }
 
 static bool _tso_retribution()
@@ -336,7 +337,7 @@ static bool _cheibriados_retribution()
     case 2:
     case 3:
         mpr("You lose track of time.");
-        you.hibernate();
+        you.put_to_sleep(NULL, 50);
         break;
 
     case 4:
@@ -444,7 +445,7 @@ static bool _kikubaaqudgha_retribution()
     // Every act of retribution causes corpses in view to rise against
     // you.
     animate_dead(&you, 1 + random2(3), BEH_HOSTILE, MHITYOU, 0,
-                 "the malice of Kikubaaqudgha");
+                 "the malice of Kikubaaqudgha", GOD_KIKUBAAQUDGHA);
 
     return (true);
 }
@@ -1025,7 +1026,19 @@ static bool _fedhas_retribution()
         collect_radius_points(radius_points, you.pos(),
                               you.get_los_no_trans());
 
-        unsigned free_thresh = 30;
+        unsigned free_thresh = 24;
+
+        int max_idx = 3;
+        unsigned max_points = radius_points[max_idx].size();
+
+        for (unsigned i=max_idx + 1; i<radius_points.size(); i++)
+        {
+            if (radius_points[i].size() > max_points)
+            {
+                max_points = radius_points[i].size();
+                max_idx = i;
+            }
+        }
 
         mgen_data temp(MONS_OKLOB_PLANT,
                        BEH_HOSTILE, 0, 0, 0,
@@ -1036,10 +1049,9 @@ static bool _fedhas_retribution()
 
         temp.non_actor_summoner = "the enmity of Fedhas Madash";
 
-        // If we have a lot of space to work with (the circle with
-        // radius 6 is substantially unoccupied), we can do something
+        // If we have a lot of space to work with we can do something
         // flashy.
-        if (radius_points[5].size() > free_thresh)
+        if (radius_points[max_idx].size() > free_thresh)
         {
             int seen_count;
 
@@ -1053,7 +1065,7 @@ static bool _fedhas_retribution()
 
             temp.cls = MONS_OKLOB_PLANT;
 
-            place_ring(radius_points[5],
+            place_ring(radius_points[max_idx],
                        you.pos(),
                        temp,
                        random_range(3, 8), 1,
@@ -1249,7 +1261,8 @@ static void _tso_blasts_cleansing_flame(const char *message)
         simple_god_message(" blasts you with cleansing flame!",
                            GOD_SHINING_ONE);
 
-        cleansing_flame(20 + (you.experience_level * 7) / 3,
+        // damage is 2d(pow), *3/2 for undead and demonspawn
+        cleansing_flame(5 + (you.experience_level * 7) / 12,
                         CLEANSING_FLAME_TSO, you.pos());
     }
 }
@@ -1272,8 +1285,8 @@ static bool _tso_holy_revenge()
 
     // TSO watches evil god worshippers more closely.
     if (!is_good_god(you.religion)
-        && ((is_evil_god(you.religion) && one_chance_in(3))
-            || one_chance_in(4)))
+        && ((is_evil_god(you.religion) && one_chance_in(6))
+            || one_chance_in(8)))
     {
         const char *revenge;
 

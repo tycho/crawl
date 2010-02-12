@@ -57,6 +57,10 @@ enum band_type
     BAND_KHUFU,
     BAND_GOLDEN_EYE,
     BAND_PIKEL,
+    BAND_MERFOLK_AQUAMANCER,
+    BAND_MERFOLK_IMPALER,
+    BAND_MERFOLK_JAVELINEER,
+    BAND_ALLIGATOR,
     NUM_BANDS                   // always last
 };
 
@@ -99,4 +103,3 @@ enum mgen_flag_type
 };
 
 #endif
-

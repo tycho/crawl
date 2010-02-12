@@ -8,8 +8,6 @@
 #ifndef MONSTUFF_H
 #define MONSTUFF_H
 
-#include "mon-util.h"
-
 #define ORIG_MONSTER_KEY "orig_monster_key"
 
 enum mon_dam_level_type
@@ -58,10 +56,9 @@ public:
 
 #define MONST_INTERESTING(x) (x->flags & MF_INTERESTING)
 
-// for definition of type monsters {dlb}
-#include "externs.h"
 
-void get_mimic_item( const monsters *mimic, item_def & item );
+const item_def *give_mimic_item(monsters *mimic);
+const item_def &get_mimic_item(const monsters *mimic);
 int  get_mimic_colour( const monsters *mimic );
 
 void alert_nearby_monsters(void);
@@ -132,8 +129,12 @@ bool swap_check(monsters *monster, coord_def &loc, bool quiet = false);
 
 
 std::string get_wounds_description(const monsters *monster);
+std::string get_wounds_description_sentence(const monsters *monster);
 void print_wounds(const monsters *monster);
 bool monster_descriptor(int which_class, mon_desc_type which_descriptor);
+
+// Return your target, if it still exists and is visible to you.
+monsters *get_current_target();
 
 void mons_get_damage_level(const monsters*, std::string& desc,
                            mon_dam_level_type&);
@@ -147,7 +148,8 @@ int mons_missile_damage(monsters *mons, const item_def *launch,
                         const item_def *missile);
 int mons_pick_best_missile(monsters *mons, item_def **launcher,
                            bool ignore_melee = false);
-int mons_thrown_weapon_damage(const item_def *weap);
+int mons_thrown_weapon_damage(const item_def *weap,
+                              bool only_returning_weapons = false);
 
 int mons_natural_regen_rate(monsters *monster);
 
@@ -165,14 +167,10 @@ bool monster_random_space(monster_type mon, coord_def& target,
 void monster_teleport(monsters *monster, bool instan, bool silent = false);
 void mons_clear_trapping_net(monsters *mon);
 
-bool mons_clonable(const monsters* orig, bool needs_adjacent = true);
-int  clone_mons(const monsters* orig, bool quiet = false,
-                bool* obvious = NULL, coord_def pos = coord_def(0, 0) );
-
 std::string summoned_poof_msg(const monsters* monster, bool plural = false);
 std::string summoned_poof_msg(const int midx, const item_def &item);
 std::string summoned_poof_msg(const monsters* monster, const item_def &item);
 
-void pikel_band_neutralise();
+void pikel_band_neutralise(bool check_tagged = false);
 bool mons_reaped(actor *killer, monsters *victim);
 #endif

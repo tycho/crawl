@@ -14,14 +14,7 @@ struct bolt;
 
 void init_properties(void);
 
-// Returns true if this item should be preserved as far as possible.
-bool item_is_critical(const item_def &item);
-
-// Returns true if this item should not normally be enchanted.
-bool item_is_mundane(const item_def &item);
-
 // cursed:
-bool item_cursed( const item_def &item );
 bool item_known_cursed( const item_def &item );
 bool item_known_uncursed( const item_def &item );
 void do_curse_item( item_def &item, bool quiet = true );
@@ -91,6 +84,7 @@ bool is_shield(const item_def &item);
 bool is_shield_incompatible(const item_def &weapon,
                             const item_def *shield = NULL);
 bool shield_reflects(const item_def &shield);
+void ident_reflector(item_def *item);
 
 // Only works for armour/weapons/missiles
 // weapon functions:
@@ -170,6 +164,10 @@ equipment_type get_item_slot(object_class_type type, int sub_type);
 equipment_type get_item_slot(const item_def& item);
 
 std::string item_base_name(const item_def &item);
+std::string item_base_name (object_class_type type, int sub_type);
+std::string food_type_name (const item_def &item);
+std::string food_type_name (int sub_type);
 const char* weapon_base_name(unsigned char subtype);
 
+void seen_item(const item_def &item);
 #endif

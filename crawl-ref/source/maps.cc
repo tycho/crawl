@@ -23,6 +23,7 @@
 #include "enum.h"
 #include "files.h"
 #include "flood_find.h"
+#include "libutil.h"
 #include "message.h"
 #include "mapdef.h"
 #include "mon-util.h"
@@ -32,10 +33,6 @@
 #include "state.h"
 #include "tags.h"
 #include "terrain.h"
-
-static bool _safe_vault_place(const map_def &md,
-                              const coord_def &c,
-                              const coord_def &size);
 
 static int write_vault(map_def &mdef,
                        vault_placement &,
@@ -50,7 +47,7 @@ static bool resolve_map(map_def &def);
 // Globals: Use unwind_var to modify!
 
 // Checks whether a map place is valid.
-map_place_check_t map_place_valid = _safe_vault_place;
+map_place_check_t map_place_valid = map_safe_vault_place;
 
 // If non-empty, any floating vault's @ exit must land on these point.
 point_vector map_anchor_points;
@@ -60,6 +57,21 @@ point_vector map_anchor_points;
 
 typedef std::vector<map_def> map_vector;
 static map_vector vdefs;
+
+// Parameter array that vault code can use.
+string_vector map_parameters;
+
+dgn_map_parameters::dgn_map_parameters(const std::string &astring)
+    : mpar(map_parameters)
+{
+    map_parameters.push_back(astring);
+}
+
+dgn_map_parameters::dgn_map_parameters(const string_vector &parameters)
+    : mpar(map_parameters)
+{
+    map_parameters = parameters;
+}
 
 /* ******************** BEGIN PUBLIC FUNCTIONS ******************* */
 
@@ -114,9 +126,9 @@ static int write_vault(map_def &mdef,
                                               place, check_place);
 
         if (place.orient != MAP_NONE)
-            break;
+            return (place.orient);
     }
-    return (place.orient);
+    return (MAP_NONE);
 }
 
 static bool resolve_map_lua(map_def &map)
@@ -312,33 +324,41 @@ static bool _may_overwrite_feature(const dungeon_feature_type grid,
         return (false);
     }
 
-    if (feat_is_wall(grid))
+    if (feat_is_wall(grid) || grid == DNGN_TREES)
         return (wall_ok);
 
     // Otherwise, feel free to clobber this feature.
     return (true);
 }
 
-static bool _safe_vault_place(const map_def &map,
-                              const coord_def &c,
-                              const coord_def &size)
+bool map_safe_vault_place(const map_def &map,
+                          const coord_def &c,
+                          const coord_def &size)
 {
     if (size.zero())
         return (true);
 
-    const bool water_ok = map.has_tag("water_ok");
+    const bool water_ok =
+        map.has_tag("water_ok") || player_in_branch(BRANCH_SWAMP);
     const std::vector<std::string> &lines = map.map.get_lines();
 
     for (rectangle_iterator ri(c, c + size - 1); ri; ++ri)
     {
-        const coord_def &cp(*ri);
-        const coord_def &dp(cp - c);
+        const coord_def cp(*ri);
+        const coord_def dp(cp - c);
 
         if (lines[dp.y][dp.x] == ' ')
             continue;
 
-        if (dgn_Map_Mask[cp.x][cp.y])
-            return (false);
+        // Also check adjacent squares for collisions, because being next
+        // to another vault may block off one of this vault's exits.
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x)
+            {
+                const coord_def vp(x + cp.x, y + cp.y);
+                if (map_bounds(vp) && (dgn_Map_Mask(vp) & MMT_VAULT))
+                    return (false);
+            }
 
         const dungeon_feature_type dfeat = grd(cp);
 
@@ -476,12 +496,10 @@ static bool apply_vault_grid(map_def &def,
     if (!map_bounds(start))
         return (false);
 
-    if (check_place && !_safe_vault_place(def, start, size))
+    if (check_place && !map_place_valid(def, start, size))
     {
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "Bad vault place: (%d,%d) dim (%d,%d)",
+        dprf("Bad vault place: (%d,%d) dim (%d,%d)",
              start.x, start.y, size.x, size.y);
-#endif
         return (false);
     }
 
@@ -555,6 +573,38 @@ std::vector<std::string> find_map_matches(const std::string &name)
         if (vdefs[i].name.find(name) != std::string::npos)
             matches.push_back(vdefs[i].name);
     return (matches);
+}
+
+std::vector<map_def> find_maps_for_tag (const std::string tag, bool check_depth,
+                                          bool check_used)
+{
+    std::vector<map_def> maps;
+    level_id place = level_id::current();
+
+    for (unsigned i = 0, size = vdefs.size(); i < size; ++i)
+    {
+        map_def mapdef = vdefs[i];
+        if (mapdef.has_tag(tag)
+            && !mapdef.has_tag("dummy")
+            && (!check_depth || !mapdef.has_depth()
+                 || mapdef.is_usable_in(place))
+            && (!check_used || vault_unforbidden(mapdef)))
+        {
+                maps.push_back(mapdef);
+        }
+    }
+
+    return (maps);
+}
+
+int weight_map_vector (std::vector<map_def> maps)
+{
+    int weights = 0;
+
+    for (std::vector<map_def>::iterator mi = maps.begin(); mi != maps.end(); ++mi)
+        weights += mi->weight;
+
+    return (weights);
 }
 
 struct map_selector {
@@ -1077,6 +1127,8 @@ void read_maps()
     // Clean up cached environments.
     dlua.callfn("dgn_flush_map_environments", 0, 0);
     lc_loaded_maps.clear();
+
+    sanity_check_maps();
 }
 
 void add_parsed_map( const map_def &md )
@@ -1113,6 +1165,11 @@ void run_map_preludes()
 const map_def *map_by_index(int index)
 {
     return (&vdefs[index]);
+}
+
+void sanity_check_maps()
+{
+    dlua.execfile("clua/sanity.lua", true, true);
 }
 
 ///////////////////////////////////////////////////////////////////////////

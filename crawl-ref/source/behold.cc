@@ -10,18 +10,31 @@
 #include "coord.h"
 #include "debug.h"
 #include "env.h"
-#include "los.h"
+#include "fprop.h"
 #include "mon-util.h"
 #include "monster.h"
 #include "random.h"
 #include "state.h"
 #include "stuff.h"
 #include "areas.h"
-#include "view.h"
 
 // Add a monster to the list of beholders.
 void player::add_beholder(const monsters* mon)
 {
+    if (is_sanctuary(you.pos()))
+    {
+        if (you.can_see(mon))
+        {
+            mprf("%s's singing sounds muted, and has no effect on you.",
+                 mon->name(DESC_CAP_THE).c_str());
+        }
+        else
+        {
+            mpr("The melody is strangely muted, and has no effect on you.");
+        }
+        return;
+    }
+
     if (!duration[DUR_MESMERISED])
     {
         you.set_duration(DUR_MESMERISED, 7, 12);
@@ -34,7 +47,8 @@ void player::add_beholder(const monsters* mon)
         you.increase_duration(DUR_MESMERISED, 5, 12);
         if (!beheld_by(mon))
             beholders.push_back(mon->mindex());
-    }}
+    }
+}
 
 // Whether player is mesmerised.
 bool player::beheld() const
@@ -107,6 +121,42 @@ void player::beholders_check_noise(int loudness)
     }
 }
 
+static void _removed_beholder_msg(const monsters* mon)
+{
+    if (!mon->alive() || mons_genus(mon->type) != MONS_MERMAID
+        || mon->submerged() || !you.see_cell(mon->pos()))
+    {
+        return;
+    }
+
+    if (is_sanctuary(you.pos()) && !mons_is_fleeing(mon))
+    {
+        if (you.can_see(mon))
+        {
+            mprf("%s's singing becomes strangely muted.",
+                 mon->name(DESC_CAP_THE).c_str());
+        }
+        else
+            mpr("Something's singing becomes strangely muted.");
+
+        return;
+    }
+
+    if (you.can_see(mon))
+    {
+        if (silenced(you.pos()) || silenced(mon->pos()))
+        {
+            mprf("You can no longer hear %s's singing!",
+                 mon->name(DESC_NOCAP_THE).c_str());
+            return;
+        }
+        mprf("%s stops singing.", mon->name(DESC_CAP_THE).c_str());
+        return;
+    }
+
+    mpr("Something stops singing.");
+}
+
 // Update all beholders' status after changes.
 void player::update_beholders()
 {
@@ -120,6 +170,7 @@ void player::update_beholders()
         {
             beholders.erase(beholders.begin() + i);
             removed = true;
+            _removed_beholder_msg(mon);
         }
     }
     if (removed)
@@ -132,9 +183,10 @@ void player::update_beholder(const monsters *mon)
     if (_possible_beholder(mon))
         return;
     for (unsigned int i = 0; i < beholders.size(); i++)
-        if (beholders[i] = mon->mindex())
+        if (beholders[i] == mon->mindex())
         {
             beholders.erase(beholders.begin() + i);
+            _removed_beholder_msg(mon);
             _removed_beholder();
             return;
         }
@@ -164,5 +216,8 @@ bool player::_possible_beholder(const monsters *mon) const
          && see_cell(mon->pos()) && mon->see_cell(pos())
          && mon->alive() && mons_genus(mon->type) == MONS_MERMAID
          && !mon->submerged() && !mon->confused()
-         && !mon->asleep() && !mon->cannot_move());
+         && !mon->asleep() && !mon->cannot_move()
+         && !mon->wont_attack() && !mon->pacified()
+         && !mon->berserk() && !mons_is_fleeing(mon)
+         && !is_sanctuary(you.pos()));
 }

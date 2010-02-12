@@ -13,10 +13,9 @@
 #include "species.h"
 #include "jobs.h"
 
-char_choice_restriction class_allowed(species_type speci,
-                                      job_type char_class)
+char_choice_restriction job_allowed(species_type speci, job_type job)
 {
-    switch (char_class)
+    switch (job)
     {
         case JOB_FIGHTER:
             switch (speci)
@@ -380,14 +379,14 @@ char_choice_restriction class_allowed(species_type speci,
             case SP_HALFLING:
             case SP_KOBOLD:
             case SP_CENTAUR:
-            case SP_OGRE:
-            case SP_TROLL:
             case SP_MINOTAUR:
             case SP_KENKU:
             case SP_RED_DRACONIAN:
             case SP_DEMONSPAWN:
             case SP_MUMMY:
             case SP_GHOUL:
+            case SP_OGRE:
+            case SP_TROLL:
             case SP_VAMPIRE:
                 return (CC_RESTRICTED);
             default:
@@ -591,9 +590,9 @@ char_choice_restriction class_allowed(species_type speci,
     }
 }
 
-bool is_good_combination(species_type spc, job_type cls, bool good)
+bool is_good_combination(species_type spc, job_type job, bool good)
 {
-    const char_choice_restriction restrict = class_allowed(spc, cls);
+    const char_choice_restriction restrict = job_allowed(spc, job);
 
     if (good)
         return (restrict == CC_UNRESTRICTED);

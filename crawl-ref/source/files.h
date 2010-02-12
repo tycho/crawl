@@ -23,7 +23,7 @@ enum load_mode_type
     LOAD_VISITOR                // Visitor pattern to see all levels
 };
 
-// referenced in files - newgame - ouch - overmap:
+// referenced in files - newgame - ouch - dgn-overview:
 #define MAX_LEVELS 50
 
 // referenced in files - newgame - ouch:
@@ -39,6 +39,11 @@ void assert_read_safe_path(const std::string &path) throw (std::string);
 std::vector<std::string> get_dir_files(const std::string &dir);
 std::vector<std::string> get_dir_files_ext(const std::string &dir,
                                            const std::string &ext);
+std::vector<std::string> get_dir_files_recursive(
+    const std::string &dirname,
+    const std::string &ext = "",
+    int recursion_depth = -1,
+    bool include_directories = false);
 
 std::string datafile_path(
     std::string basename,
@@ -90,6 +95,8 @@ void save_game(bool leave_game, const char *bye = NULL);
 
 // Save game without exiting (used when changing levels).
 void save_game_state();
+
+bool get_save_version(FILE *file, char &major, char &minor);
 
 void restore_game(void);
 

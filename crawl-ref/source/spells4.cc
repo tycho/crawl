@@ -43,6 +43,7 @@
 #include "player.h"
 #include "quiver.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills.h"
 #include "spells1.h"
 #include "spells4.h"
@@ -52,7 +53,7 @@
 #include "areas.h"
 #include "teleport.h"
 #include "terrain.h"
-#include "transfor.h"
+#include "transform.h"
 #include "traps.h"
 #include "view.h"
 #include "shout.h"
@@ -121,6 +122,7 @@ static int _shatter_monsters(coord_def where, int pow, int, actor *)
     case MONS_IRON_GOLEM:
     case MONS_CRYSTAL_GOLEM:
     case MONS_ORANGE_STATUE:
+    case MONS_STATUE:
     case MONS_EARTH_ELEMENTAL:
     case MONS_GARGOYLE:
     case MONS_SKELETAL_DRAGON:
@@ -323,7 +325,7 @@ void cast_shatter(int pow)
     }
 
     if (damage > 0)
-        ouch(damage, NON_MONSTER, KILLED_BY_TARGETTING);
+        ouch(damage, NON_MONSTER, KILLED_BY_TARGETING);
 
     int rad = 3 + (you.skills[SK_EARTH_MAGIC] / 5);
 
@@ -574,10 +576,7 @@ static int _ignite_poison_monsters(coord_def where, int pow, int, actor *)
         damage = mons_adjust_flavoured(mon, beam, damage);
         simple_monster_message(mon, " seems to burn from within!");
 
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "Dice: %dd%d; Damage: %d",
-             dam_dice.num, dam_dice.size, damage);
-#endif
+        dprf("Dice: %dd%d; Damage: %d", dam_dice.num, dam_dice.size, damage);
 
         if (!_player_hurt_monster(*mon, damage))
         {
@@ -726,7 +725,7 @@ void cast_ignite_poison(int pow)
             mpr("The poison in your system burns!");
         }
 
-        ouch(damage, NON_MONSTER, KILLED_BY_TARGETTING);
+        ouch(damage, NON_MONSTER, KILLED_BY_TARGETING);
 
         if (you.duration[DUR_POISONING] > 0)
         {
@@ -739,7 +738,7 @@ void cast_ignite_poison(int pow)
     apply_area_visible(_ignite_poison_objects, pow);
     apply_area_visible(_ignite_poison_monsters, pow);
 
-#ifndef USE_TILES
+#ifndef USE_TILE
     delay(100); // show a brief flash
 #endif
     flash_view(0);
@@ -755,10 +754,7 @@ void cast_silence(int pow)
     you.increase_duration(DUR_SILENCE, 10 + random2avg(pow,2), 100);
 
     if (you.beheld())
-    {
-        you.clear_beholders();
-        mpr("You break out of your daze!", MSGCH_RECOVERY);
-    }
+        you.update_beholders();
 }
 
 static int _discharge_monsters(coord_def where, int pow, int, actor *)
@@ -822,9 +818,7 @@ void cast_discharge(int pow)
     dam = apply_random_around_square(_discharge_monsters, you.pos(),
                                      true, pow, num_targs);
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Arcs: %d Damage: %d", num_targs, dam);
-#endif
+    dprf("Arcs: %d Damage: %d", num_targs, dam);
 
     if (dam == 0)
     {
@@ -886,14 +880,15 @@ void cast_dispersal(int pow)
 
 int make_a_normal_cloud(coord_def where, int pow, int spread_rate,
                         cloud_type ctype, kill_category whose,
-                        killer_type killer)
+                        killer_type killer, int colour, std::string name,
+                        std::string tile)
 {
     if (killer == KILL_NONE)
         killer = cloud_struct::whose_to_killer(whose);
 
     place_cloud( ctype, where,
                  (3 + random2(pow / 4) + random2(pow / 4) + random2(pow / 4)),
-                 whose, killer, spread_rate );
+                 whose, killer, spread_rate, colour, name, tile );
 
     return 1;
 }
@@ -920,8 +915,13 @@ bool cast_passwall(const coord_def& delta, int pow)
     int range = shallow + random2(pow) / 25;
     int maxrange = shallow + pow / 25;
 
-    coord_def n = you.pos() + delta;
-    if (!_feat_is_passwallable(grid_appearance(n)))
+    coord_def dest;
+    for (dest = you.pos() + delta;
+         in_bounds(dest) && _feat_is_passwallable(grd(dest));
+         dest += delta) ;
+
+    int walls = (dest - you.pos()).rdist() - 1;
+    if (walls == 0)
     {
         mpr("That's not a passable wall.");
         return (false);
@@ -929,23 +929,18 @@ bool cast_passwall(const coord_def& delta, int pow)
 
     // Below here, failing to cast yields information to the
     // player, so we don't make the spell abort (return true).
-
-    int howdeep;
-    for (howdeep = 1; in_bounds(n) && _feat_is_passwallable(grd(n));
-                      n += delta, howdeep++);
-
-    if (!in_bounds(n))
+    if (!in_bounds(dest))
         mpr("You sense an overwhelming volume of rock.");
-    else if (feat_is_solid(grd(n)))
+    else if (feat_is_solid(grd(dest)))
         mpr("Something is blocking your path through the rock.");
-    else if (howdeep > maxrange)
+    else if (walls > maxrange)
         mpr("This rock feels extremely deep.");
-    else if (howdeep > range)
+    else if (walls > range)
         mpr("You fail to penetrate the rock.");
     else
     {
         // Passwall delay is reduced, and the delay cannot be interrupted.
-        start_delay(DELAY_PASSWALL, 1 + howdeep, n.x, n.y);
+        start_delay(DELAY_PASSWALL, 1 + walls, dest.x, dest.y);
     }
     return (true);
 }
@@ -1028,7 +1023,7 @@ bool cast_evaporate(int pow, bolt& beem, int pot_idx)
 
     beem.name        = "potion";
     beem.colour      = potion.colour;
-    beem.type        = dchar_glyph(DCHAR_FIRED_FLASK);
+    beem.glyph       = dchar_glyph(DCHAR_FIRED_FLASK);
     beem.beam_source = MHITYOU;
     beem.thrower     = KILL_YOU_MISSILE;
     beem.is_beam     = false;
@@ -1183,124 +1178,114 @@ bool cast_evaporate(int pow, bolt& beem, int pot_idx)
 // Producing helpful potions would break game balance here...
 // and producing more than one potion from a corpse, or not
 // using up the corpse might also lead to game balance problems. - bwr
-void cast_fulsome_distillation(int pow)
+bool cast_fulsome_distillation(int /*pow*/)
 {
-    pow = std::min(50, pow);
-
+    int num_corpses = 0;
     int corpse = -1;
 
-    // Search items at the player's location for corpses.
-    for (stack_iterator si(you.pos()); si; ++si)
+    // Determine how many corpses are available.
+    for (stack_iterator si(you.pos(), true); si; ++si)
     {
         if (si->base_type == OBJ_CORPSES && si->sub_type == CORPSE_BODY)
         {
-            snprintf(info, INFO_SIZE, "Distill a potion from %s?",
-                     si->name(DESC_NOCAP_THE).c_str());
-
-            if (yesno(info, true, 0, false))
-            {
-                corpse = si->index();
-                break;
-            }
+            corpse = si->index();
+            ++num_corpses;
         }
+    }
+
+    // If there is only one corpse, distill it; otherwise, ask the player
+    // which corpse to use.
+    switch (num_corpses)
+    {
+        case 0:
+            mpr("There aren't any corpses here!");
+            return (false);
+        case 1:
+            // Use the only corpse available without prompting.
+            break;
+        default:
+            // Search items at the player's location for corpses.
+            // The last corpse detected earlier is irrelevant.
+            corpse = -1;
+            for (stack_iterator si(you.pos(), true); si; ++si)
+            {
+                if (si->base_type == OBJ_CORPSES && si->sub_type == CORPSE_BODY)
+                {
+                    snprintf(info, INFO_SIZE, "Distill a potion from %s?",
+                             get_menu_colour_prefix_tags(*si, DESC_NOCAP_THE).c_str());
+
+                    if (yesno(info, true, 0, false))
+                    {
+                        corpse = si->index();
+                        break;
+                    }
+                }
+            }
     }
 
     if (corpse == -1)
     {
-        canned_msg(MSG_SPELL_FIZZLES);
-        return;
+        canned_msg(MSG_OK);
+        return (false);
     }
-
-    const bool rotten      = food_is_rotten(mitm[corpse]);
-    const bool big_monster = (mons_type_hit_dice(mitm[corpse].plus) >= 5);
-    const bool power_up    = (rotten && big_monster);
 
     potion_type pot_type = POT_WATER;
 
-    switch (mitm[corpse].plus)
+    switch (mons_corpse_effect(mitm[corpse].plus))
     {
-    case MONS_GIANT_BAT:             // extracting batty behaviour : 1
-    case MONS_GIANT_BLOWFLY:         // extracting batty behaviour : 5
-        pot_type = POT_CONFUSION;
+    case CE_CLEAN:
+        pot_type = POT_WATER;
         break;
 
-    case MONS_RED_WASP:              // paralysis attack : 8
-    case MONS_YELLOW_WASP:           // paralysis attack : 4
-        pot_type = POT_PARALYSIS;
+    case CE_CONTAMINATED:
+        pot_type = (mons_weight(mitm[corpse].plus) >= 900)
+            ? POT_DEGENERATION : POT_CONFUSION;
         break;
 
-    case MONS_SNAKE:                 // clean meat, but poisonous attack : 2
-    case MONS_GIANT_ANT:             // clean meat, but poisonous attack : 3
-        pot_type = (power_up ? POT_POISON : POT_CONFUSION);
+    case CE_POISONOUS:
+        pot_type = POT_POISON;
         break;
 
-    case MONS_ORANGE_RAT:            // poisonous meat, but draining attack : 3
-        pot_type = (power_up ? POT_DECAY : POT_POISON);
+    case CE_MUTAGEN_RANDOM:
+    case CE_MUTAGEN_GOOD:   // unused
+    case CE_RANDOM:         // unused
+        pot_type = POT_MUTATION;
         break;
 
-    case MONS_SPINY_WORM:            // 12
-        pot_type = (power_up ? POT_DECAY : POT_STRONG_POISON);
+    case CE_MUTAGEN_BAD:    // unused
+    case CE_ROTTEN:         // actually this only occurs via mangling
+    case CE_HCL:            // necrophage
+        pot_type = POT_DECAY;
         break;
 
+    case CE_NOCORPSE:       // shouldn't occur
     default:
-        switch (mons_corpse_effect(mitm[corpse].plus))
-        {
-        case CE_CLEAN:
-            pot_type = (power_up ? POT_CONFUSION : POT_WATER);
-            break;
-
-        case CE_CONTAMINATED:
-            pot_type = (power_up ? POT_DEGENERATION : POT_POISON);
-            break;
-
-        case CE_POISONOUS:
-            pot_type = (power_up ? POT_STRONG_POISON : POT_POISON);
-            break;
-
-        case CE_MUTAGEN_RANDOM:
-        case CE_MUTAGEN_GOOD:   // unused
-        case CE_RANDOM:         // unused
-            pot_type = POT_MUTATION;
-            break;
-
-        case CE_MUTAGEN_BAD:    // unused
-        case CE_ROTTEN:         // actually this only occurs via mangling
-        case CE_HCL:            // necrophage
-            pot_type = (power_up ? POT_DECAY : POT_STRONG_POISON);
-            break;
-
-        case CE_NOCORPSE:       // shouldn't occur
-        default:
-            break;
-        }
         break;
     }
 
-    // If not powerful enough, we downgrade the potion.
-    if (random2(50) > pow + 10 * rotten)
+    switch (mitm[corpse].plus)
     {
-        switch (pot_type)
+    case MONS_RED_WASP:              // paralysis attack
+        pot_type = POT_PARALYSIS;
+        break;
+
+    case MONS_YELLOW_WASP:           // slowing attack
+        pot_type = POT_SLOWING;
+        break;
+
+    default:
+        break;
+    }
+
+    struct monsterentry* smc = get_monster_data(mitm[corpse].plus);
+
+    for (int nattk = 0; nattk < 4; ++nattk)
+    {
+        if (smc->attack[nattk].flavour == AF_POISON_MEDIUM
+            || smc->attack[nattk].flavour == AF_POISON_STRONG
+            || smc->attack[nattk].flavour == AF_POISON_STR)
         {
-        case POT_DECAY:
-        case POT_DEGENERATION:
-        case POT_STRONG_POISON:
-            pot_type = POT_POISON;
-            break;
-
-        case POT_MUTATION:
-        case POT_POISON:
-            pot_type = POT_CONFUSION;
-            break;
-
-        case POT_PARALYSIS:
-            pot_type = POT_SLOWING;
-            break;
-
-        case POT_CONFUSION:
-        case POT_SLOWING:
-        default:
-            pot_type = POT_WATER;
-            break;
+            pot_type = POT_STRONG_POISON;
         }
     }
 
@@ -1316,6 +1301,8 @@ void cast_fulsome_distillation(int pow)
     mitm[corpse].inscription.clear();
     item_colour(mitm[corpse]); // sets special as well
 
+    set_ident_type(mitm[corpse], ID_KNOWN_TYPE);
+
     mprf("You extract %s from the corpse.",
          mitm[corpse].name(DESC_NOCAP_A).c_str());
 
@@ -1325,6 +1312,8 @@ void cast_fulsome_distillation(int pow)
 
     if (was_orc)
         did_god_conduct(DID_DESECRATE_ORCISH_REMAINS, 2);
+
+    return (true);
 }
 
 bool cast_fragmentation(int pow, const dist& spd)
@@ -1345,7 +1334,7 @@ bool cast_fragmentation(int pow, const dist& spd)
     bolt beam;
 
     beam.flavour     = BEAM_FRAG;
-    beam.type        = dchar_glyph(DCHAR_FIRED_BURST);
+    beam.glyph       = dchar_glyph(DCHAR_FIRED_BURST);
     beam.beam_source = MHITYOU;
     beam.thrower     = KILL_YOU;
     beam.ex_size     = 1;
@@ -1394,6 +1383,7 @@ bool cast_fragmentation(int pow, const dist& spd)
         case MONS_STONE_GOLEM:
         case MONS_EARTH_ELEMENTAL:
         case MONS_GARGOYLE:
+        case MONS_STATUE:
             explode         = true;
             beam.ex_size    = 2;
             beam.name       = "blast of rock fragments";
@@ -1450,9 +1440,9 @@ bool cast_fragmentation(int pow, const dist& spd)
                 beam.name       = "icy blast";
                 beam.colour     = WHITE;
                 beam.damage.num = 2;
-                    beam.flavour    = BEAM_ICE;
+                beam.flavour    = BEAM_ICE;
                 if (_player_hurt_monster(*mon, beam.damage.roll()),
-                                         BEAM_DISINTEGRATION);
+                                         BEAM_DISINTEGRATION)
                     beam.damage.num++;
                 break;
             }
@@ -1500,7 +1490,7 @@ bool cast_fragmentation(int pow, const dist& spd)
                 }
             }
 
-            // Mark that a monster was targetted.
+            // Mark that a monster was targeted.
             beam.damage.num = 1;
 
             // Yes, this spell does lousy damage if the monster
@@ -1514,7 +1504,7 @@ bool cast_fragmentation(int pow, const dist& spd)
         goto all_done;
     }
 
-    for (stack_iterator si(spd.target); si; ++si)
+    for (stack_iterator si(spd.target, true); si; ++si)
     {
         if (si->base_type == OBJ_CORPSES)
         {
@@ -1752,22 +1742,25 @@ bool cast_portal_projectile(int pow)
 
 bool cast_apportation(int pow, const coord_def& where)
 {
-    // Protect the player from destroying the item.
-    if (feat_destroys_items(grd(you.pos())))
+    if (you.trans_wall_blocking(where))
     {
-        mpr( "That would be silly while over this terrain!" );
+        mpr("Something is in the way.");
         return (false);
     }
 
-    if (you.trans_wall_blocking(where))
+    // Letting mostly-melee characters spam apport after every Shoals
+    // fight seems like it has too much grinding potential.  We could
+    // weaken this for high power.
+    if (grd(where) == DNGN_DEEP_WATER || grd(where) == DNGN_LAVA)
     {
-        mpr("A translucent wall is in the way.");
+        mpr("The density of the terrain blocks your spell.");
         return (false);
     }
 
     // Let's look at the top item in that square...
+    // And don't allow apporting from shop inventories.
     const int item_idx = igrd(where);
-    if (item_idx == NON_ITEM)
+    if (item_idx == NON_ITEM || !in_bounds(where))
     {
         // Maybe the player *thought* there was something there (a mimic.)
         if (monsters* m = monster_at(where))
@@ -1786,6 +1779,13 @@ bool cast_apportation(int pow, const coord_def& where)
     }
 
     item_def& item = mitm[item_idx];
+
+    // Protect the player from destroying the item.
+    if (feat_destroys_item(grd(you.pos()), item))
+    {
+        mpr( "That would be silly while over this terrain!" );
+        return (false);
+    }
 
     // Mass of one unit.
     const int unit_mass = item_mass(item);

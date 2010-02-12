@@ -7,8 +7,10 @@
 
 #include "shout.h"
 
+#include "cluautil.h"
 #include "coord.h"
 #include "database.h"
+#include "dlua.h"
 #include "env.h"
 #include "ghost.h"
 #include "jobs.h"
@@ -18,9 +20,9 @@
 #include "mon-iter.h"
 #include "mon-place.h"
 #include "mon-pathfind.h"
-#include "monster.h"
 #include "mon-stuff.h"
-#include "options.h"
+#include "mon-util.h"
+#include "monster.h"
 #include "player.h"
 #include "random.h"
 #include "skills.h"
@@ -126,13 +128,13 @@ void handle_monster_shouts(monsters* monster, bool force)
     // Pandemonium demons have random names, so use "pandemonium lord"
     if (monster->type == MONS_PANDEMONIUM_DEMON)
         key = "pandemonium lord";
-    // Search for player ghost shout by the ghost's class.
+    // Search for player ghost shout by the ghost's job.
     else if (monster->type == MONS_PLAYER_GHOST)
     {
         const ghost_demon &ghost = *(monster->ghost);
-        std::string ghost_class = get_class_name(ghost.job);
+        std::string ghost_job    = get_job_name(ghost.job);
 
-        key = ghost_class + " player ghost";
+        key = ghost_job + " player ghost";
 
         default_msg_key = "player ghost";
     }
@@ -148,7 +150,37 @@ void handle_monster_shouts(monsters* monster, bool force)
     else
         suffix = " unseen";
 
-    msg = getShoutString(key, suffix);
+    if (monster->props.exists("shout_func"))
+    {
+        lua_stack_cleaner clean(dlua);
+
+        dlua_chunk &chunk = monster->props["shout_func"];
+
+        if (!chunk.load(dlua))
+        {
+            push_monster(dlua, monster);
+            clua_pushcxxstring(dlua, suffix);
+            dlua.callfn(NULL, 2, 1);
+            dlua.fnreturns(">s", &msg);
+
+            // __NONE means to be silent, and __NEXT or __DEFAULT means to try
+            // the next method of getting a shout message.
+            if (msg == "__NONE")
+                return;
+            if (msg == "__DEFAULT" || msg == "__NEXT")
+                msg.clear();
+        }
+        else
+        {
+            mprf(MSGCH_ERROR,
+                 "Lua shout function for monster '%s' didn't load: %s",
+                 monster->full_name(DESC_PLAIN).c_str(),
+                 dlua.error.c_str());
+        }
+    }
+
+    if (msg.empty())
+        msg = getShoutString(key, suffix);
 
     if (msg == "__DEFAULT" || msg == "__NEXT")
         msg = getShoutString(default_msg_key, suffix);
@@ -332,8 +364,10 @@ bool check_awaken(monsters* monster)
     if (x_chance_in_y(mons_perc + 1, stealth))
         return (true); // Oops, the monster wakes up!
 
+    const item_def *body_armour = you.slot_item(EQ_BODY_ARMOUR, false);
+    const int armour_mass = body_armour? item_mass(*body_armour) : 0;
     // You didn't wake the monster!
-    if (player_light_armour(true)
+    if (!x_chance_in_y(armour_mass, 1000)
         && you.can_see(monster) // to avoid leaking information
         && you.burden_state == BS_UNENCUMBERED
         && !you.attribute[ATTR_SHADOWS]
@@ -438,11 +472,8 @@ static const char* _player_vampire_smells_blood(int dist)
 void blood_smell(int strength, const coord_def& where)
 {
     const int range = strength * strength;
-#ifdef DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS,
-         "blood stain at (%d, %d), range of smell = %d",
+    dprf("blood stain at (%d, %d), range of smell = %d",
          where.x, where.y, range);
-#endif
 
     // Of the player species, only Vampires can smell blood.
     if (you.species == SP_VAMPIRE)
@@ -457,11 +488,8 @@ void blood_smell(int strength, const coord_def& where)
 
             if (player_distance <= vamp_range)
             {
-#ifdef DEBUG_DIAGNOSTICS
-                mprf(MSGCH_DIAGNOSTICS,
-                     "Player smells blood, pos: (%d, %d), dist = %d)",
+                dprf("Player smells blood, pos: (%d, %d), dist = %d)",
                      you.pos().x, you.pos().y, player_distance);
-#endif
                 you.check_awaken(range - player_distance);
                 // Don't message if you can see the square.
                 if (!you.see_cell(where))
@@ -491,21 +519,17 @@ void blood_smell(int strength, const coord_def& where)
             {
                 if (coinflip())
                 {
-#ifdef DEBUG_DIAGNOSTICS
-                    mprf(MSGCH_DIAGNOSTICS, "disturbing %s (%d, %d)",
+                    dprf("disturbing %s (%d, %d)",
                          mi->name(DESC_PLAIN).c_str(),
                          mi->pos().x, mi->pos().y);
-#endif
                     behaviour_event(*mi, ME_DISTURB, MHITNOT, where);
                 }
                 continue;
             }
         }
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "alerting %s (%d, %d)",
+        dprf("alerting %s (%d, %d)",
              mi->name(DESC_PLAIN).c_str(),
              mi->pos().x, mi->pos().y);
-#endif
         behaviour_event(*mi, ME_ALERT, MHITNOT, where);
 
         if (mi->type == MONS_SHARK)

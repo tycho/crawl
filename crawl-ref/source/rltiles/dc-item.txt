@@ -21,24 +21,27 @@
 %rim 1
 ##Blunt
 club WPN_CLUB
-mace WPN_MACE
+mace1 WPN_MACE
 mace2
-mace_large WPN_GREAT_MACE
+mace_large1 WPN_GREAT_MACE
 mace_large2
-flail WPN_FLAIL
+flail1 WPN_FLAIL
 flail2
-spiked_flail WPN_SPIKED_FLAIL
+spiked_flail1 WPN_SPIKED_FLAIL
 spiked_flail2
-great_flail WPN_GREAT_FLAIL
+great_flail1 WPN_GREAT_FLAIL
 great_flail2
-morningstar WPN_MORNINGSTAR
+morningstar1 WPN_MORNINGSTAR
 morningstar2
-eveningstar WPN_EVENINGSTAR
+eveningstar1 WPN_EVENINGSTAR
 eveningstar2
-hammer WPN_HAMMER
+hammer1 WPN_HAMMER
 hammer2
 ankus WPN_ANKUS
 bullwhip WPN_WHIP
+%rim 0
+holy_scourge WPN_HOLY_SCOURGE
+%rim 1
 demon_whip WPN_DEMON_WHIP
 giant_club WPN_GIANT_CLUB
 giant_spiked_club WPN_GIANT_SPIKED_CLUB
@@ -50,93 +53,93 @@ dagger WPN_DAGGER
 orcish_dagger WPN_DAGGER_ORC
 elven_dagger WPN_DAGGER_ELF
 
-short_sword WPN_SHORT_SWORD
+short_sword1 WPN_SHORT_SWORD
 short_sword2
 orcish_short_sword WPN_SHORT_SWORD_ORC
 elven_short_sword WPN_SHORT_SWORD_ELF
 
-long_sword2 WPN_LONG_SWORD
+long_sword1 WPN_LONG_SWORD
 %rim 0
-long_sword3
+long_sword2
 %rim 1
 orcish_long_sword WPN_LONG_SWORD_ORC
 
-greatsword WPN_GREAT_SWORD
+greatsword1 WPN_GREAT_SWORD
 greatsword2
 orcish_great_sword WPN_GREAT_SWORD_ORC
 
-falchion WPN_FALCHION
+falchion1 WPN_FALCHION
 falchion2
-scimitar WPN_SCIMITAR
+scimitar1 WPN_SCIMITAR
 scimitar2
 
-silver_saber WPN_SABRE
+sabre1_silver WPN_SABRE
 sabre2
 
 quickblade WPN_QUICK_BLADE
 
-katana2 WPN_KATANA
-katana3
+katana1 WPN_KATANA
+katana2
 
 double_sword WPN_DOUBLE_SWORD
 triple_sword WPN_TRIPLE_SWORD
 demon_blade WPN_DEMON_BLADE
-
-##Axe
-hand_axe WPN_HAND_AXE
-hand_axe2
-war_axe WPN_WAR_AXE
-war_axe2
-broad_axe WPN_BROAD_AXE
-broad_axe2
-broad_axe3
-battle_axe WPN_BATTLEAXE
-battle_axe2
-battle_axe3
-executioner_axe WPN_EXECUTIONERS_AXE
-executioner_axe2
-
-##Ranged
-blowgun WPN_BLOWGUN
-blowgun2
-sling WPN_SLING
-bow WPN_BOW
-bow2
-crossbow WPN_CROSSBOW
-crossbow2
-hand_crossbow WPN_HAND_CROSSBOW
-hand_crossbow2
-
-##Pole
-quarterstaff WPN_QUARTERSTAFF
-
-elven_spear WPN_SPEAR
-spear2
-trident WPN_TRIDENT
-trident2
-halberd WPN_HALBERD
-halberd2
-scythe WPN_SCYTHE
-scythe2
-glaive WPN_GLAIVE
-glaive2
-orcish_glaive WPN_GLAIVE_ORC
-bardiche WPN_BARDICHE
-bardiche2
-
-demon_trident WPN_DEMON_TRIDENT
-
-# SS new weapons
 %rim 0
 blessed_blade WPN_BLESSED_BLADE
 %rim 1
-longbow WPN_LONGBOW
-lajatang WPN_LAJATANG
+
+##Axe
+hand_axe1 WPN_HAND_AXE
+hand_axe2
+war_axe1 WPN_WAR_AXE
+war_axe2
+broad_axe1 WPN_BROAD_AXE
+broad_axe2
+broad_axe3
+battle_axe1 WPN_BATTLEAXE
+battle_axe2
+battle_axe3
+executioner_axe1 WPN_EXECUTIONERS_AXE
+executioner_axe2
+
+##Polearm
+spear1_elven WPN_SPEAR
+spear2
+trident1 WPN_TRIDENT
+trident2
+demon_trident WPN_DEMON_TRIDENT
+halberd1 WPN_HALBERD
+halberd2
+scythe1 WPN_SCYTHE
+scythe2
+glaive1 WPN_GLAIVE
+glaive2
+orcish_glaive WPN_GLAIVE_ORC
+bardiche1 WPN_BARDICHE
+bardiche2
+
+##Staff
+quarterstaff WPN_QUARTERSTAFF
+lajatang1 WPN_LAJATANG
 lajatang2
+
+
+##Ranged
+%sdir item/weapon/ranged
+blowgun1 WPN_BLOWGUN
+blowgun2
+sling WPN_SLING
+bow1 WPN_BOW
+bow2
+crossbow1 WPN_CROSSBOW
+crossbow2
+longbow WPN_LONGBOW
 
 %sdir item/weapon/brands
 %shrink 0
 %rim 0
+# The order of weapon brands must be identical to the one defined
+# in itemprop-enum.h.
 i-flaming BRAND_FLAMING
 i-freezing BRAND_FREEZING
 i-holy_wrath BRAND_HOLY_WRATH
@@ -156,14 +159,27 @@ i-distortion BRAND_DISTORTION
 i-reaching BRAND_REACHING
 i-returning BRAND_RETURNING
 i-chaos BRAND_CHAOS
+i-evasion BRAND_EVASION
+i-confusion BRAND_CONFUSION
+i-penetration BRAND_PENETRATION
+i-reaping BRAND_REAPING
+# missile-only brands, order doesn't matter
+i-dispersal BRAND_DISPERSAL
+i-explosion BRAND_EXPLOSION
 i-venom BRAND_POISONED
 i-curare BRAND_CURARE
+i-electrocution BRAND_ELECTRIC
+i-sickness BRAND_SICKNESS
+i-slowing BRAND_SLOWING
+i-paralysis BRAND_PARALYSIS
+i-berserk-rage BRAND_RAGE
+i-sleep BRAND_SLEEP
 %rim 1
 %shrink 1
-%sdir item/weapon
+%sdir item/weapon/ranged
 
 ######OBJ_MISSILES
-item/gem/stone MI_STONE
+stone MI_STONE
 effect/stone0 MI_STONE0
 sling_bullet MI_SLING_BULLET
 effect/sling_bullet0 MI_SLING_BULLET0
@@ -229,28 +245,28 @@ effect/throwing_net5 MI_THROWING_NET5
 effect/throwing_net6 MI_THROWING_NET6
 effect/throwing_net7 MI_THROWING_NET7
 
-item/gem/rock MI_LARGE_ROCK
+rock MI_LARGE_ROCK
 effect/rock0 MI_LARGE_ROCK0
 
 ######OBJ_ARMOUR
 %sdir item/armour
-robe ARM_ROBE
+robe1 ARM_ROBE
 robe2
 robe3
 
-leather_armor2 ARM_LEATHER_ARMOUR
-breast_plate2
-leather_armor4
+leather_armour1 ARM_LEATHER_ARMOUR
+leather_armour2
+leather_armour3
 orcish_leather_armor ARM_LEATHER_ARMOUR_ORC
 elven_leather_armor ARM_LEATHER_ARMOUR_ELF
 
-ring_mail ARM_RING_MAIL
+ring_mail1 ARM_RING_MAIL
 ring_mail2
 orcish_ringmail ARM_RING_MAIL_ORC
 elven_ringmail ARM_RING_MAIL_ELF
 dwarven_ringmail ARM_RING_MAIL_DWA
 
-scale_mail ARM_SCALE_MAIL
+scale_mail1 ARM_SCALE_MAIL
 scale_mail2
 elven_scalemail ARM_SCALE_MAIL_ELF
 
@@ -259,15 +275,18 @@ chain_mail2
 chain_mail3 ARM_CHAIN_MAIL_ELF
 orcish_chain_mail ARM_CHAIN_MAIL_ORC
 
-splint_mail ARM_SPLINT_MAIL
-banded_mail ARM_BANDED_MAIL
+splint_mail1 ARM_SPLINT_MAIL
+splint_mail2
+banded_mail1 ARM_BANDED_MAIL
+banded_mail2
 
-plate_mail2 ARM_PLATE_MAIL
+plate_mail1 ARM_PLATE_MAIL
+plate_mail2
 orcish_platemail ARM_PLATE_MAIL_ORC
 
 crystal_plate_mail ARM_CRYSTAL_PLATE_MAIL
 
-animal_skin ARM_ANIMAL_SKIN
+animal_skin1 ARM_ANIMAL_SKIN
 animal_skin2
 
 troll_hide ARM_TROLL_HIDE
@@ -287,7 +306,7 @@ gold_dragon_armour ARM_GOLD_DRAGON_ARMOUR
 swamp_dragon_hide ARM_SWAMP_DRAGON_HIDE
 swamp_dragon_armour ARM_SWAMP_DRAGON_ARMOUR
 
-leather_cloak ARM_CLOAK
+cloak1_leather ARM_CLOAK
 cloak2
 cloak3
 cloak4
@@ -303,44 +322,67 @@ centaur_barding_magenta
 centaur_barding_red
 
 %sdir item/armour/shields
-#dwarvish_roundshield ARM_BUCKLER
 %rim 0
-buckler ARM_BUCKLER
+buckler1 ARM_BUCKLER
 buckler2
 buckler3
 %rim 1
 
-elven_shield ARM_SHIELD
-shield_kite2
-shield_round2
+shield1_elven ARM_SHIELD
+shield2_kite
+shield3_round
 
-large_shield ARM_LARGE_SHIELD
-shield_large2
-shield_kite3
+large_shield1 ARM_LARGE_SHIELD
+large_shield2
+large_shield3
 
 %sdir item/armour/headgear
 #####ARM_HELMET
 elven_leather_helm THELM_CAP
-wizard_hat THELM_WIZARD_HAT
+wizard_hat1 THELM_WIZARD_HAT
 wizard_hat2
 
-visored_helmet THELM_HELM
-etched_helmet
-helm3
-helm_visor1
+helmet1_visored THELM_HELM
+helmet2_etched
+helmet3
+helmet4_visor
 
 %sdir item/armour
 ###### GLOVES
 glove1 ARM_GLOVES
+glove2
 glove3
-glove5
-gauntlet2
+glove4_gauntlets
 
 ###### BOOTS
-boots_brown1 ARM_BOOTS
-jackboots
-boots_stripe1
-boots_green2
+boots1_brown ARM_BOOTS
+boots2_jackboots
+boots3_stripe
+boots4_green
+
+### Armour brands
+%sdir item/armour/brands
+i-running BRAND_ARM_RUNNING
+i-fire-res BRAND_ARM_FIRE_RESISTANCE
+i-cold-res BRAND_ARM_COLD_RESISTANCE
+i-poison-res BRAND_ARM_POISON_RESISTANCE
+i-see-invis BRAND_ARM_SEE_INVISIBLE
+i-darkness BRAND_ARM_DARKNESS
+i-strength BRAND_ARM_STRENGTH
+i-dexterity BRAND_ARM_DEXTERITY
+i-intelligence BRAND_ARM_INTELLIGENCE
+i-ponderous BRAND_ARM_PONDEROUSNESS
+i-levitation BRAND_ARM_LEVITATION
+i-magic-res BRAND_ARM_MAGIC_RESISTANCE
+i-protection BRAND_ARM_PROTECTION
+i-stealth BRAND_ARM_STEALTH
+i-resistance BRAND_ARM_RESISTANCE
+i-positive-energy BRAND_ARM_POSITIVE_ENERGY
+i-archmagi BRAND_ARM_ARCHMAGI
+i-preservation BRAND_ARM_PRESERVATION
+i-reflection BRAND_ARM_REFLECTION
+i-spirit BRAND_ARM_SPIRIT_SHIELD
+i-archery BRAND_ARM_ARCHERY
 
 ###########OBJ_WANDS
 %sdir item/wand
@@ -406,9 +448,30 @@ lychee FOOD_LYCHEE
 beef_jerky FOOD_BEEF_JERKY
 cheese FOOD_CHEESE
 sausage FOOD_SAUSAGE
-corpse FOOD_CHUNK
-corpse_rotten FOOD_CHUNK_ROTTEN
 bone FOOD_BONE
+chunk FOOD_CHUNK
+chunk_rotten FOOD_CHUNK_ROTTEN
+%back chunk
+chunk_brands/i-poison FOOD_CHUNK_POISONED
+chunk_brands/i-mutation FOOD_CHUNK_MUTAGENIC
+chunk_brands/i-decay FOOD_CHUNK_ROTTING
+chunk_brands/i-forbidden FOOD_CHUNK_FORBIDDEN
+chunk_brands/i-sickness FOOD_CHUNK_CONTAMINATED
+%back chunk_rotten
+chunk_brands/i-poison FOOD_CHUNK_ROTTEN_POISONED
+chunk_brands/i-mutation FOOD_CHUNK_ROTTEN_MUTAGENIC
+chunk_brands/i-decay FOOD_CHUNK_ROTTEN_ROTTING
+chunk_brands/i-forbidden FOOD_CHUNK_ROTTEN_FORBIDDEN
+chunk_brands/i-sickness FOOD_CHUNK_ROTTEN_CONTAMINATED
+%back none
+%shrink 0
+chunk_brands/i-poison FOOD_POISONED
+chunk_brands/i-mutation FOOD_MUTAGENIC
+chunk_brands/i-decay FOOD_ROTTING
+chunk_brands/i-forbidden FOOD_FORBIDDEN
+chunk_brands/i-sickness FOOD_CONTAMINATED
+%shrink 1
+
 #################OBJ_UNKNOWN_I
 ##################OBJ_SCROLLS
 %sdir item/scroll
@@ -545,7 +608,6 @@ eye_green
 %shrink 0
 ### ID-ed amulet
 i-rage AMU_RAGE
-i-r-slow AMU_RESIST_SLOW
 i-clarity AMU_CLARITY
 i-warding AMU_WARDING
 i-r-corrosion AMU_RESIST_CORROSION
@@ -555,6 +617,8 @@ i-c-flight AMU_CONTROLLED_FLIGHT
 i-inaccuracy AMU_INACCURACY
 i-r-mutation AMU_RESIST_MUTATION
 i-spirit AMU_SPIRIT_SHIELD
+i-faith AMU_FAITH
+i-stasis AMU_STASIS
 %rim 1
 %shrink 1
 
@@ -583,11 +647,8 @@ i-heal POT_HEALING
 i-heal-wounds POT_HEAL_WOUNDS
 i-speed POT_SPEED
 i-might POT_MIGHT
-#i-brilliance POT_BRILLIANCE
-#i-agility POT_AGILITY
-# placeholders, need tiles of their own!
-i-gain-intelligence POT_BRILLIANCE
-i-gain-dexterity POT_AGILITY
+i-brilliance POT_BRILLIANCE
+i-agility POT_AGILITY
 i-gain-strength POT_GAIN_STRENGTH
 i-gain-dexterity POT_GAIN_DEXTERITY
 i-gain-intelligence POT_GAIN_INTELLIGENCE
@@ -865,6 +926,4 @@ runes/rune_lom_lobon MISC_RUNE_LOM_LOBON
 #handled in dc-corpse.txt
 
 #OBJ_GOLD
-%sdir item/gem
-gold_piece GOLD
-#OBJ_GEMSTONES
+gold_pile GOLD

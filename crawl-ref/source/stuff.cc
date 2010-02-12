@@ -16,6 +16,7 @@
 #include "database.h"
 #include "directn.h"
 #include "env.h"
+#include "libutil.h"
 #include "los.h"
 #include "message.h"
 #include "misc.h"
@@ -52,7 +53,6 @@
 #include "delay.h"
 #include "externs.h"
 #include "options.h"
-#include "itemprop.h"
 #include "items.h"
 #include "macro.h"
 #include "misc.h"
@@ -65,9 +65,9 @@
 #include "tutorial.h"
 #include "view.h"
 
-stack_iterator::stack_iterator(const coord_def& pos)
+stack_iterator::stack_iterator(const coord_def& pos, bool accessible)
 {
-    cur_link = igrd(pos);
+    cur_link = accessible ? you.visible_igrd(pos) : igrd(pos);
     if ( cur_link != NON_ITEM )
         next_link = mitm[cur_link].link;
     else
@@ -149,15 +149,13 @@ std::string make_file_time(time_t when)
 {
     if (tm *loc = TIME_FN(&when))
     {
-        char buf[25];
-        snprintf(buf, sizeof buf, "%04d%02d%02d-%02d%02d%02d",
+        return make_stringf("%04d%02d%02d-%02d%02d%02d",
                  loc->tm_year + 1900,
                  loc->tm_mon + 1,
                  loc->tm_mday,
                  loc->tm_hour,
                  loc->tm_min,
                  loc->tm_sec);
-        return (buf);
     }
     return ("");
 }
@@ -167,7 +165,13 @@ void set_redraw_status(unsigned long flags)
     you.redraw_status_flags |= flags;
 }
 
-static bool _tag_follower_at(const coord_def &pos)
+static bool _is_religious_follower(const monsters* mon)
+{
+    return ((you.religion == GOD_YREDELEMNUL || you.religion == GOD_BEOGH)
+            && is_follower(mon));
+}
+
+static bool _tag_follower_at(const coord_def &pos, bool &real_follower)
 {
     if (!in_bounds(pos) || pos == you.pos())
         return (false);
@@ -178,17 +182,14 @@ static bool _tag_follower_at(const coord_def &pos)
 
     if (fmenv->type == MONS_PLAYER_GHOST
         || !fmenv->alive()
+        || fmenv->speed_increment < 50
         || fmenv->incapacitated()
-        || !mons_can_use_stairs(fmenv)
         || mons_is_stationary(fmenv))
     {
         return (false);
     }
 
     if (!monster_habitable_grid(fmenv, DNGN_FLOOR))
-        return (false);
-
-    if (fmenv->speed_increment < 50)
         return (false);
 
     // Only friendly monsters, or those actively seeking the
@@ -208,12 +209,24 @@ static bool _tag_follower_at(const coord_def &pos)
 
         // Undead will follow Yredelemnul worshippers, and orcs will
         // follow Beogh worshippers.
-        if ((you.religion != GOD_YREDELEMNUL && you.religion != GOD_BEOGH)
-            || !is_follower(fmenv))
-        {
+        if (!_is_religious_follower(fmenv))
             return (false);
-        }
     }
+
+    // Monsters that can't use stairs can still be marked as followers
+    // (though they'll be ignored for transit), so any adjacent real
+    // follower can follow through. (jpeg)
+    if (!mons_can_use_stairs(fmenv))
+    {
+        if (_is_religious_follower(fmenv))
+        {
+            fmenv->flags |= MF_TAKING_STAIRS;
+            return (true);
+        }
+        return (false);
+    }
+
+    real_follower = true;
 
     // Monster is chasing player through stairs.
     fmenv->flags |= MF_TAKING_STAIRS;
@@ -223,10 +236,8 @@ static bool _tag_follower_at(const coord_def &pos)
     fmenv->travel_path.clear();
     fmenv->travel_target = MTRAV_NONE;
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "%s is marked for following.",
+    dprf("%s is marked for following.",
          fmenv->name(DESC_CAP_THE, true).c_str() );
-#endif
 
     return (true);
 }
@@ -260,25 +271,24 @@ void tag_followers()
         for (int i = 0, size = places[place_set].size(); i < size; ++i)
         {
             const coord_def &p = places[place_set][i];
-
-            coord_def fp;
-            for (fp.x = p.x - 1; fp.x <= p.x + 1; ++fp.x)
-                for (fp.y = p.y - 1; fp.y <= p.y + 1; ++fp.y)
+            for (adjacent_iterator ai(p); ai; ++ai)
+            {
+                if ((*ai - you.pos()).abs() > radius2
+                    || travel_point_distance[ai->x][ai->y])
                 {
-                    if (fp == p || (fp - you.pos()).abs() > radius2
-                        || !in_bounds(fp) || travel_point_distance[fp.x][fp.y])
-                    {
-                        continue;
-                    }
-                    travel_point_distance[fp.x][fp.y] = 1;
-                    if (_tag_follower_at(fp))
-                    {
-                        // If we've run out of our follower allowance, bail.
-                        if (--n_followers <= 0)
-                            return;
-                        places[!place_set].push_back(fp);
-                    }
+                    continue;
                 }
+                travel_point_distance[ai->x][ai->y] = 1;
+
+                bool real_follower = false;
+                if (_tag_follower_at(*ai, real_follower))
+                {
+                    // If we've run out of our follower allowance, bail.
+                    if (real_follower && --n_followers <= 0)
+                        return;
+                    places[!place_set].push_back(*ai);
+                }
+            }
         }
         places[place_set].clear();
         place_set = !place_set;
@@ -317,6 +327,8 @@ void cio_init()
 #ifdef TARGET_OS_DOS
     init_libdos();
 #endif
+
+    set_cursor_enabled(false);
 
     crawl_view.init_geometry();
 
@@ -435,12 +447,9 @@ void redraw_screen(void)
 
     print_stats();
 
-    if (Options.delay_message_clear)
-        mesclr(true);
-
     bool note_status = notes_are_active();
     activate_notes(false);
-    new_level();
+    print_stats_level();
 #ifdef DGL_SIMPLE_MESSAGING
     update_message_status();
 #endif
@@ -448,6 +457,10 @@ void redraw_screen(void)
     activate_notes(note_status);
 
     viewwindow(false);
+
+    // Display the message window at the end because it places
+    // the cursor behind possible prompts.
+    display_message_window();
 }
 
 // STEPDOWN FUNCTION to replace conditional chains in spells2.cc 12jan2000 {dlb}
@@ -623,6 +636,12 @@ void canned_msg(canned_message_type which_message)
     case MSG_EMPTY_HANDED:
         mpr("You are now empty-handed.");
         break;
+    case MSG_YOU_BLINK:
+        mpr("You blink.");
+        break;
+    case MSG_WEIRD_STASIS:
+        mpr("You feel a weird sense of stasis.");
+        break;
     }
 }
 
@@ -650,10 +669,11 @@ bool yes_or_no( const char* fmt, ... )
 
 // jmf: general helper (should be used all over in code)
 //      -- idea borrowed from Nethack
-bool yesno( const char *str, bool safe, int safeanswer, bool clear_after,
-            bool interrupt_delays, bool noprompt,
-            const explicit_keymap *map )
+bool yesno(const char *str, bool safe, int safeanswer, bool clear_after,
+           bool interrupt_delays, bool noprompt,
+           const explicit_keymap *map, GotoRegion region)
 {
+    bool message = (region == GOTO_MSG);
     if (interrupt_delays && !crawl_state.is_repeating_cmd())
         interrupt_activity( AI_FORCE_INTERRUPT );
 
@@ -662,7 +682,12 @@ bool yesno( const char *str, bool safe, int safeanswer, bool clear_after,
     while (true)
     {
         if (!noprompt)
-            mpr(prompt.c_str(), MSGCH_PROMPT);
+        {
+            if (message)
+                mpr(prompt.c_str(), MSGCH_PROMPT);
+            else
+                cprintf(prompt.c_str());
+        }
 
         int tmp = getchm(KMC_CONFIRM);
 
@@ -692,7 +717,7 @@ bool yesno( const char *str, bool safe, int safeanswer, bool clear_after,
             tmp = toupper( tmp );
         }
 
-        if (clear_after)
+        if (clear_after && message)
             mesclr();
 
         if (tmp == 'N')
@@ -700,7 +725,13 @@ bool yesno( const char *str, bool safe, int safeanswer, bool clear_after,
         else if (tmp == 'Y')
             return (true);
         else if (!noprompt)
-            mpr("[Y]es or [N]o only, please.");
+        {
+            const std::string pr = "[Y]es or [N]o only, please.";
+            if (message)
+                mpr(pr);
+            else
+                cprintf((EOL + pr + EOL).c_str());
+        }
     }
 }
 
@@ -815,9 +846,11 @@ int yesnoquit( const char* str, bool safe, int safeanswer, bool allow_all,
     }
 }
 
-bool player_can_hear(const coord_def& p)
+bool player_can_hear(const coord_def& p, int hear_distance)
 {
-    return (!silenced(p) && !silenced(you.pos()));
+    return (!silenced(p)
+            && !silenced(you.pos())
+            && you.pos().distance_from(p) <= hear_distance);
 }
 
 char index_to_letter(int the_index)
@@ -905,37 +938,15 @@ void zap_los_monsters(bool items_also)
         if (mon == NULL || mons_class_flag(mon->type, M_NO_EXP_GAIN))
             continue;
 
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "Dismissing %s",
+        dprf("Dismissing %s",
              mon->name(DESC_PLAIN, true).c_str() );
-#endif
+
         // Do a hard reset so the monster's items will be discarded.
         mon->flags |= MF_HARD_RESET;
         // Do a silent, wizard-mode monster_die() just to be extra sure the
         // player sees nothing.
         monster_die(mon, KILL_DISMISSED, NON_MONSTER, true, true);
     }
-}
-
-int integer_sqrt(int value)
-{
-    if (value <= 0)
-        return (value);
-
-    int very_old_retval = -1;
-    int old_retval = 0;
-    int retval = 1;
-
-    while (very_old_retval != old_retval
-        && very_old_retval != retval
-        && retval != old_retval)
-    {
-        very_old_retval = old_retval;
-        old_retval = retval;
-        retval = (value / old_retval + old_retval) / 2;
-    }
-
-    return (retval);
 }
 
 int random_rod_subtype()

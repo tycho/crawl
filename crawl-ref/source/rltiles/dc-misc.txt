@@ -22,8 +22,31 @@ cloud_poison2 CLOUD_POISON_2
 cloud_black_smoke CLOUD_BLACK_SMOKE
 cloud_blue_smoke CLOUD_BLUE_SMOKE
 cloud_grey_smoke CLOUD_GREY_SMOKE
+
+%variation CLOUD_GREY_SMOKE white
+%lum 0 30
+%repeat CLOUD_GREY_SMOKE CLOUD_WHITE_SMOKE
+%resetcol
+
 cloud_miasma CLOUD_MIASMA
 cloud_tloc_energy CLOUD_TLOC_ENERGY
+cloud_mutagenic_small1 CLOUD_MUTAGENIC_0
+cloud_mutagenic_small2
+cloud_mutagenic_medium1 CLOUD_MUTAGENIC_1
+cloud_mutagenic_medium2
+cloud_mutagenic_large1 CLOUD_MUTAGENIC_2
+cloud_mutagenic_large2
+cloud_mutagenic_large3
+cloud_mutagenic_large4
+# orb of destruction
+cloud_magic_trail0 CLOUD_MAGIC_TRAIL_0
+cloud_magic_trail1 CLOUD_MAGIC_TRAIL_1
+cloud_magic_trail2 CLOUD_MAGIC_TRAIL_2
+cloud_magic_trail3 CLOUD_MAGIC_TRAIL_3
+cloud_rain1 CLOUD_RAIN
+cloud_rain2
+cloud_grey_smoke CLOUD_MIST
+cloud_gloom CLOUD_GLOOM
 
 #########MAP
 %sdir dc-misc
@@ -46,16 +69,21 @@ mask_shallow_water_murky MASK_SHALLOW_WATER_MURKY
 mask_deep_water_shoals MASK_DEEP_WATER_SHOALS
 mask_shallow_water_shoals MASK_SHALLOW_WATER_SHOALS
 mask_lava MASK_LAVA
+%shrink 0
+mask_submerged MASK_SUBMERGED
+%shrink 1
 cursor CURSOR
 cursor_red CURSOR2
 cursor_green CURSOR3
 tutorial_cursor TUTORIAL_CURSOR
 %rim 1
 heart HEART
+good_neutral GOOD_NEUTRAL
 neutral NEUTRAL
 animated_weapon ANIMATED_WEAPON
 poison POISON
 flame FLAME
+berserk BERSERK
 %rim 0
 may_stab_brand MAY_STAB_BRAND
 stab_brand STAB_BRAND
@@ -82,6 +110,14 @@ num7 NUM7
 num8 NUM8
 num9 NUM9
 tried TRIED
+
+%rim 1
+demon_pentagram1 DEMON_NUM1
+demon_pentagram2 DEMON_NUM2
+demon_pentagram3 DEMON_NUM3
+demon_pentagram4 DEMON_NUM4
+demon_pentagram5 DEMON_NUM5
+%rim 0
 
 slot_eq ITEM_SLOT_EQUIP
 slot_cursed ITEM_SLOT_CURSED

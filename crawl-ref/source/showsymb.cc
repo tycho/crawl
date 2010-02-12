@@ -10,25 +10,17 @@
 
 #include "showsymb.h"
 
-#include <stdint.h> // For uint32_t
-
-#include "areas.h"
 #include "colour.h"
 #include "env.h"
 #include "map_knowledge.h"
-#include "fprop.h"
 #include "mon-util.h"
 #include "monster.h"
 #include "options.h"
-#include "overmap.h"
-#include "random.h"
 #include "show.h"
 #include "state.h"
 #include "stuff.h"
 #include "terrain.h"
-#include "viewchar.h"
 #include "viewgeom.h"
-#include "viewmap.h"
 
 glyph get_show_glyph(show_type object)
 {
@@ -56,6 +48,23 @@ glyph get_show_glyph(show_type object)
 static int _get_mons_colour(const monsters *mons)
 {
     int col = mons->colour;
+
+    if (mons->type == MONS_SLIME_CREATURE && mons->number > 1)
+        col = mons_class_colour(MONS_MERGED_SLIME_CREATURE);
+
+    if (!crawl_state.arena && you.misled())
+    {
+        const monsterentry* mdat = get_monster_data(mons->get_mislead_type());
+        col = mdat->colour;
+        // Some monsters (specifically, ugly things and butterflies) are generated
+        // black. Ugly things are an object of mislead, but never a subject; however
+        // if a monster summons ugly things (such as Kirke) while under the Misled
+        // status effect, they will show up black instead of their assigned colour.
+        // Likewise with any other black-coloured monsters on-screen but not yet
+        // mislead. {due}
+        if (col == BLACK)
+            col = mons->colour;
+    }
 
     if (mons->berserk())
         col = RED;
@@ -87,7 +96,7 @@ static int _get_mons_colour(const monsters *mons)
             col |= COLFLAG_FEATURE_ITEM;
         }
         else if (Options.heap_brand != CHATTR_NORMAL
-                 && igrd(mons->pos()) != NON_ITEM
+                 && you.visible_igrd(mons->pos()) != NON_ITEM
                  && !crawl_state.arena)
         {
             col |= COLFLAG_ITEM_HEAP;
@@ -125,7 +134,13 @@ glyph get_item_glyph(const item_def *item)
 glyph get_mons_glyph(const monsters *mons)
 {
     glyph g;
-    g.ch = mons_char(mons->type);
+
+    if (!crawl_state.arena && you.misled())
+        g.ch = mons_char(mons->get_mislead_type());
+    else if (mons->type == MONS_SLIME_CREATURE && mons->number > 1)
+        g.ch = mons_char(MONS_MERGED_SLIME_CREATURE);
+    else
+        g.ch = mons_char(mons->type);
     g.col = _get_mons_colour(mons);
     return (g);
 }

@@ -29,7 +29,6 @@
 #endif
 #include "invent.h"
 #include "item_use.h"
-#include "itemprop.h"
 #include "libutil.h"
 #include "macro.h"
 #include "message.h"
@@ -39,6 +38,7 @@
 #include "player.h"
 #include "religion.h"
 #include "species.h"
+#include "spl-util.h"
 #include "stash.h"
 #include "state.h"
 #include "stuff.h"
@@ -52,10 +52,10 @@
 #ifdef TARGET_OS_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#elif defined ( __APPLE__ )
+extern char **NXArgv;
 #elif defined ( __linux__ )
 #include <unistd.h>
-#elif defined ( __MACH__ )
-extern char **NXArgv;
 #endif
 
 const std::string game_options::interrupt_prefix = "interrupt_";
@@ -87,11 +87,11 @@ god_type str_to_god(std::string god)
 }
 
 // Returns -1 if unmatched else returns 0-15.
-static int _str_to_channel_colour( const std::string &str )
+static msg_colour_type _str_to_channel_colour(const std::string &str)
 {
-    int ret = str_to_colour( str );
-
-    if (ret == -1)
+    int col = str_to_colour(str);
+    msg_colour_type ret = MSGCOL_NONE;
+    if (col == -1)
     {
         if (str == "mute")
             ret = MSGCOL_MUTED;
@@ -102,6 +102,8 @@ static int _str_to_channel_colour( const std::string &str )
         else if (str == "alternate")
             ret = MSGCOL_ALTERNATE;
     }
+    else
+        ret = msg_colour(str_to_colour(str));
 
     return (ret);
 }
@@ -218,22 +220,26 @@ static int _str_to_wand( const std::string& str )
     return (SWT_NO_SELECTION);
 }
 
-int str_to_fprop ( const std::string &str)
+// Summon types can be any of mon_summon_type (enum.h), or a relevant summoning
+// spell.
+int str_to_summon_type (const std::string &str)
 {
-    if (str == "bloody")
-        return (FPROP_BLOODY);
-    if (str == "force_exclude")
-        return (FPROP_FORCE_EXCLUDE);
-    if (str == "no_cloud_gen")
-        return (FPROP_NO_CLOUD_GEN);
-    if (str == "no_rtele_into")
-        return (FPROP_NO_RTELE_INTO);
-    if (str == "no_ctele_into")
-        return (FPROP_NO_CTELE_INTO);
-    if (str == "no_tele_into")
-        return (FPROP_NO_TELE_INTO);
+    if (str == "clone")
+        return (MON_SUMM_CLONE);
+    if (str == "animate")
+        return (MON_SUMM_ANIMATE);
+    if (str == "chaos")
+        return (MON_SUMM_CHAOS);
+    if (str == "miscast")
+        return (MON_SUMM_MISCAST);
+    if (str == "zot")
+        return (MON_SUMM_ZOT);
+    if (str == "wrath")
+        return (MON_SUMM_WRATH);
+    if (str == "aid")
+        return (MON_SUMM_AID);
 
-    return (FPROP_NONE);
+    return (spell_by_name(str));
 }
 
 static std::string _wand_to_str( int weapon )
@@ -288,7 +294,7 @@ static fire_type _str_to_fire_types( const std::string &str )
     return (FIRE_NONE);
 }
 
-static char _str_to_race( const std::string &str )
+static char _str_to_species( const std::string &str )
 {
     if (str == "random")
         return '*';
@@ -310,7 +316,7 @@ static char _str_to_race( const std::string &str )
     return ((index != -1) ? index_to_letter( index ) : 0);
 }
 
-static int _str_to_class( const std::string &str )
+static int _str_to_job( const std::string &str )
 {
     if (str == "random")
         return '*';
@@ -320,14 +326,14 @@ static int _str_to_class( const std::string &str )
     if (str.length() == 1)      // old system of using menu letter
         return (str[0]);
     else if (str.length() == 2) // scan abbreviations
-        index = get_class_index_by_abbrev( str.c_str() );
+        index = get_job_index_by_abbrev( str.c_str() );
 
     // if we don't have a match, scan the full names
     if (index == -1)
-        index = get_class_index_by_name( str.c_str() );
+        index = get_job_index_by_name( str.c_str() );
 
     if (index == -1)
-        fprintf( stderr, "Unknown job choice: %s\n", str.c_str() );
+        fprintf( stderr, "Unknown background choice: %s\n", str.c_str() );
 
     return ((index != -1) ? index_to_letter( index ) : 0);
 }
@@ -604,13 +610,15 @@ void game_options::reset_options()
 
     view_max_width   = std::max(33, VIEW_MIN_WIDTH);
     view_max_height  = std::max(21, VIEW_MIN_HEIGHT);
-    mlist_min_height = 5;
-    msg_max_height   = 10;
+    mlist_min_height = 4;
+    msg_min_height   = std::max(7, MSG_MIN_HEIGHT);
+    msg_max_height   = std::max(10, MSG_MIN_HEIGHT);
     mlist_allow_alternate_layout = false;
     messages_at_top  = false;
-    mlist_targetting = false;
+    mlist_targeting = false;
     classic_hud = false;
     msg_condense_repeats = true;
+    msg_condense_short = true;
 
     view_lock_x = true;
     view_lock_y = true;
@@ -624,7 +632,6 @@ void game_options::reset_options()
 
     autopickup_on    = 1;
     default_friendly_pickup = FRIENDLY_PICKUP_FRIEND;
-    show_more_prompt = true;
 
     show_gold_turns = false;
     show_beam       = true;
@@ -694,7 +701,10 @@ void game_options::reset_options()
     // [ds] Grumble grumble.
     auto_list              = true;
 
-    delay_message_clear    = true;
+    clear_messages         = false;
+    show_more              = true;
+    small_more             = true;
+
     pickup_dropped         = false;
     pickup_thrown          = true;
 
@@ -836,6 +846,7 @@ void game_options::reset_options()
     tile_player_col      = MAP_WHITE;
     tile_monster_col     = MAP_RED;
     tile_neutral_col     = MAP_RED;
+    tile_peaceful_col    = MAP_LTRED;
     tile_friendly_col    = MAP_LTRED;
     tile_plant_col       = MAP_DKGREEN;
     tile_item_col        = MAP_GREEN;
@@ -878,6 +889,11 @@ void game_options::reset_options()
     tile_tooltip_ms       = 500;
     tile_tag_pref         = crawl_state.arena ? TAGPREF_NAMED : TAGPREF_ENEMY;
     tile_display          = TDSP_INVENT;
+
+    tile_show_minihealthbar = true;
+    tile_show_minimagicbar  = true;
+    tile_show_demon_numbers = true;
+    tile_better_transparency = false;
 #endif
 
     // map each colour to itself as default
@@ -885,7 +901,8 @@ void game_options::reset_options()
     // Otherwise, do a check to see if we're using Apple_Terminal.
 #ifndef USE_8_COLOUR_TERM_MAP
     const char *term_program = getenv("TERM_PROGRAM");
-    if (term_program && strcmp(term_program, "Apple_Terminal") == 0) {
+    if (term_program && strcmp(term_program, "Apple_Terminal") == 0)
+    {
 #endif
         for (int i = 0; i < 16; ++i)
             colour[i] = i % 8;
@@ -925,6 +942,7 @@ void game_options::reset_options()
     note_messages.clear();
     autoinscriptions.clear();
     autoinscribe_artefacts = true;
+    autoinscribe_cursed = true;
     note_items.clear();
     note_skill_levels.clear();
     travel_stop_message.clear();
@@ -1300,7 +1318,7 @@ static void write_newgame_options(FILE *f)
     if (Options.prev_race)
         fprintf(f, "species = %c\n", Options.prev_race);
     if (Options.prev_cls)
-        fprintf(f, "job = %c\n", Options.prev_cls);
+        fprintf(f, "background = %c\n", Options.prev_cls);
 
     if (Options.prev_weapon != WPN_UNKNOWN)
         fprintf(f, "weapon = %s\n", _weapon_to_str(Options.prev_weapon).c_str());
@@ -1735,13 +1753,17 @@ void game_options::add_message_colour_mapping(const std::string &field)
     if (cmap.size() != 2)
         return;
 
-    const int col = (cmap[0] == "mute") ? MSGCOL_MUTED
-                                        : str_to_colour(cmap[0]);
-    if (col == -1)
+    const int col = str_to_colour(cmap[0]);
+    msg_colour_type mcol;
+    if (cmap[0] == "mute")
+        mcol = MSGCOL_MUTED;
+    else if (col == -1)
         return;
+    else
+        mcol = msg_colour(col);
 
-    message_colour_mapping m = { parse_message_filter( cmap[1] ), col };
-    message_colour_mappings.push_back( m );
+    message_colour_mapping m = { parse_message_filter(cmap[1]), mcol };
+    message_colour_mappings.push_back(m);
 }
 
 // Option syntax is:
@@ -1980,7 +2002,8 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     const std::string orig_field = field;
 
     if (key != "name" && key != "crawl_dir" && key != "macro_dir"
-        && key != "species" && key != "job" && key != "ban_pickup"
+        && key != "species" && key != "background" && key != "job"
+        && key != "race" && key != "class" && key != "ban_pickup"
         && key != "autopickup_exceptions"
         && key != "explore_stop_pickup_ignore"
         && key != "stop_travel" && key != "sound"
@@ -2181,16 +2204,16 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     else if (key == "channel")
     {
         const int chnl = str_to_channel( subkey );
-        const int col  = _str_to_channel_colour( field );
+        const msg_colour_type col  = _str_to_channel_colour( field );
 
         if (chnl != -1 && col != -1)
             channels[chnl] = col;
         else if (chnl == -1)
             fprintf( stderr, "Bad channel -- %s\n", subkey.c_str() );
-        else if (col == -1)
+        else if (col == MSGCOL_NONE)
             fprintf( stderr, "Bad colour -- %s\n", field.c_str() );
     }
-    else COLOUR_OPTION(background);
+    else COLOUR_OPTION(background_colour);
     else COLOUR_OPTION(detected_item_colour);
     else COLOUR_OPTION(detected_monster_colour);
     else if (key.find(interrupt_prefix) == 0)
@@ -2241,17 +2264,17 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     else COLOUR_OPTION(status_caption_colour);
     else if (key == "weapon")
     {
-        // Choose this weapon for classes that get choice.
+        // Choose this weapon for backgrounds that get choice.
         weapon = _str_to_weapon( field );
     }
     else if (key == "book")
     {
-        // Choose this book for classes that get choice.
+        // Choose this book for backgrounds that get choice.
         book = _str_to_book( field );
     }
     else if (key == "wand")
     {
-        // Choose this wand for classes that get choice.
+        // Choose this wand for backgrounds that get choice.
         wand = _str_to_wand( field );
     }
     else if (key == "chaos_knight")
@@ -2277,7 +2300,7 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     }
     else if (key == "priest")
     {
-        // choose this weapon for classes that get choice
+        // Choose this weapon for backgrounds that get choice.
         priest = str_to_god(field);
         if (!is_priest_god(priest))
             priest = GOD_RANDOM;
@@ -2308,8 +2331,7 @@ void game_options::read_option_line(const std::string &str, bool runscript)
         // field is already cleaned up from trim_string()
         pizza = field;
     }
-
-    BOOL_OPTION(random_pick);
+    else BOOL_OPTION(random_pick);
     else BOOL_OPTION(good_random);
     else BOOL_OPTION(remember_name);
 #ifndef SAVE_DIR_PATH
@@ -2350,8 +2372,8 @@ void game_options::read_option_line(const std::string &str, bool runscript)
                      field.c_str() );
         }
     }
-    INT_OPTION(ood_interesting, 0, 500);
-    INT_OPTION(rare_interesting, 0, 99);
+    else INT_OPTION(ood_interesting, 0, 500);
+    else INT_OPTION(rare_interesting, 0, 99);
     else if (key == "note_monsters")
     {
         append_vector(note_monsters, split_string(",", field));
@@ -2385,11 +2407,11 @@ void game_options::read_option_line(const std::string &str, bool runscript)
 #endif
     else if (key == "species" || key == "race")
     {
-        race = _str_to_race( field );
+        race = _str_to_species( field );
     }
-    else if (key == "job" || key == "class")
+    else if (key == "background" || key == "job" || key == "class")
     {
-        cls = _str_to_class( field );
+        cls = _str_to_job( field );
     }
     else BOOL_OPTION(auto_list);
     else if (key == "default_target")
@@ -2403,34 +2425,20 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     else BOOL_OPTION(messaging);
 #endif
     else BOOL_OPTION(mouse_input);
-    else if (key == "view_max_width")
-    {
-        view_max_width = atoi(field.c_str());
-        if (view_max_width < VIEW_MIN_WIDTH)
-            view_max_width = VIEW_MIN_WIDTH;
-
-        // Allow the view to be one larger than GXM because the view width
-        // needs to be odd, and GXM is even.
-        else if (view_max_width > GXM + 1)
-            view_max_width = GXM + 1;
-    }
-    else if (key == "view_max_height")
-    {
-        view_max_height = atoi(field.c_str());
-        if (view_max_height < VIEW_MIN_HEIGHT)
-            view_max_height = VIEW_MIN_HEIGHT;
-        else if (view_max_height > GYM + 1)
-            view_max_height = GYM + 1;
-    }
+    // These need to be odd, hence allow +1.
+    else INT_OPTION(view_max_width, VIEW_MIN_WIDTH, GXM + 1);
+    else INT_OPTION(view_max_height, VIEW_MIN_HEIGHT, GYM + 1);
     else INT_OPTION(mlist_min_height, 0, INT_MAX);
-    else INT_OPTION(msg_max_height, 6, INT_MAX);
+    else INT_OPTION(msg_min_height, MSG_MIN_HEIGHT, INT_MAX);
+    else INT_OPTION(msg_max_height, MSG_MIN_HEIGHT, INT_MAX);
     else BOOL_OPTION(mlist_allow_alternate_layout);
     else BOOL_OPTION(messages_at_top);
 #ifndef USE_TILE
-    else BOOL_OPTION(mlist_targetting);
+    else BOOL_OPTION(mlist_targeting);
 #endif
     else BOOL_OPTION(classic_hud);
     else BOOL_OPTION(msg_condense_repeats);
+    else BOOL_OPTION(msg_condense_short);
     else BOOL_OPTION(view_lock_x);
     else BOOL_OPTION(view_lock_y);
     else if (key == "view_lock")
@@ -2469,7 +2477,9 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     else BOOL_OPTION(note_skill_max);
     else BOOL_OPTION(note_all_spells);
     else BOOL_OPTION(note_xom_effects);
-    else BOOL_OPTION(delay_message_clear);
+    else BOOL_OPTION(clear_messages);
+    else BOOL_OPTION(show_more);
+    else BOOL_OPTION(small_more);
     else if (key == "flush")
     {
         if (subkey == "failure")
@@ -2590,6 +2600,7 @@ void game_options::read_option_line(const std::string &str, bool runscript)
             std::pair<text_pattern,std::string>(thesplit[0], thesplit[1]));
     }
     else BOOL_OPTION(autoinscribe_artefacts);
+    else BOOL_OPTION(autoinscribe_cursed);
     else if (key == "map_file_name")
     {
         map_file_name = field;
@@ -2684,8 +2695,7 @@ void game_options::read_option_line(const std::string &str, bool runscript)
             }
         }
     }
-
-    BOOL_OPTION(pickup_thrown);
+    else BOOL_OPTION(pickup_thrown);
     else BOOL_OPTION(pickup_dropped);
 #ifdef WIZARD
     else if (key == "fsim_kit")
@@ -2893,8 +2903,7 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     }
     else BOOL_OPTION(explore_greedy);
     else BOOL_OPTION(explore_improved);
-
-    BOOL_OPTION(trap_prompt);
+    else BOOL_OPTION(trap_prompt);
     else if (key == "stash_filter")
     {
         std::vector<std::string> seg = split_string(",", field);
@@ -2917,7 +2926,10 @@ void game_options::read_option_line(const std::string &str, bool runscript)
             }
         }
     }
+#ifndef TARGET_COMPILER_VC
     // MSVC has a limit on how many if/else if can be chained together.
+    else
+#endif
     if (key == "menu_colour" || key == "menu_color")
     {
         std::vector<std::string> seg = split_string(",", field);
@@ -3209,11 +3221,15 @@ void game_options::read_option_line(const std::string &str, bool runscript)
     else INT_OPTION(tile_map_pixels, 1, INT_MAX);
     else INT_OPTION(tile_tooltip_ms, 0, INT_MAX);
     else INT_OPTION(tile_update_rate, 50, INT_MAX);
+    else BOOL_OPTION(tile_show_minihealthbar);
+    else BOOL_OPTION(tile_show_minimagicbar);
+    else BOOL_OPTION(tile_show_demon_numbers);
     else if (key == "tile_tag_pref")
     {
         tile_tag_pref = string2tag_pref(field.c_str());
     }
-#endif
+    else BOOL_OPTION(tile_better_transparency);
+#endif // USE_TILE
 
     else if (key == "bindkey")
     {
@@ -3463,9 +3479,11 @@ enum commandline_option_type {
     CLO_MAPSTAT,
     CLO_ARENA,
     CLO_TEST,
+    CLO_SCRIPT,
     CLO_BUILDDB,
     CLO_HELP,
     CLO_VERSION,
+    CLO_SAVE_VERSION,
     CLO_EXTRA_OPT_FIRST,
     CLO_EXTRA_OPT_LAST,
 
@@ -3473,10 +3491,10 @@ enum commandline_option_type {
 };
 
 static const char *cmd_ops[] = {
-    "scores", "name", "species", "job", "plain", "dir", "rc",
+    "scores", "name", "species", "background", "plain", "dir", "rc",
     "rcdir", "tscores", "vscores", "scorefile", "morgue", "macro",
-    "mapstat", "arena", "test", "builddb", "help", "version",
-    "extra-opt-first", "extra-opt-last",
+    "mapstat", "arena", "test", "script", "builddb", "help", "version",
+    "save-version", "extra-opt-first", "extra-opt-last"
 };
 
 const int num_cmd_ops = CLO_NOPS;
@@ -3514,6 +3532,79 @@ static void _print_version()
     printf("Crawl version %s%s", Version::Long().c_str(), EOL);
     printf("Save file version %d.%d%s", TAG_MAJOR_VERSION, TAG_MINOR_VERSION, EOL);
     printf("%s", compilation_info().c_str());
+}
+
+static void _print_save_version(char *name)
+{
+#ifdef LOAD_UNPACKAGE_CMD
+    bool need_unlink = false;
+#endif
+    std::string basename = get_savedir_filename(name, "", "");
+    std::string filename = basename + ".sav";
+
+    FILE *charf = fopen(name, "rb");
+
+    if (!charf) {
+#ifdef LOAD_UNPACKAGE_CMD
+        std::string zipfile = basename + PACKAGE_SUFFIX;
+        FILE *handle = fopen(zipfile.c_str(), "rb+");
+        if (handle == NULL)
+        {
+            fprintf(stderr, "Unable to open %s for reading!\n",
+                            zipfile.c_str());
+            return;
+        }
+        else
+        {
+            fclose(handle);
+
+            // Create command.
+            char cmd_buff[1024];
+
+            std::string zipname = basename;
+            std::string directory = get_savedir();
+            std::string savefile = filename;
+            savefile.erase(0, savefile.rfind(FILE_SEPARATOR) + 1);
+
+            escape_path_spaces(zipname);
+            escape_path_spaces(directory);
+            escape_path_spaces(savefile);
+            snprintf( cmd_buff, sizeof(cmd_buff), UNPACK_SPECIFIC_FILE_CMD,
+                      zipname.c_str(),
+                      directory.c_str(),
+                      savefile.c_str() );
+
+            if (system( cmd_buff ) != 0)
+            {
+                fprintf(stderr, "Warning: Zip command "
+                                "(UNPACK_SPECIFIC_FILE_CMD) "
+                                "returned non-zero value!" EOL );
+            }
+            need_unlink = true;
+        }
+#endif
+        charf = fopen(filename.c_str(), "rb");
+    }
+    if (!charf) {
+        fprintf(stderr, "Unable to open %s for reading!\n", filename.c_str());
+        goto cleanup;
+    }
+
+    char major, minor;
+    if (!get_save_version(charf, major, minor)) {
+        fprintf(stderr, "Save file is invalid.\n");
+    }
+    else {
+        printf("Save file version for %s is %d.%d\n", name, major, minor);
+    }
+
+cleanup:
+#ifdef LOAD_UNPACKAGE_CMD
+    if (need_unlink)
+        unlink(filename.c_str());
+#else
+    ;
+#endif
 }
 
 static bool _check_extra_opt(char* _opt)
@@ -3709,6 +3800,21 @@ bool parse_args( int argc, char **argv, bool rc_only )
             }
             break;
 
+        case CLO_SCRIPT:
+            crawl_state.test   = true;
+            crawl_state.script = true;
+            if (current < argc - 1)
+            {
+                crawl_state.tests_selected = split_string(",", next_arg);
+                for (int extra = current + 2; extra < argc; ++extra)
+                    crawl_state.script_args.push_back(argv[extra]);
+                current = argc;
+            }
+            else
+                end(1, false,
+                    "-script must specify comma-separated script names");
+            break;
+
         case CLO_BUILDDB:
             if (next_is_param)
                 return (false);
@@ -3755,10 +3861,10 @@ bool parse_args( int argc, char **argv, bool rc_only )
             if (!rc_only)
             {
                 if (o == 2)
-                    Options.race = _str_to_race( std::string( next_arg ) );
+                    Options.race = _str_to_species( std::string( next_arg ) );
 
                 if (o == 3)
-                    Options.cls = _str_to_class( std::string( next_arg ) );
+                    Options.cls = _str_to_job( std::string( next_arg ) );
             }
             nextUsed = true;
             break;
@@ -3807,6 +3913,14 @@ bool parse_args( int argc, char **argv, bool rc_only )
 
         case CLO_VERSION:
             _print_version();
+            end(0);
+
+        case CLO_SAVE_VERSION:
+            // Always parse.
+            if (!next_is_param)
+                return (false);
+
+            _print_save_version(next_arg);
             end(0);
 
         case CLO_EXTRA_OPT_FIRST:
@@ -3950,7 +4064,8 @@ void menu_sort_condition::set_menu_type(std::string &s)
           { "any:",    MT_ANY       },
           { "inv:",    MT_INVLIST   },
           { "drop:",   MT_DROP      },
-          { "pickup:", MT_PICKUP    }
+          { "pickup:", MT_PICKUP    },
+          { "know:",   MT_KNOW      }
       };
 
     for (unsigned mi = 0; mi < ARRAYSZ(menu_type_map); ++mi)

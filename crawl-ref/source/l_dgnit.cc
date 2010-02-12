@@ -12,6 +12,7 @@
 #include "dungeon.h"
 #include "env.h"
 #include "items.h"
+#include "libutil.h"
 #include "mapdef.h"
 #include "stash.h"
 
@@ -55,7 +56,7 @@ static int dgn_item_from_index(lua_State *ls)
     item_def *item = &mitm[index];
 
     if (item->is_valid())
-        lua_pushlightuserdata(ls, item);
+        clua_push_item(ls, item);
     else
         lua_pushnil(ls);
 
@@ -65,7 +66,7 @@ static int dgn_item_from_index(lua_State *ls)
 static int dgn_items_at(lua_State *ls)
 {
     COORDS(c, 1, 2);
-    lua_push_items(ls, env.igrid(c));
+    lua_push_floor_items(ls, env.igrid(c));
     return (1);
 }
 
@@ -82,7 +83,7 @@ static int dgn_create_item(lua_State *ls)
 
     item_list ilist = _lua_get_ilist(ls, 3);
     const int level =
-    lua_isnumber(ls, 4) ? lua_tointeger(ls, 4) : you.your_level;
+    lua_isnumber(ls, 4) ? lua_tointeger(ls, 4) : you.absdepth0;
 
     dgn_place_multiple_items(ilist, c, level);
     link_items();
@@ -123,7 +124,7 @@ static int dgn_stash_items(lua_State *ls)
 
     for (unsigned int i = 0; i < floor_items.size(); i++)
     {
-        lua_pushlightuserdata(ls, const_cast<item_def*>(floor_items[i]));
+        clua_push_item(ls, const_cast<item_def*>(floor_items[i]));
         lua_rawseti(ls, -2, ++index);
     }
 
@@ -132,7 +133,7 @@ static int dgn_stash_items(lua_State *ls)
 
     for (unsigned int i = 0; i < shop_items.size(); i++)
     {
-        lua_pushlightuserdata(ls, const_cast<item_def*>(floor_items[i]));
+        clua_push_item(ls, const_cast<item_def*>(shop_items[i]));
         lua_rawseti(ls, -2, ++index);
     }
 

@@ -8,17 +8,14 @@
 #include "mon-behv.h"
 
 #include "externs.h"
-#include "options.h"
 
 #include "coord.h"
 #include "coordit.h"
 #include "env.h"
 #include "fprop.h"
 #include "exclude.h"
-#include "los.h"
 #include "mon-iter.h"
 #include "mon-movetarget.h"
-#include "mon-place.h"
 #include "mon-pathfind.h"
 #include "mon-stuff.h"
 #include "mon-util.h"
@@ -135,7 +132,7 @@ void handle_behaviour(monsters *mon)
         return;
     }
 
-    // Make sure monsters are not targetting the player in arena mode.
+    // Make sure monsters are not targeting the player in arena mode.
     ASSERT(!(crawl_state.arena && mon->foe == MHITYOU));
 
     if (mons_wall_shielded(mon) && cell_is_solid(mon->pos()))
@@ -145,6 +142,7 @@ void handle_behaviour(monsters *mon)
             || isScared)
         {
             mon->behaviour = BEH_FLEE;
+
         }
     }
 
@@ -209,8 +207,14 @@ void handle_behaviour(monsters *mon)
 
     // Pacified monsters leaving the level prefer not to attack.
     // Others choose the nearest foe.
-    if (!isPacified && mon->foe == MHITNOT)
+    // XXX: This is currently expensive, so we don't want to do it
+    //      every turn for every monster.
+    if (!isPacified && mon->foe == MHITNOT
+        && mon->behaviour != BEH_SLEEP
+        && (proxPlayer || one_chance_in(3)))
+    {
         _set_nearest_monster_foe(mon);
+    }
 
     // Monsters do not attack themselves. {dlb}
     if (mon->foe == mon->mindex())
@@ -256,12 +260,19 @@ void handle_behaviour(monsters *mon)
         actor* afoe = mon->get_foe();
         proxFoe = afoe && mon->can_see(afoe);
 
+        if (mon->foe == MHITYOU)
+        {
+            // monsters::get_foe returns NULL for friendly monsters with
+            // foe == MHITYOU, so make afoe point to the player here.
+            // -cao
+            afoe = &you;
+            proxFoe = proxPlayer;   // Take invis into account.
+        }
+
         coord_def foepos = coord_def(0,0);
         if (afoe)
             foepos = afoe->pos();
 
-        if (mon->foe == MHITYOU)
-            proxFoe = proxPlayer;   // Take invis into account.
 
         // Track changes to state; attitude never changes here.
         beh_type new_beh       = mon->behaviour;
@@ -449,6 +460,25 @@ void handle_behaviour(monsters *mon)
                 && mon->holiness() != MH_NONLIVING)
             {
                 new_beh = BEH_FLEE;
+
+                // This is here instead of in the BEH_FLEE section of the switch
+                // for handle_behaviour, as it only needs to happen once per
+                // fleeing.
+                if (mon->type == MONS_KRAKEN)
+                {
+                    int tcount = 0;
+                    int headnum = mon->mindex();
+                    for (monster_iterator mi; mi; ++mi)
+                        if (mi->type == MONS_KRAKEN_TENTACLE 
+                            && (int)mi->number == headnum)
+                        {
+                            monster_die(*mi, KILL_MISC, NON_MONSTER, true);
+                            tcount++;
+                        }
+
+                    if (tcount > 0)
+                        mpr("The kraken's tentacles slip beneath the water.", MSGCH_WARN);
+                }
             }
             break;
 
@@ -628,9 +658,11 @@ static bool _mons_check_foe(monsters *mon, const coord_def& p,
     {
         if (foe != mon
             && mon->can_see(foe)
+            && !mons_is_projectile(foe->type)
             && (friendly || !is_sanctuary(p))
             && (foe->friendly() != friendly
-                || (neutral && !foe->neutral())))
+                || neutral && !foe->neutral())
+            && !mons_is_firewood(foe))
         {
             return (true);
         }
@@ -680,6 +712,8 @@ void behaviour_event(monsters *mon, mon_event_type event, int src,
     ASSERT(src >= 0 && src <= MHITYOU);
     ASSERT(!crawl_state.arena || src != MHITYOU);
     ASSERT(in_bounds(src_pos) || src_pos.origin());
+    if (mons_is_projectile(mon->type))
+        return; // projectiles have no AI
 
     const beh_type old_behaviour = mon->behaviour;
 
@@ -869,6 +903,23 @@ void behaviour_event(monsters *mon, mon_event_type event, int src,
 
         if (you.see_cell(mon->pos()))
             learned_something_new(TUT_FLEEING_MONSTER);
+
+        if (mon->type == MONS_KRAKEN)
+        {
+            int tcount = 0;
+            int headnum = mon->mindex();
+            for (monster_iterator mi; mi; ++mi)
+                if (mi->type == MONS_KRAKEN_TENTACLE 
+                    && (int)mi->number == headnum)
+                {
+                    monster_die(*mi, KILL_MISC, NON_MONSTER, true);
+                    tcount++;
+                }
+
+            if (tcount > 0)
+                mpr("The kraken's tentacles slip beneath the water.", MSGCH_WARN);
+        }
+
         break;
 
     case ME_CORNERED:
@@ -888,7 +939,7 @@ void behaviour_event(monsters *mon, mon_event_type event, int src,
                 mon->foe = MHITYOU;
                 simple_monster_message(mon, " returns to your side!");
             }
-            else
+            else if (mon->type != MONS_KRAKEN_TENTACLE)
                 simple_monster_message(mon, " turns to fight!");
         }
 

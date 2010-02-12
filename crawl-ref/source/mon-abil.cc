@@ -8,7 +8,6 @@
 #include "mon-abil.h"
 
 #include "externs.h"
-#include "options.h"
 
 #include "arena.h"
 #include "beam.h"
@@ -17,6 +16,7 @@
 #include "directn.h"
 #include "fprop.h"
 #include "ghost.h"
+#include "libutil.h"
 #include "misc.h"
 #include "mon-act.h"
 #include "mon-behv.h"
@@ -28,7 +28,10 @@
 #include "coord.h"
 #include "mon-speak.h"
 #include "mon-stuff.h"
+#include "mon-util.h"
+#include "options.h"
 #include "random.h"
+#include "religion.h"
 #include "spl-mis.h"
 #include "spl-util.h"
 #include "state.h"
@@ -40,6 +43,8 @@
 #include "viewchar.h"
 
 #include <algorithm>
+#include <queue>
+#include <set>
 
 bool ugly_thing_mutate(monsters *ugly, bool proximity)
 {
@@ -182,10 +187,11 @@ static void _merge_ench_durations(monsters *initial_slime, monsters *merge_to)
 }
 
 // Calculate slime creature hp based on how many are merged.
-static void _stats_from_blob_count(monsters *slime, float hp_per_blob)
+static void _stats_from_blob_count(monsters *slime, float max_per_blob,
+                                   float current_per_blob)
 {
-    slime->max_hit_points = (int)(slime->number * hp_per_blob);
-    slime->hit_points = slime->max_hit_points;
+    slime->max_hit_points = (int)(slime->number * max_per_blob);
+    slime->hit_points = (int)(slime->number * current_per_blob);
 }
 
 // Create a new slime creature at 'target', and split 'thing''s hp and
@@ -221,15 +227,16 @@ static bool _do_split(monsters *thing, coord_def & target)
         mprf("%s splits.", thing->name(DESC_CAP_A).c_str());
 
     int split_off = thing->number / 2;
-    float hp_per_blob = thing->max_hit_points / float(thing->number);
+    float max_per_blob = thing->max_hit_points / float(thing->number);
+    float current_per_blob = thing->hit_points / float(thing->number);
 
     thing->number -= split_off;
     new_slime->number = split_off;
 
     new_slime->hit_dice = thing->hit_dice;
 
-    _stats_from_blob_count(thing, hp_per_blob);
-    _stats_from_blob_count(new_slime, hp_per_blob);
+    _stats_from_blob_count(thing, max_per_blob, current_per_blob);
+    _stats_from_blob_count(new_slime, max_per_blob, current_per_blob);
 
     if (crawl_state.arena)
         arena_split_monster(thing, new_slime);
@@ -246,7 +253,7 @@ static bool _do_merge(monsters *initial_slime, monsters *merge_to)
 
     merge_to->number += initial_slime->number;
     merge_to->max_hit_points += initial_slime->max_hit_points;
-    merge_to->hit_points += initial_slime->max_hit_points;
+    merge_to->hit_points += initial_slime->hit_points;
 
     // Merge monster flags (mostly so that MF_CREATED_NEUTRAL, etc. are
     // passed on if the merged slime subsequently splits.  Hopefully
@@ -303,17 +310,7 @@ static bool _do_merge(monsters *initial_slime, monsters *merge_to)
                  merge_to->name(DESC_NOCAP_A).c_str());
         }
 
-        flash_view(LIGHTGREEN);
-
-        int flash_delay = 150;
-        // Scale delay to match change in arena_delay.
-        if (crawl_state.arena)
-        {
-            flash_delay *= Options.arena_delay;
-            flash_delay /= 600;
-        }
-
-        delay(flash_delay);
+        flash_view_delay(LIGHTGREEN, 150);
     }
     else if (you.can_see(initial_slime))
         mpr("A slime creature suddenly disappears!");
@@ -327,9 +324,8 @@ static bool _do_merge(monsters *initial_slime, monsters *merge_to)
 // Slime creatures can split but not merge under these conditions.
 static bool _unoccupied_slime(monsters *thing)
 {
-     return (thing->asleep()
-            || mons_is_wandering(thing)
-            || thing->foe == MHITNOT);
+     return (thing->asleep() || mons_is_wandering(thing)
+             || thing->foe == MHITNOT);
 }
 
 // Slime creatures cannot split or merge under these conditions.
@@ -408,29 +404,57 @@ static bool _slime_merge(monsters *thing)
     return (false);
 }
 
+static bool _slime_can_spawn(const coord_def target)
+{
+    return (mons_class_can_pass(MONS_SLIME_CREATURE, env.grid(target))
+            && !actor_at(target));
+}
+
 // See if slime creature 'thing' can split, and carry out the split if
 // we can find a square to place the new slime creature on.
 static bool _slime_split(monsters *thing)
 {
-    if (!thing
-        || !_unoccupied_slime(thing)
-        || _disabled_slime(thing)
-        || thing->number <= 1)
+    if (!thing || thing->number <= 1
+        || coinflip() // Don't make splitting quite so reliable. (jpeg)
+        || _disabled_slime(thing))
     {
         return (false);
     }
 
+    const coord_def origin  = thing->pos();
+
+    const actor* foe        = thing->get_foe();
+    const bool has_foe      = (foe != NULL && thing->can_see(foe));
+    const coord_def foe_pos = (has_foe ? foe->position : coord_def(0,0));
+    const int old_dist      = (has_foe ? grid_distance(origin, foe_pos) : 0);
+
+    if (has_foe && old_dist > 1)
+    {
+        // If we're not already adjacent to the foe, check whether we can
+        // move any closer. If so, do that rather than splitting.
+        for (radius_iterator ri(origin, 1, true, false, true); ri; ++ri)
+        {
+            if (_slime_can_spawn(*ri)
+                && grid_distance(*ri, foe_pos) < old_dist)
+            {
+                return (false);
+            }
+        }
+    }
+
     int compass_idx[] = {0, 1, 2, 3, 4, 5, 6, 7};
     std::random_shuffle(compass_idx, compass_idx + 8);
-    coord_def origin = thing->pos();
 
     // Anywhere we can place an offspring?
     for (int i = 0; i < 8; ++i)
     {
         coord_def target = origin + Compass[compass_idx[i]];
 
-        if (mons_class_can_pass(MONS_SLIME_CREATURE, env.grid(target))
-            && !actor_at(target))
+        // Don't split if this increases the distance to the target.
+        if (has_foe && grid_distance(target, foe_pos) > old_dist)
+            continue;
+
+        if (_slime_can_spawn(target))
         {
             // This can fail if placing a new monster fails.  That
             // probably means we have too many monsters on the level,
@@ -463,7 +487,8 @@ bool slime_split_merge(monsters *thing)
 // Returns true if you resist the siren's call.
 static bool _siren_movement_effect(const monsters *monster)
 {
-    bool do_resist = (you.attribute[ATTR_HELD] || you.check_res_magic(70));
+    bool do_resist = (you.attribute[ATTR_HELD] || you.check_res_magic(70)
+                      || you.cannot_act() || you.asleep());
 
     if (!do_resist)
     {
@@ -493,6 +518,7 @@ static bool _siren_movement_effect(const monsters *monster)
                 coord_def swapdest;
                 if (mon->wont_attack()
                     && !mons_is_stationary(mon)
+                    && !mons_is_projectile(mon->type)
                     && !mon->cannot_act()
                     && !mon->asleep()
                     && swap_check(mon, swapdest, true))
@@ -595,14 +621,13 @@ static bool _orc_battle_cry(monsters *chief)
         && chief->can_see(foe)
         && coinflip())
     {
-        const int boss_index = chief->mindex();
         const int level = chief->hit_dice > 12? 2 : 1;
         std::vector<monsters*> seen_affected;
         for (monster_iterator mi(chief); mi; ++mi)
         {
             if (*mi != chief
                 && mons_species(mi->type) == MONS_ORC
-                && mons_aligned(boss_index, mi->mindex())
+                && mons_aligned(chief, *mi)
                 && mi->hit_dice < chief->hit_dice
                 && !mi->berserk()
                 && !mi->has_ench(ENCH_MIGHT)
@@ -646,7 +671,7 @@ static bool _orc_battle_cry(monsters *chief)
             }
 
             // The yell happens whether you happen to see it or not.
-            noisy(15, chief->pos(), chief->mindex());
+            noisy(LOS_RADIUS, chief->pos(), chief->mindex());
 
             // Disabling detailed frenzy announcement because it's so spammy.
             const msg_channel_type channel =
@@ -773,10 +798,8 @@ bool mon_special_ability(monsters *monster, bolt & beem)
                                   : static_cast<monster_type>( monster->type );
 
     // Slime creatures can split while out of sight.
-    if ((!mons_near(monster)
-         || monster->asleep()
-         || monster->submerged())
-             && monster->type != MONS_SLIME_CREATURE)
+    if ((!mons_near(monster) || monster->asleep() || monster->submerged())
+        && monster->type != MONS_SLIME_CREATURE)
     {
         return (false);
     }
@@ -843,7 +866,7 @@ bool mon_special_ability(monsters *monster, bolt & beem)
         c = circle_def(monster->pos(), 4, C_CIRCLE);
         for (monster_iterator targ(&c); targ; ++targ)
         {
-            if (mons_atts_aligned(monster->attitude, targ->attitude))
+            if (mons_aligned(monster, *targ))
                 continue;
 
             if (monster->can_see(*targ) && !feat_is_solid(grd(targ->pos())))
@@ -872,7 +895,7 @@ bool mon_special_ability(monsters *monster, bolt & beem)
         beem.damage      = dice_def(3, 10);
         beem.hit         = 20;
         beem.colour      = RED;
-        beem.type        = dchar_glyph(DCHAR_FIRED_ZAP);
+        beem.glyph       = dchar_glyph(DCHAR_FIRED_ZAP);
         beem.flavour     = BEAM_LAVA;
         beem.beam_source = monster->mindex();
         beem.thrower     = KILL_MON;
@@ -907,7 +930,7 @@ bool mon_special_ability(monsters *monster, bolt & beem)
         beem.damage      = dice_def( 3, 6 );
         beem.hit         = 50;
         beem.colour      = LIGHTCYAN;
-        beem.type        = dchar_glyph(DCHAR_FIRED_ZAP);
+        beem.glyph       = dchar_glyph(DCHAR_FIRED_ZAP);
         beem.flavour     = BEAM_ELECTRICITY;
         beem.beam_source = monster->mindex();
         beem.thrower     = KILL_MON;
@@ -1042,6 +1065,8 @@ bool mon_special_ability(monsters *monster, bolt & beem)
     case MONS_BLINK_FROG:
     case MONS_KILLER_KLOWN:
     case MONS_PRINCE_RIBBIT:
+    case MONS_MARA:
+    case MONS_MARA_FAKE:
     case MONS_GOLDEN_EYE:
         if (one_chance_in(7) || monster->caught() && one_chance_in(3))
             used = monster_blink(monster);
@@ -1069,7 +1094,7 @@ bool mon_special_ability(monsters *monster, bolt & beem)
         beem.hit         = 14;
         beem.damage      = dice_def( 2, 10 );
         beem.beam_source = monster->mindex();
-        beem.type        = dchar_glyph(DCHAR_FIRED_MISSILE);
+        beem.glyph       = dchar_glyph(DCHAR_FIRED_MISSILE);
         beem.colour      = LIGHTGREY;
         beem.flavour     = BEAM_MISSILE;
         beem.thrower     = KILL_MON;
@@ -1163,9 +1188,7 @@ bool mon_special_ability(monsters *monster, bolt & beem)
             if (delay.type == DELAY_ASCENDING_STAIRS
                 || delay.type == DELAY_DESCENDING_STAIRS)
             {
-#ifdef DEBUG_DIAGNOSTICS
-                mpr("Taking stairs, don't mesmerise.", MSGCH_DIAGNOSTICS);
-#endif
+                dprf("Taking stairs, don't mesmerise.");
                 break;
             }
         }
@@ -1202,7 +1225,7 @@ bool mon_special_ability(monsters *monster, bolt & beem)
         if (one_chance_in(5)
             || monster->foe == MHITYOU && !already_mesmerised && coinflip())
         {
-            noisy(12, monster->pos(), monster->mindex(), true);
+            noisy(LOS_RADIUS, monster->pos(), monster->mindex(), true);
 
             bool did_resist = false;
             if (you.can_see(monster))
@@ -1405,27 +1428,33 @@ void ballisto_on_move(monsters * monster, const coord_def & position)
 {
     if (monster->type == MONS_GIANT_SPORE)
     {
+        dungeon_feature_type ftype = env.grid(monster->pos());
+
+        if (ftype >= DNGN_FLOOR_MIN && ftype <= DNGN_FLOOR_MAX)
+            env.pgrid(monster->pos()) |= FPROP_MOLD;
+
         // The number field is used as a cooldown timer for this behavior.
         if (monster->number <= 0)
         {
             if (one_chance_in(4))
             {
                 beh_type attitude = SAME_ATTITUDE(monster);
-                if (!crawl_state.arena && attitude == BEH_FRIENDLY)
-                {
-                    attitude = BEH_GOOD_NEUTRAL;
-                }
                 int rc = create_monster(mgen_data(MONS_BALLISTOMYCETE,
                                                   attitude,
-                                                  monster,
+                                                  NULL,
                                                   0,
                                                   0,
                                                   position,
                                                   MHITNOT,
                                                   MG_FORCE_PLACE));
 
-                if (rc != -1 && you.can_see(&env.mons[rc]))
-                    mprf("A ballistomycete grows in the wake of the spore.");
+                if (rc != -1)
+                {
+                    // Don't leave mold on squares we place ballistos on
+                    env.pgrid(position) &= ~FPROP_MOLD;
+                    if  (you.can_see(&env.mons[rc]))
+                        mprf("A ballistomycete grows in the wake of the spore.");
+                }
 
                 monster->number = 40;
             }
@@ -1438,9 +1467,41 @@ void ballisto_on_move(monsters * monster, const coord_def & position)
     }
 }
 
-// If 'monster' is a ballistomycete or spore activate some number of
+struct position_node
+{
+    position_node()
+    {
+        pos.x=0;
+        pos.y=0;
+        last = NULL;
+    }
+
+    coord_def pos;
+    const position_node * last;
+    bool operator < (const position_node & right) const
+    {
+        unsigned idx = pos.x + pos.y * X_WIDTH;
+        unsigned other_idx = right.pos.x + right.pos.y * X_WIDTH;
+        return  idx < other_idx;
+    }
+};
+
+bool _ballisto_at(const coord_def & target)
+{
+    monsters * mons = monster_at(target);
+    return (mons && mons ->type == MONS_BALLISTOMYCETE
+            && mons->alive());
+}
+
+bool _player_at(const coord_def & target)
+{
+    return (you.pos() == target);
+}
+
+// If 'monster' is a ballistomycete or spore, activate some number of
 // ballistomycetes on the level.
-void activate_ballistomycetes( monsters * monster, const coord_def & origin)
+void activate_ballistomycetes(monsters * monster, const coord_def & origin,
+                              bool player_kill)
 {
     if (!monster || monster->type != MONS_BALLISTOMYCETE
                     && monster->type != MONS_GIANT_SPORE)
@@ -1448,57 +1509,170 @@ void activate_ballistomycetes( monsters * monster, const coord_def & origin)
         return;
     }
 
-    bool found_others = false;
-
-    std::vector<monsters *> candidates;
-    for (monster_iterator mi; mi; ++mi)
-    {
-        if (mi->mindex() != monster->mindex()
-            && mi->alive()
-            && mi->type == MONS_BALLISTOMYCETE)
-        {
-            candidates.push_back(*mi);
-
-        }
-    }
-
-    if (candidates.empty())
-        return;
-
     // If a spore or inactive ballisto died we will only activate one
     // other ballisto. If it was an active ballisto we will distribute
     // its count to others on the level.
     int activation_count = 1;
-    if (monster ->type == MONS_BALLISTOMYCETE)
+    if (monster->type == MONS_BALLISTOMYCETE)
     {
         activation_count += monster->number;
     }
 
+    int spore_count = 0;
+    int ballisto_count = 0;
+
+    bool any_friendly = monster->attitude == ATT_FRIENDLY;
+    bool fedhas_mode  = false;
+    for (monster_iterator mi; mi; ++mi)
+    {
+        if (mi->mindex() != monster->mindex()
+            && mi->alive())
+
+        {
+            if (mi->type == MONS_BALLISTOMYCETE)
+                ballisto_count++;
+            else if (mi->type == MONS_GIANT_SPORE)
+                spore_count++;
+
+            if (mi->attitude == ATT_FRIENDLY)
+                any_friendly = true;
+        }
+
+    }
+
+    bool exhaustive = true;
+    bool (*valid_target)(const coord_def & ) = _ballisto_at;
+    position_node temp_node;
+    temp_node.pos = origin;
+    temp_node.last = NULL;
+
+    std::set<position_node> visited;
+    std::vector<std::set<position_node>::iterator > candidates;
+    std::queue<std::set<position_node>::iterator > fringe;
+
+    std::set<position_node>::iterator current = visited.insert(temp_node).first;
+    fringe.push(current);
+
+    if (you.religion == GOD_FEDHAS)
+    {
+        if (spore_count == 0
+            && ballisto_count == 0
+            && any_friendly)
+        {
+            mprf("Your fungal colony was destroyed.");
+            dock_piety(1, 0);
+        }
+
+        fedhas_mode = true;
+        activation_count = 1;
+        exhaustive = false;
+        valid_target = _player_at;
+    }
+
+    while (!fringe.empty())
+    {
+        current = fringe.front();
+        fringe.pop();
+
+        if (valid_target(current->pos))
+        {
+            candidates.push_back(current);
+            if (!exhaustive)
+                break;
+        }
+
+        for (adjacent_iterator adj_it(current->pos); adj_it; ++adj_it)
+        {
+            if (in_bounds(*adj_it)
+                && (is_moldy(*adj_it)
+                    || _ballisto_at(*adj_it)))
+            {
+                temp_node.pos = *adj_it;
+                temp_node.last = &(*current);
+
+                std::pair<std::set<position_node>::iterator, bool > res;
+                res = visited.insert(temp_node);
+                if (res.second)
+                    fringe.push(res.first);
+            }
+        }
+    }
+
+    if (candidates.empty())
+    {
+        if (player_kill
+            && !fedhas_mode
+            && spore_count == 0
+            && ballisto_count == 0
+            && monster->attitude == ATT_HOSTILE)
+        {
+            mprf("Having destroyed the fungal colony, you feel a bit more "
+                 "experienced.");
+            gain_exp(500);
+        }
+        return;
+    }
+
+    // A (very) soft cap on colony growth, no activations if there are
+    // already a lot of ballistos on level.
+    if (candidates.size() > 25)
+        return;
+
+
     std::random_shuffle(candidates.begin(), candidates.end());
 
     int index = 0;
+    you.mold_colour = LIGHTRED;
+
+    bool draw = false;
     for (int i=0; i<activation_count; ++i)
     {
         index = i % candidates.size();
 
-        monsters * spawner = candidates[index];
+        monsters * spawner = monster_at(candidates[index]->pos);
 
-        spawner->number++;
-        found_others = true;
-
-        // Change color and start the spore production timer if we
-        // are moving from 0 to 1.
-        if (spawner->number == 1)
+        // This may be the players position, in which case we don't
+        // have to mess with spore production on anything
+        if (spawner && !fedhas_mode)
         {
-            spawner->colour = LIGHTRED;
-            // Reset the spore production timer.
-            spawner->del_ench(ENCH_SPORE_PRODUCTION, false);
-            spawner->add_ench(ENCH_SPORE_PRODUCTION);
+            spawner->number++;
+
+            // Change color and start the spore production timer if we
+            // are moving from 0 to 1.
+            if (spawner->number == 1)
+            {
+                spawner->colour = LIGHTRED;
+                // Reset the spore production timer.
+                spawner->del_ench(ENCH_SPORE_PRODUCTION, false);
+                spawner->add_ench(ENCH_SPORE_PRODUCTION);
+            }
+        }
+
+        const position_node * thread = &(*candidates[index]);
+        while(thread)
+        {
+            if (you.see_cell(thread->pos))
+            {
+                view_update_at(thread->pos);
+                draw = true;
+            }
+
+            thread = thread->last;
         }
     }
 
-    if (you.see_cell(origin) && found_others)
+    if (draw)
     {
-        mprf("You feel the ballistomycetes will spawn a replacement spore.");
+        viewwindow(false, false);
+        int sp_delay = 150;
+
+        // Scale delay to match change in arena_delay.
+        if (crawl_state.arena)
+        {
+            sp_delay *= Options.arena_delay;
+            sp_delay /= 600;
+        }
+
+        delay(sp_delay);
     }
 }

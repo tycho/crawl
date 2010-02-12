@@ -24,6 +24,7 @@
 #include "cio.h"
 #include "debug.h"
 #include "decks.h"
+#include "delay.h"
 #include "fight.h"
 #include "food.h"
 #include "ghost.h"
@@ -33,13 +34,14 @@
 #include "itemname.h"
 #include "itemprop.h"
 #include "items.h"
+#include "jobs.h"
 #include "macro.h"
 #include "menu.h"
 #include "message.h"
 #include "mon-stuff.h"
 #include "mon-util.h"
 #include "newgame.h"
-#include "jobs.h"
+#include "output.h"
 #include "player.h"
 #include "random.h"
 #include "religion.h"
@@ -50,7 +52,7 @@
 #include "env.h"
 #include "spl-cast.h"
 #include "spl-util.h"
-#include "transfor.h"
+#include "transform.h"
 #include "tutorial.h"
 #include "xom.h"
 
@@ -143,7 +145,6 @@ const char* jewellery_base_ability_string(int subtype)
     case RING_FIRE:              return "Fire";
     case RING_ICE:               return "Ice";
     case RING_TELEPORT_CONTROL:  return "cTele";
-    case AMU_RESIST_SLOW:        return "rSlow";
     case AMU_CLARITY:            return "Clar";
     case AMU_WARDING:            return "Ward";
     case AMU_RESIST_CORROSION:   return "rCorr";
@@ -152,6 +153,8 @@ const char* jewellery_base_ability_string(int subtype)
     case AMU_CONTROLLED_FLIGHT:  return "cFly";
     case AMU_RESIST_MUTATION:    return "rMut";
     case AMU_GUARDIAN_SPIRIT:    return "Spirit";
+    case AMU_FAITH:              return "Faith";
+    case AMU_STASIS:             return "Stasis";
     }
     return "";
 }
@@ -186,6 +189,7 @@ static std::vector<std::string> _randart_propnames( const item_def& item )
         { "*TELE",  ARTP_CAUSE_TELEPORTATION,   2 },
         { "Hunger", ARTP_METABOLISM,            2 }, // handled specially
         { "Noisy",  ARTP_NOISES,                2 },
+        { "Slow",   ARTP_PONDEROUS,             2 },
 
         // Evokable abilities come second
         { "+Blink", ARTP_BLINK,                 2 },
@@ -200,7 +204,6 @@ static std::vector<std::string> _randart_propnames( const item_def& item )
         { "rC",     ARTP_COLD,                  1 },
         { "rN",     ARTP_NEGATIVE_ENERGY,       1 },
         { "MR",     ARTP_MAGIC,                 2 },
-        { "Spirit", ARTP_SPIRIT_SHIELD,         2 },
 
         // Quantitative attributes
         { "AC",     ARTP_AC,                    0 },
@@ -227,10 +230,13 @@ static std::vector<std::string> _randart_propnames( const item_def& item )
         if (!type.empty())
             propnames.push_back(type);
     }
-    else if (item.base_type == OBJ_WEAPONS
-             && item_ident(item, ISFLAG_KNOW_TYPE))
+    else if (item_ident(item, ISFLAG_KNOW_TYPE))
     {
-        std::string ego = weapon_brand_name(item, true);
+        std::string ego;
+        if (item.base_type == OBJ_WEAPONS)
+            ego = weapon_brand_name(item, true);
+        else if (item.base_type == OBJ_ARMOUR)
+            ego = armour_ego_name(item, true);
         if (!ego.empty())
         {
             // XXX: Ugly hack to remove the brackets...
@@ -346,6 +352,11 @@ void add_autoinscription( item_def &item, std::string ainscrip)
     // Remove previous randart inscription.
     _trim_randart_inscrip(item);
 
+    add_inscription(item, ainscrip);
+}
+
+void add_inscription(item_def &item, std::string inscrip)
+{
     if (!item.inscription.empty())
     {
         if (ends_with(item.inscription, ","))
@@ -354,7 +365,7 @@ void add_autoinscription( item_def &item, std::string ainscrip)
             item.inscription += ", ";
     }
 
-    item.inscription += ainscrip;
+    item.inscription += inscrip;
 }
 
 struct property_descriptor
@@ -392,14 +403,14 @@ static std::string _randart_descrip( const item_def &item )
         { ARTP_LEVITATE, "It lets you levitate.", false},
         { ARTP_BLINK, "It lets you blink.", false},
         { ARTP_BERSERK, "It lets you go berserk.", false},
-        { ARTP_SPIRIT_SHIELD, "It shields you from harm at the cost of magical power.", false},
         { ARTP_NOISES, "It makes noises.", false},
         { ARTP_PREVENT_SPELLCASTING, "It prevents spellcasting.", false},
         { ARTP_CAUSE_TELEPORTATION, "It causes teleportation.", false},
         { ARTP_PREVENT_TELEPORTATION, "It prevents most forms of teleportation.",
           false},
         { ARTP_ANGRY,  "It makes you angry.", false},
-        { ARTP_CURSED, "It may recurse itself.", false}
+        { ARTP_CURSED, "It may recurse itself.", false},
+        { ARTP_PONDEROUS, "It slows your movement.", false},
     };
 
     for (unsigned i = 0; i < ARRAYSZ(propdescs); ++i)
@@ -774,6 +785,9 @@ static std::string _describe_weapon(const item_def &item, bool verbose)
             description += "It protects the one who wields it against "
                 "injury (+5 to AC).";
             break;
+        case SPWPN_EVASION:
+            description += "It affects your evasion (+5 to EV).";
+            break;
         case SPWPN_DRAINING:
             description += "A truly terrible weapon, it drains the "
                 "life of those it strikes.";
@@ -951,7 +965,7 @@ static std::string _describe_weapon(const item_def &item, bool verbose)
         }
     }
 
-    if (!is_known_artefact(item))
+    if (!is_artefact(item))
     {
         if (item_ident(item, ISFLAG_KNOW_PLUSES)
             && item.plus >= MAX_WPN_ENCHANT && item.plus2 >= MAX_WPN_ENCHANT)
@@ -1037,8 +1051,6 @@ static std::string _describe_ammo(const item_def &item)
         case SPMSL_FROST:
             description += "It turns into a bolt of frost.";
             break;
-        case SPMSL_ELECTRIC:
-            description += "The electricity stored in it may find a path to the ground.";
             break;
         case SPMSL_CHAOS:
             if (bolt_name.empty())
@@ -1067,7 +1079,25 @@ static std::string _describe_ammo(const item_def &item)
         case SPMSL_CURARE:
             description += "It is tipped with asphyxiating poison.";
             break;
-        case SPMSL_RETURNING:
+        case SPMSL_PARALYSIS:
+            description += "It is tipped with a paralyzing poison.";
+            break;
+        case SPMSL_SLOW:
+            description += "It is coated with a poison that causes slowness of the body.";
+            break;
+        case SPMSL_SLEEP:
+            description += "It is coated with a fast-acting tranquilizer.";
+            break;
+        case SPMSL_CONFUSION:
+            description += "It is tipped with a substance that causes confusion.";
+            break;
+        case SPMSL_SICKNESS:
+            description += "It has been contaminated by something likely to cause disease.";
+            break;
+        case SPMSL_RAGE:
+            description += "It is tipped with a substance that causes a mindless, berserk rage.";
+            break;
+       case SPMSL_RETURNING:
             description += "A skilled user can throw it in such a way "
                 "that it will return to its owner.";
             break;
@@ -1096,7 +1126,7 @@ static std::string _describe_ammo(const item_def &item)
         case SPMSL_STEEL:
             description += "Compared to normal ammo, it does 50% more "
                 "damage, is destroyed upon impact only 1/10th of the "
-                "time, and weighs three three times as much.";
+                "time, and weighs three times as much.";
             break;
         case SPMSL_SILVER:
             description += "Compared to normal ammo, it does twice as "
@@ -1323,19 +1353,9 @@ static std::string _describe_armour( const item_def &item, bool verbose )
     if (verbose && get_armour_slot(item) == EQ_BODY_ARMOUR)
     {
         description += "$$";
-        if (is_light_armour(item))
-        {
-            description += "This is a light armour. Wearing it will "
-                "exercise Dodging and Stealth.";
-        }
-        else
-        {
-            description += "This is a heavy armour. Wearing it will "
-                "exercise Armour.";
-        }
     }
 
-    if (!is_known_artefact(item))
+    if (!is_artefact(item))
     {
         const int max_ench = armour_max_enchant(item);
         if (armour_is_hide(item))
@@ -1585,12 +1605,14 @@ void append_spells(std::string &desc, const item_def &item)
         for (unsigned int i = 0; i < 35 - name.length(); ++i)
              desc += " ";
 
+        std::string schools;
         if (item.base_type == OBJ_STAVES)
-            desc += "Evocations";
+            schools = "Evocations";
         else
-            desc += spell_schools_string(stype);
+            schools = spell_schools_string(stype);
 
-        for (unsigned int i = 36; i < 65 - name.length(); ++i)
+        desc += schools;
+        for (unsigned int i = 36; i < 65 - schools.length(); ++i)
              desc += " ";
 
         char sval[3];
@@ -1921,6 +1943,10 @@ std::string get_item_description( const item_def &item, bool verbose,
                 else
                     description << desc;
             }
+            std::string stats = "";
+            append_weapon_stats(stats, item);
+            description << stats;
+            description << "$$It falls into the 'Maces & Flails' category.";
         }
         else
         {
@@ -1991,7 +2017,7 @@ std::string get_item_description( const item_def &item, bool verbose,
                         << "." << (mass % 10)
                         << " aum. "; // arbitrary unit of mass
 
-            if (is_dumpable_artefact(item, false))
+            if (is_artefact(item))
             {
                 if (item.base_type == OBJ_ARMOUR
                     || item.base_type == OBJ_WEAPONS)
@@ -2209,7 +2235,7 @@ static bool _describe_spells(const item_def &item)
     int c = getch();
     if (c < 'a' || c > 'h')     //jmf: was 'g', but 8=h
     {
-        mesclr( true );
+        mesclr();
         return (false);
     }
 
@@ -2229,18 +2255,18 @@ static bool _describe_spells(const item_def &item)
 // describe_item
 //
 // Describes all items in the game.
-//
+// Returns false if we should break out of the inventory loop.
 //---------------------------------------------------------------
-void describe_item( item_def &item, bool allow_inscribe, bool shopping )
+bool describe_item( item_def &item, bool allow_inscribe, bool shopping )
 {
     if (!item.is_valid())
-        return;
+        return (true);
 
     while (true)
     {
         // Memorised spell while reading a spellbook.
-        if (you.turn_is_over && !shopping)
-            return;
+        if (already_learning_spell(-1))
+            return (false);
 
         const bool spells_shown = _show_item_description(item);
 
@@ -2249,7 +2275,8 @@ void describe_item( item_def &item, bool allow_inscribe, bool shopping )
             cgotoxy(1, wherey());
             textcolor(LIGHTGREY);
 
-            if (item.base_type == OBJ_BOOKS && in_inventory(item))
+            if (item.base_type == OBJ_BOOKS && in_inventory(item)
+                && !crawl_state.player_is_dead())
             {
                 cprintf("Select a spell to read its description or to "
                         "memorise it.");
@@ -2259,7 +2286,7 @@ void describe_item( item_def &item, bool allow_inscribe, bool shopping )
 
             if (_describe_spells(item))
                 continue;
-            return;
+            return (true);
         }
         break;
     }
@@ -2272,6 +2299,8 @@ void describe_item( item_def &item, bool allow_inscribe, bool shopping )
     }
     else if (getch() == 0)
         getch();
+
+    return (true);
 }
 
 // There are currently two ways to inscribe an item:
@@ -2425,6 +2454,7 @@ void inscribe_item(item_def &item, bool proper_prompt)
 
 }
 
+// Returns true if you can memorise the spell.
 bool _get_spell_description(const spell_type spell, std::string &description,
                             const item_def* item = NULL)
 {
@@ -2446,6 +2476,9 @@ bool _get_spell_description(const spell_type spell, std::string &description,
                        "Please file a bug report.";
 #endif
     }
+
+    if (crawl_state.player_is_dead())
+        return (false);
 
     if (you_cannot_memorise(spell))
     {
@@ -2729,9 +2762,22 @@ static std::string _monster_stat_description(const monsters& mon)
                << ".$";
     }
 
-    // Magic resistance at MAG_IMMUNE.
-    if (mons_immune_magic(&mon))
-        result << pronoun << " is immune to magical enchantments.$";
+    // Magic resistance at MAG_IMMUNE, but not for Rs, as there is then
+    // too much information leak.
+    if (mon.type != MONS_RAKSHASA && mon.type != MONS_RAKSHASA_FAKE)
+    {
+        if (mons_immune_magic(&mon))
+            result << pronoun << " is immune to hostile enchantments.$";
+        else // How resistant is it? Same scale as the player.
+        {
+            const int mr = mon.res_magic();
+            if (mr >= 10)
+            {
+                result << pronoun << make_stringf(" is %s resistant to hostile enchantments.$",
+                                                  magic_res_adjective(mr).c_str());
+            }
+        }
+    }
 
     if (mons_class_flag(mon.type, M_STATIONARY))
         result << pronoun << " cannot move.$";
@@ -2792,9 +2838,7 @@ void get_monster_db_desc(const monsters& mons, describe_info &inf,
     // For undetected mimics describe mimicked item instead.
     if (!force_seen && mons_is_unknown_mimic(&mons))
     {
-        item_def item;
-        get_mimic_item(&mons, item);
-        get_item_desc(item, inf);
+        get_item_desc(get_mimic_item(&mons), inf);
         return;
     }
 
@@ -2802,12 +2846,6 @@ void get_monster_db_desc(const monsters& mons, describe_info &inf,
         inf.title = mons.full_name(DESC_CAP_A, true);
 
     std::string db_name = mons.base_name(DESC_DBNAME, force_seen);
-    if (mons_is_mimic(mons.type) && mons.type != MONS_GOLD_MIMIC)
-    {
-        db_name   = "mimic";
-        if (inf.title.empty())
-            inf.title = "A mimic";
-    }
 
     // This is somewhat hackish, but it's a good way of over-riding monsters'
     // descriptions in Lua vaults by using MonPropsMarker. This is also the
@@ -2815,7 +2853,8 @@ void get_monster_db_desc(const monsters& mons, describe_info &inf,
     if (mons.props.exists("description"))
         inf.body << mons.props["description"].get_string();
     // Don't get description for player ghosts.
-    else if (mons.type != MONS_PLAYER_GHOST)
+    else if (mons.type != MONS_PLAYER_GHOST
+             && mons.type != MONS_PLAYER_ILLUSION)
         inf.body << getLongDescription(db_name);
 
     // And quotes {due}
@@ -2886,6 +2925,10 @@ void get_monster_db_desc(const monsters& mons, describe_info &inf,
         inf.body << "The apparition of " << get_ghost_description(mons) << ".$";
         break;
 
+    case MONS_PLAYER_ILLUSION:
+        inf.body << "An illusion of " << get_ghost_description(mons) << ".$";
+        break;
+
     case MONS_PANDEMONIUM_DEMON:
         inf.body << _describe_demon(mons) << "$";
         break;
@@ -2926,7 +2969,8 @@ void get_monster_db_desc(const monsters& mons, describe_info &inf,
                  << " is incapable of using stairs.$";
     }
 
-    if (mons.is_summoned() && mons.type != MONS_RAKSHASA_FAKE)
+    if (mons.is_summoned() && (mons.type != MONS_RAKSHASA_FAKE
+                               && mons.type != MONS_MARA_FAKE))
     {
         inf.body << "$" << "This monster has been summoned, and is thus only "
                        "temporary. Killing it yields no experience, nutrition "
@@ -3021,7 +3065,7 @@ std::string get_ghost_description(const monsters &mons, bool concise)
 
     // We're fudging stats so that unarmed combat gets based off
     // of the ghost's species, not the player's stats... exact
-    // stats aren't required anyways, all that matters is whether
+    // stats aren't required anyway, all that matters is whether
     // dex >= str. -- bwr
     const int dex = 10;
     int str = 5;
@@ -3070,14 +3114,14 @@ std::string get_ghost_description(const monsters &mons, bool concise)
     if (concise)
     {
         gstr << get_species_abbrev(gspecies)
-             << get_class_abbrev(ghost.job);
+             << get_job_abbrev(ghost.job);
     }
     else
     {
         gstr << species_name(gspecies,
                              ghost.xl)
              << " "
-             << get_class_name(ghost.job);
+             << get_job_name(ghost.job);
     }
 
     if (ghost.religion != GOD_NO_GOD)
@@ -3119,15 +3163,12 @@ static bool _print_god_abil_desc(int god, int numpower)
     if (!pmsg[0])
         return (false);
 
-    std::string buf;
-    if (isupper(pmsg[0]))
-        buf = pmsg;             // Complete sentence given.
-    else
-    {
-        buf = "You can ";
-        buf += pmsg;
-        buf += ".";
-    }
+    std::string buf = adjust_abil_message(pmsg);
+    if (buf.empty())
+        return (false);
+
+    if (!isupper(pmsg[0])) // Complete sentence given?
+        buf = "You can " + buf + ".";
 
     // This might be ABIL_NON_ABILITY for passive abilities.
     const ability_type abil = god_abilities[god][numpower];
@@ -3195,7 +3236,7 @@ static std::string _religion_help(god_type god)
         int halo_size = you.halo_radius();
         if (halo_size > 0)
         {
-            result += "You radiate a ";
+            result += " You radiate a ";
 
             if (halo_size > 6)
                 result += "large ";
@@ -3224,7 +3265,16 @@ static std::string _religion_help(god_type god)
             && !you.num_gifts[god])
         {
             result += "You can pray at an altar to have your weapon "
-                      "blessed.";
+                      "corrupted.";
+        }
+        break;
+
+    case GOD_KIKUBAAQUDGHA:
+        if (!player_under_penance() && you.piety > 160
+            && !you.num_gifts[god])
+        {
+            result += "You can pray at an altar to have your necromancy "
+                      "enhanced.";
         }
         break;
 
@@ -3334,11 +3384,9 @@ const char *divine_title[NUM_GODS][8] =
     {"Scum",               "Jelly",                 "Squelcher",                "Dissolver",
      "Putrid Slime",       "Consuming %s",          "Archjelly",                "Royal Jelly"},
 
-    // Fedhas Madash -- nature theme.  Titles could use some work, but the
-    // progression is generally from nature lover to walking disaster.
-    // -cao
-    {"Walking Fertiliser", "Green %s",              "Photosynthesist",          "Planter",
-     "Nimbus",             "Sporadic Warrior",      "Green Death",              "Force of Nature"},
+    // Fedhas Madash -- nature theme.  Titles could use some work
+    {"Walking Fertiliser", "Green %s",           "Inducer",                  "Photosynthesist",
+     "Planter",            "Sporadic Warrior",   "Nimbus",                   "Force of Nature"},
 
     // Cheibriados -- slow theme
     {"Unwound %s",         "Timekeeper",            "Righteous Timekeeper",     "Chronographer",
@@ -3696,9 +3744,10 @@ void describe_god( god_type which_god, bool give_title )
             if (jiyva_grant_jelly(false))
             {
                 have_any = true;
-                std::string buf = "You can pray to create a jelly shield.";
+                std::string buf = "Your slimes' item consumption is ";
+                buf += "temporarily halted under prayer.";
                 _print_final_god_abil_desc(which_god, buf,
-                                           ABIL_JIYVA_JELLY_SHIELD);
+                                           ABIL_JIYVA_JELLY_PARALYSE);
             }
         }
         else if (which_god == GOD_FEDHAS)
@@ -3818,9 +3867,9 @@ std::string get_skill_description(int skill, bool need_title)
             unarmed_attacks.push_back("deliver a kick");
         }
 
-        if (you.equip[EQ_WEAPON] == -1)
+        if (!you.weapon())
             unarmed_attacks.push_back("throw a punch");
-        else if (you.equip[EQ_SHIELD] == -1)
+        else if (!you.shield())
             unarmed_attacks.push_back("punch with your free hand");
 
         if (!unarmed_attacks.empty())

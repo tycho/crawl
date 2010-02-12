@@ -34,6 +34,10 @@ dgnevent.o \
 directn.o \
 dlua.o \
 dungeon.o \
+dgn-height.o \
+dgn-overview.o \
+dgn-shoals.o \
+dgn-swamp.o \
 effects.o \
 exclude.o \
 feature.o \
@@ -45,7 +49,10 @@ fprop.o \
 geom2d.o \
 ghost.o \
 godabil.o \
+godconduct.o \
 goditem.o \
+godpassive.o \
+godprayer.o \
 godwrath.o \
 hiscores.o \
 initfile.o \
@@ -79,6 +86,7 @@ l_mapmrk.o \
 l_moninf.o \
 l_mons.o \
 l_option.o \
+l_spells.o \
 l_subvault.o \
 l_travel.o \
 l_view.o \
@@ -98,12 +106,15 @@ mapmark.o \
 maps.o \
 menu.o \
 message.o \
+message-stream.o \
 mgen_data.o \
 misc.o \
+mislead.o \
 mon-abil.o \
 mon-act.o \
 mon-behv.o \
 mon-cast.o \
+mon-clone.o \
 mon-gear.o \
 mon-grow.o \
 mon-info.o \
@@ -112,10 +123,12 @@ mon-movetarget.o \
 mon-pathfind.o \
 mon-pick.o \
 mon-place.o \
+mon-project.o \
 mon-util.o \
 mon-speak.o \
 mon-stuff.o \
 mon-transit.o \
+mon_resist_def.o \
 monster.o \
 mt19937ar.o \
 mutation.o \
@@ -126,7 +139,7 @@ ng-restr.o \
 notes.o \
 ouch.o \
 output.o \
-overmap.o \
+pattern.o \
 place.o \
 player.o \
 quiver.o \
@@ -158,7 +171,7 @@ stuff.o \
 tags.o \
 teleport.o \
 terrain.o \
-transfor.o \
+transform.o \
 traps.o \
 travel.o \
 tutorial.o \

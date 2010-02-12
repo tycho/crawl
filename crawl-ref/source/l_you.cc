@@ -8,8 +8,10 @@
 #include "chardump.h"
 #include "coord.h"
 #include "delay.h"
+#include "env.h"
 #include "food.h"
 #include "initfile.h"
+#include "libutil.h"
 #include "los.h"
 #include "mapmark.h"
 #include "mon-util.h"
@@ -23,7 +25,7 @@
 #include "spl-util.h"
 #include "stuff.h"
 #include "areas.h"
-#include "transfor.h"
+#include "transform.h"
 #include "travel.h"
 
 /////////////////////////////////////////////////////////////////////
@@ -59,7 +61,7 @@ LUARET1(you_turn_is_over, boolean, you.turn_is_over)
 LUARET1(you_name, string, you.your_name.c_str())
 LUARET1(you_race, string,
         species_name(you.species, you.experience_level).c_str())
-LUARET1(you_class, string, get_class_name(you.char_class))
+LUARET1(you_class, string, get_job_name(you.char_class))
 LUARET1(you_god, string, god_name(you.religion).c_str())
 LUARET1(you_good_god, boolean,
         lua_isstring(ls, 1) ? is_good_god(str_to_god(lua_tostring(ls, 1)))
@@ -89,7 +91,6 @@ LUARET1(you_res_draining, number, player_prot_life(false))
 LUARET1(you_res_shock, number, player_res_electricity(false))
 LUARET1(you_res_statdrain, number, player_sust_abil(false))
 LUARET1(you_res_mutation, number, wearing_amulet(AMU_RESIST_MUTATION, false))
-LUARET1(you_res_slowing, number, wearing_amulet(AMU_RESIST_SLOW, false))
 LUARET1(you_gourmand, boolean, wearing_amulet(AMU_THE_GOURMAND, false))
 LUARET1(you_saprovorous, number, player_mutation_level(MUT_SAPROVOROUS))
 LUARET1(you_levitating, boolean, you.flight_mode() == FL_LEVITATE)
@@ -98,8 +99,10 @@ LUARET1(you_transform, string, transform_name())
 LUARET1(you_where, string, level_id::current().describe().c_str())
 LUARET1(you_branch, string, level_id::current().describe(false, false).c_str())
 LUARET1(you_subdepth, number, level_id::current().depth)
-// Increase by 1 because check happens on old level.
-LUARET1(you_absdepth, number, you.your_level + 1)
+// [ds] Absolute depth is 1-based for Lua to match things like DEPTH:
+// which are also 1-based. Yes, this is confusing. FIXME: eventually
+// change you.absdepth0 to be 1-based as well.
+LUARET1(you_absdepth, number, you.absdepth0 + 1)
 LUAWRAP(you_stop_activity, interrupt_activity(AI_FORCE_INTERRUPT))
 LUARET1(you_taking_stairs, boolean,
         current_delay_action() == DELAY_ASCENDING_STAIRS
@@ -108,10 +111,10 @@ LUARET1(you_turns, number, you.num_turns)
 LUARET1(you_can_smell, boolean, you.can_smell())
 LUARET1(you_has_claws, number, you.has_claws(false))
 
-void lua_push_floor_items(lua_State *ls);
+void lua_push_floor_items(lua_State *ls, int link);
 static int you_floor_items(lua_State *ls)
 {
-    lua_push_floor_items(ls);
+    lua_push_floor_items(ls, env.igrid(you.pos()));
     return (1);
 }
 
@@ -181,7 +184,6 @@ static const struct luaL_reg you_clib[] =
     { "res_shock"   , you_res_shock },
     { "res_statdrain", you_res_statdrain },
     { "res_mutation", you_res_mutation },
-    { "res_slowing",  you_res_slowing },
     { "saprovorous",  you_saprovorous },
     { "gourmand",     you_gourmand },
     { "levitating",   you_levitating },
@@ -236,6 +238,18 @@ LUAFN(you_moveto)
     ASSERT(map_bounds(place));
     you.moveto(place);
     return (0);
+}
+
+LUAFN(you_teleport_to)
+{
+    const coord_def place(luaL_checkint(ls, 1), luaL_checkint(ls, 2));
+    bool move_monsters = false;
+    if (lua_gettop(ls) == 3)
+        move_monsters = lua_toboolean(ls, 3);
+
+    lua_pushboolean(ls, you_teleport_to(place, move_monsters));
+
+    return (1);
 }
 
 LUAFN(you_random_teleport)
@@ -355,6 +369,7 @@ static const struct luaL_reg you_dlib[] =
 { "see_cell",           you_see_cell },
 { "see_cell_no_trans",  you_see_cell_no_trans },
 { "random_teleport",    you_random_teleport },
+{ "teleport_to",        you_teleport_to },
 { "losight",            you_losight },
 { "gold",               _you_gold },
 { "uniques",            _you_uniques },

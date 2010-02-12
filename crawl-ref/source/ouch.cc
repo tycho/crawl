@@ -6,12 +6,13 @@
 
 #include "AppHdr.h"
 
-#include <string.h>
+#include <cstring>
 #include <string>
 #include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cctype>
+#include <cmath>
 
 #ifdef TARGET_OS_DOS
 #include <file.h>
@@ -52,7 +53,6 @@
 #include "mon-util.h"
 #include "mon-place.h"
 #include "mgen_data.h"
-#include "coord.h"
 #include "mon-stuff.h"
 #include "notes.h"
 #include "output.h"
@@ -80,9 +80,7 @@ int check_your_resists(int hurted, beam_type flavour)
     int resist;
     int original = hurted;
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "checking resistance: flavour=%d", flavour );
-#endif
+    dprf("checking resistance: flavour=%d", flavour );
 
     if (flavour == BEAM_FIRE || flavour == BEAM_LAVA
         || flavour == BEAM_HELLFIRE || flavour == BEAM_FRAG)
@@ -93,6 +91,13 @@ int check_your_resists(int hurted, beam_type flavour)
 
     switch (flavour)
     {
+    case BEAM_WATER:
+        hurted = resist_adjust_damage(&you, flavour,
+                                      you.res_water_drowning(), hurted, true);
+        if (!hurted)
+            mpr("You shrug off the wave.");
+        break;
+
     case BEAM_STEAM:
         hurted = resist_adjust_damage(&you, flavour,
                                       player_res_steam(), hurted, true);
@@ -253,7 +258,7 @@ void splash_with_acid(int acid_strength, bool corrode_items)
     int dam = 0;
     const bool wearing_cloak = player_wearing_slot(EQ_CLOAK);
 
-    for (int slot = EQ_CLOAK; slot <= EQ_BODY_ARMOUR; slot++)
+    for (int slot = EQ_MIN_ARMOUR; slot <= EQ_MAX_ARMOUR; slot++)
     {
         if (!player_wearing_slot(slot))
         {
@@ -310,9 +315,7 @@ void _item_corrode(int slot)
     // Anti-corrosion items protect against 90% of corrosion.
     if (wearing_amulet(AMU_RESIST_CORROSION) && !one_chance_in(10))
     {
-#if DEBUG_DIAGNOSTICS
-        mpr( "Amulet protects.", MSGCH_DIAGNOSTICS );
-#endif
+        dprf("Amulet protects.");
         return;
     }
 
@@ -469,15 +472,15 @@ static bool _expose_invent_to_element(beam_type flavour, int strength)
 
             // These stack with conservation; they're supposed to be good.
             if (target_class == OBJ_SCROLLS
-                    && you.mutation[MUT_CONSERVE_SCROLLS]
-                    && !one_chance_in(10))
+                && you.mutation[MUT_CONSERVE_SCROLLS]
+                && !one_chance_in(10))
             {
                 continue;
             }
 
             if (target_class == OBJ_POTIONS
-                    && you.mutation[MUT_CONSERVE_POTIONS]
-                    && !one_chance_in(10))
+                && you.mutation[MUT_CONSERVE_POTIONS]
+                && !one_chance_in(10))
             {
                 continue;
             }
@@ -546,6 +549,10 @@ bool expose_items_to_element(beam_type flavour, const coord_def& where,
 
     const int target_class = _get_target_class(flavour);
     if (target_class == OBJ_UNASSIGNED)
+        return (false);
+
+    // Beams fly *over* water and lava.
+    if (grd(where) == DNGN_LAVA || grd(where) == DNGN_DEEP_WATER)
         return (false);
 
     for (stack_iterator si(where); si; ++si)
@@ -747,10 +754,8 @@ bool drain_exp(bool announce_full)
 
         you.exp_available = std::max(0, you.exp_available);
 
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "You lose %ld experience points, %ld from pool.",
+        dprf("You lose %ld experience points, %ld from pool.",
              exp_drained, pool_drained);
-#endif
 
         you.redraw_experience = true;
 
@@ -768,7 +773,7 @@ static void _xom_checks_damage(kill_method_type death_type,
 {
     if (you.religion == GOD_XOM)
     {
-        if (death_type == KILLED_BY_TARGETTING
+        if (death_type == KILLED_BY_TARGETING
             || death_type == KILLED_BY_BOUNCE
             || death_type == KILLED_BY_REFLECTION
             || death_type == KILLED_BY_SELF_AIMED
@@ -871,7 +876,7 @@ static void _yred_mirrors_injury(int dam, int death_source)
         if (mon->alive())
             print_wounds(mon);
 
-        lose_piety(integer_sqrt(dam));
+        lose_piety(ceil(sqrt((float)dam)));
     }
 }
 
@@ -1013,9 +1018,7 @@ void ouch(int dam, int death_source, kill_method_type death_type,
     {
         // Deep Dwarves get to shave _any_ hp loss.
         int shave = 1 + random2(2 + random2(1 + you.experience_level / 3));
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "HP shaved: %d.", shave);
-#endif
+        dprf("HP shaved: %d.", shave);
         dam -= shave;
         if (dam <= 0)
             return;
@@ -1082,8 +1085,7 @@ void ouch(int dam, int death_source, kill_method_type death_type,
             std::string damage_desc;
             if (!see_source)
             {
-                snprintf(info, INFO_SIZE, "something (%d)", dam);
-                damage_desc = info;
+                damage_desc = make_stringf("something (%d)", dam);
             }
             else
             {
@@ -1130,7 +1132,7 @@ void ouch(int dam, int death_source, kill_method_type death_type,
         // Okay, you *didn't* escape death.
         you.reset_escaped_death();
 
-        // Ensure some minimal information about Xom's involvment.
+        // Ensure some minimal information about Xom's involvement.
         if (aux == NULL || strlen(aux) == 0)
         {
             if (death_type != KILLED_BY_XOM)
@@ -1138,6 +1140,12 @@ void ouch(int dam, int death_source, kill_method_type death_type,
         }
         else if (strstr(aux, "Xom") == NULL)
             death_type = KILLED_BY_XOM;
+    }
+    // Xom may still try to save your life.
+    else if (xom_saves_your_life(dam, death_source, death_type, aux,
+                                 see_source))
+    {
+        return;
     }
 
 #if WIZARD || DEBUG
@@ -1169,9 +1177,7 @@ void ouch(int dam, int death_source, kill_method_type death_type,
                 = se.death_description(scorefile_entry::DDV_VERBOSE);
 #ifdef USE_OPTIONAL_WIZARD_DEATH
 
-#if DEBUG_DIAGNOSTICS
-            mprf(MSGCH_DIAGNOSTICS, "Damage: %d; Hit points: %d", dam, you.hp);
-#endif
+            dprf("Damage: %d; Hit points: %d", dam, you.hp);
 
             if (crawl_state.test || !yesno("Die?", false, 'n'))
             {
@@ -1280,7 +1286,7 @@ static void delete_files()
 #ifdef PACKAGE_SUFFIX
         PACKAGE_SUFFIX ,
 #endif
-        ".st", ".kil", ".tc", ".nts", ".tut", ".sav", ".msg"
+        ".st", ".kil", ".tc", ".nts", ".tut", ".sav", ".msg", ".tdl"
     };
 
     const int num_suffixes = sizeof(suffixes) / sizeof(const char*);
@@ -1294,39 +1300,28 @@ static void delete_files()
 
 void end_game(scorefile_entry &se)
 {
-    bool dead = true;
-
     for (int i = 0; i < ENDOFPACK; i++)
-        set_ident_flags( you.inv[i], ISFLAG_IDENT_MASK );
+        set_ident_flags(you.inv[i], ISFLAG_IDENT_MASK);
 
     for (int i = 0; i < ENDOFPACK; i++)
     {
         if (you.inv[i].base_type != 0)
-            set_ident_type( you.inv[i], ID_KNOWN_TYPE );
+            set_ident_type(you.inv[i], ID_KNOWN_TYPE);
     }
 
     delete_files();
 
-    if (!dump_char( morgue_name(se.death_time), !dead, true, &se ))
-    {
-        mpr("Char dump unsuccessful! Sorry about that.");
-        if (!crawl_state.seen_hups)
-            more();
-        clrscr();
-    }
-
-    if (se.death_type == KILLED_BY_LEAVING
-        || se.death_type == KILLED_BY_QUITTING
-        || se.death_type == KILLED_BY_WINNING)
-    {
-        dead = false;
-    }
-
     // death message
-    if (dead)
+    if (se.death_type != KILLED_BY_LEAVING
+        && se.death_type != KILLED_BY_QUITTING
+        && se.death_type != KILLED_BY_WINNING)
     {
-        mpr("You die...");      // insert player name here? {dlb}
+        mprnojoin("You die...");      // insert player name here? {dlb}
         xom_death_message((kill_method_type) se.death_type);
+        if (you.religion == GOD_FEDHAS)
+            simple_god_message(" appreciates your contribution to the "
+                               "ecosystem.", GOD_FEDHAS);
+
         flush_prev_message();
         viewwindow(false); // don't do for leaving/winning characters
 
@@ -1334,34 +1329,41 @@ void end_game(scorefile_entry &se)
             tutorial_death_screen();
     }
 
+    if (!dump_char(morgue_name(se.death_time), false, true, &se))
+    {
+        mpr("Char dump unsuccessful! Sorry about that.");
+        if (!crawl_state.seen_hups)
+            more();
+        clrscr();
+    }
+
 #ifdef DGL_WHEREIS
-    whereis_record( se.death_type == KILLED_BY_QUITTING? "quit" :
-                    se.death_type == KILLED_BY_WINNING ? "won"  :
-                    se.death_type == KILLED_BY_LEAVING ? "bailed out"
-                                                       : "dead" );
+    whereis_record(se.death_type == KILLED_BY_QUITTING? "quit" :
+                   se.death_type == KILLED_BY_WINNING ? "won"  :
+                   se.death_type == KILLED_BY_LEAVING ? "bailed out"
+                                                      : "dead");
 #endif
 
     if (!crawl_state.seen_hups)
         more();
 
     browse_inventory(true);
-    textcolor( LIGHTGREY );
-    clrscr();
+    textcolor(LIGHTGREY);
 
     clrscr();
     cprintf("Goodbye, %s.", you.your_name.c_str());
-    cprintf( EOL EOL "    " ); // Space padding where # would go in list format
+    cprintf(EOL EOL "    "); // Space padding where # would go in list format
 
-    std::string hiscore = hiscores_format_single_long( se, true );
+    std::string hiscore = hiscores_format_single_long(se, true);
 
     const int lines = count_occurrences(hiscore, EOL) + 1;
 
-    cprintf( "%s", hiscore.c_str() );
+    cprintf("%s", hiscore.c_str());
 
-    cprintf( EOL "Best Crawlers -" EOL );
+    cprintf(EOL "Best Crawlers -" EOL);
 
     // "- 5" gives us an extra line in case the description wraps on a line.
-    hiscores_print_list( get_number_of_lines() - lines - 5 );
+    hiscores_print_list(get_number_of_lines() - lines - 5);
 
     // just to pause, actual value returned does not matter {dlb}
     if (!crawl_state.seen_hups)

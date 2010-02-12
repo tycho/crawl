@@ -54,7 +54,8 @@ level_range set_range(const char *s, int start, int end)
 %token <i>      DEFAULT_DEPTH SHUFFLE SUBST TAGS KFEAT KITEM KMONS KMASK KPROP
 %token <i>      NAME DEPTH ORIENT PLACE CHANCE WEIGHT MONS ITEM MARKER COLOUR
 %token <i>      PRELUDE MAIN VALIDATE VETO NSUBST WELCOME LFLAGS BFLAGS
-%token <i>      LFLOORCOL LROCKCOL LFLOORTILE LROCKTILE FTILE RTILE SUBVAULT
+%token <i>      LFLOORCOL LROCKCOL LFLOORTILE LROCKTILE FTILE RTILE TILE
+%token <i>      SUBVAULT FHEIGHT
 
 %token <i>      COMMA COLON PERC INTEGER CHARACTER
 
@@ -166,6 +167,7 @@ metaline        : place
                 | lrocktile
                 | ftile
                 | rtile
+                | tile
                 | shuffle
                 | tags
                 | lflags
@@ -175,6 +177,7 @@ metaline        : place
                 | kmons
                 | kmask
                 | kprop
+                | fheight
                 | subvault
                 | main_lua
                 | prelude_lua
@@ -394,6 +397,7 @@ lfloortile      : LFLOORTILE { }
                         make_stringf("lfloortile(\"%s\")",
                             quote_lua_string($2).c_str()));
                 }
+                ;
 
 lrocktile       : LROCKTILE { }
                 | LROCKTILE STRING
@@ -403,7 +407,22 @@ lrocktile       : LROCKTILE { }
                         make_stringf("lrocktile(\"%s\")",
                             quote_lua_string($2).c_str()));
                 }
+                ;
 
+fheight         : FHEIGHT fheight_specifiers
+
+fheight_specifiers: fheight_specifier
+                    | fheight_specifiers COMMA fheight_specifier
+                    ;
+
+fheight_specifier : ITEM_INFO
+                {
+                    lc_map.main.add(
+                        yylineno,
+                        make_stringf("fheight(\"%s\")",
+                            quote_lua_string($1).c_str()));
+                }
+                ;
 
 ftile           : FTILE ftile_specifiers
                 ;
@@ -425,7 +444,7 @@ rtile           : RTILE rtile_specifiers
                 ;
 
 rtile_specifiers: rtile_specifier
-                | rtile_specifiers COMMA rtile_specifier 
+                | rtile_specifiers COMMA rtile_specifier
                 ;
 
 rtile_specifier : ITEM_INFO
@@ -436,6 +455,23 @@ rtile_specifier : ITEM_INFO
                             quote_lua_string($1).c_str()));
                 }
                 ;
+
+tile            : TILE tile_specifiers
+                ;
+
+tile_specifiers : tile_specifier
+                | tile_specifiers COMMA tile_specifier
+                ;
+
+tile_specifier  : ITEM_INFO
+                {
+                    lc_map.main.add(
+                        yylineno,
+                        make_stringf("tile(\"%s\")",
+                            quote_lua_string($1).c_str()));
+                }
+                ;
+
 
 colour_specifiers : colour_specifier  { }
                   | colour_specifiers COMMA colour_specifier { }

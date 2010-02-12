@@ -23,6 +23,9 @@
 #include "makeitem.h"
 #include "travel_defs.h"
 
+// Invalid heightmap height.
+static const int INVALID_HEIGHT = -31999;
+
 // [dshaligram] Maps can be mirrored; for every orientation, there must be
 // a suitable mirror.
 enum map_section_type                  // see maps.cc and dungeon.cc {dlb}
@@ -155,12 +158,20 @@ public:
     map_colour_list colours;
 };
 
-typedef std::pair<int, int> map_weighted_fprop;
+typedef std::pair<unsigned long, int> map_weighted_fprop;
 class map_fprop_list : public std::vector<map_weighted_fprop>
 {
 public:
     bool parse(const std::string &fp, int weight);
 };
+
+typedef std::pair<int, int> map_weighted_fheight;
+class map_featheight_list : public std::vector<map_weighted_fheight>
+{
+public:
+    bool parse(const std::string &fp, int weight);
+};
+
 class fprop_spec
 {
 public:
@@ -169,13 +180,30 @@ public:
     {
     }
 
-    int get_property();
+    unsigned long get_property();
 
 public:
     std::string key;
     bool fix;
-    int fixed_prop;
+    unsigned long fixed_prop;
     map_fprop_list fprops;
+};
+
+class fheight_spec
+{
+public:
+    fheight_spec(std::string _key, bool _fix,
+                 const map_featheight_list &_fheights)
+        : key(_key), fix(_fix), fixed_height(INVALID_HEIGHT),
+          fheights(_fheights)
+    {
+    }
+    int get_height();
+public:
+    std::string key;
+    bool fix;
+    int fixed_height;
+    map_featheight_list fheights;
 };
 
 #ifdef USE_TILE
@@ -189,8 +217,8 @@ public:
 class tile_spec
 {
 public:
-    tile_spec(const std::string &_key, bool _fix, bool _floor, const map_tile_list &_tiles)
-        : key(_key), fix(_fix), chose_fixed(false), floor(_floor),
+    tile_spec(const std::string &_key, bool _fix, bool _rand, bool _last, bool _floor, bool _feat, const map_tile_list &_tiles)
+        : key(_key), fix(_fix), chose_fixed(false), no_random(_rand), last_tile(_last), floor(_floor), feat(_feat),
           fixed_tile(0), tiles(_tiles)
     {
     }
@@ -201,7 +229,10 @@ public:
     std::string key;
     bool fix;
     bool chose_fixed;
+    bool no_random;
+    bool last_tile;
     bool floor;
+    bool feat;
     int fixed_tile;
     map_tile_list tiles;
 };
@@ -256,9 +287,25 @@ std::string parse_weighted_str(const std::string &cspec, T &list);
 
 class map_def;
 class rectangle_iterator;
-class keyed_mapspec;
+struct keyed_mapspec;
 class map_lines
 {
+public:
+    class iterator {
+    public:
+        iterator(map_lines &ml, const std::string &key);
+        operator bool () const;
+        coord_def operator ++ ();
+        coord_def operator ++ (int);
+        coord_def operator * () const;
+    private:
+        void advance();
+    private:
+        map_lines &maplines;
+        std::string key;
+        coord_def p;
+    };
+
 public:
     map_lines();
     map_lines(const map_lines &);
@@ -274,11 +321,13 @@ public:
     std::string add_shuffle(const std::string &s);
     std::string add_colour(const std::string &col);
     std::string add_fproperty(const std::string &sub);
+    std::string add_fheight(const std::string &arg);
     void clear_markers();
 
 #ifdef USE_TILE
     std::string add_floortile(const std::string &s);
     std::string add_rocktile(const std::string &s);
+    std::string add_spec_tile(const std::string &s);
 #endif
 
     std::vector<coord_def> find_glyph(const std::string &glyphs) const;
@@ -374,8 +423,10 @@ private:
     void subst(std::string &s, subst_spec &spec);
     void subst(subst_spec &);
     void nsubst(nsubst_spec &);
+    void bind_overlay();
     void overlay_colours(colour_spec &);
     void overlay_fprops(fprop_spec &);
+    void overlay_fheights(fheight_spec &);
 
     // Merge cell (vx, vy) from vault onto this map's (x, y) cell.
     typedef FixedVector<int, 256> keyspec_map;
@@ -400,7 +451,7 @@ private:
                                          glyph_replacements_t &gly);
 
 #ifdef USE_TILE
-    std::string add_tile(const std::string &sub, bool is_floor);
+    std::string add_tile(const std::string &sub, bool is_floor, bool is_feat);
 #endif
 
     std::string add_key_field(
@@ -425,11 +476,19 @@ private:
 
     struct overlay_def
     {
-        overlay_def() : colour(0), rocktile(0), floortile(0), property(0), keyspec_idx(0) {}
+        overlay_def() :
+            colour(0), rocktile(0), floortile(0), tile(0),
+            no_random(false), last_tile(false), property(0), height(INVALID_HEIGHT),
+            keyspec_idx(0)
+        {}
         int colour;
         int rocktile;
         int floortile;
+        int tile;
+        bool no_random;
+        bool last_tile;
         int property;
+        int height;      // heightmap height
         int keyspec_idx;
     };
     typedef Matrix<overlay_def> overlay_matrix;
@@ -474,10 +533,13 @@ struct item_spec
     int acquirement_source;
     level_id place;
 
+    // Specifically for storing information about randart spell books.
+    CrawlHashTable props;
+
     item_spec() : genweight(10), base_type(OBJ_RANDOM), sub_type(OBJ_RANDOM),
         plus(-1), plus2(-1), ego(0), allow_uniques(1), level(-1),
         race(MAKE_ITEM_RANDOM_RACE), qty(0), acquirement_source(0),
-        place()
+        place(), props()
     {
     }
 };
@@ -542,13 +604,18 @@ class mons_spec
     int  colour;
     int  hd;
     int  hp;
+    int  abjuration_duration;
+    int  summon_type;
 
     item_list items;
     std::string monname;
+    std::string non_actor_summoner;
 
     bool explicit_spells;
     monster_spells spells;
     unsigned long extra_monster_flags;
+
+    CrawlHashTable props;
 
     mons_spec(int id = RANDOM_MONSTER,
               monster_type base = MONS_NO_MONSTER,
@@ -558,8 +625,9 @@ class mons_spec
         : mid(id), place(), monbase(base), attitude(ATT_HOSTILE), number(num),
           quantity(1), genweight(gw), mlevel(ml), fix_mons(_fixmons),
           generate_awake(awaken), patrolling(false), band(false),
-          colour(BLACK), hd(0), hp(0), items(), monname(""),
-          explicit_spells(false), spells(), extra_monster_flags(0L)
+          colour(BLACK), hd(0), hp(0), abjuration_duration(0), summon_type(0),
+          items(), monname(""), non_actor_summoner(""), explicit_spells(false),
+          spells(), extra_monster_flags(0L), props()
     {
     }
 };
@@ -679,6 +747,7 @@ public:
     std::string set_mons(const std::string &s, bool fix);
     std::string set_item(const std::string &s, bool fix);
     std::string set_mask(const std::string &s, bool garbage);
+    std::string set_height(const std::string &s, bool garbage);
 
     // Copy from the given mapspec.  If that entry is fixed,
     // it should be pre-selected prior to the copy.
@@ -686,6 +755,7 @@ public:
     void copy_mons(const keyed_mapspec &spec);
     void copy_item(const keyed_mapspec &spec);
     void copy_mask(const keyed_mapspec &spec);
+    void copy_height(const keyed_mapspec &spec);
 
     feature_spec get_feat();
     mons_list   &get_monsters();

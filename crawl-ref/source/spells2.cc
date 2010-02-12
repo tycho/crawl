@@ -30,9 +30,9 @@
 #include "goditem.h"
 #include "invent.h"
 #include "itemprop.h"
-#include "itemname.h"
 #include "items.h"
 #include "it_use2.h"
+#include "makeitem.h"
 #include "message.h"
 #include "misc.h"
 #include "mon-behv.h"
@@ -46,9 +46,13 @@
 #include "player.h"
 #include "quiver.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "stuff.h"
 #include "teleport.h"
+#ifdef USE_TILE
 #include "tiles.h"
+#include "tiledef-main.h"
+#endif
 #include "terrain.h"
 #include "traps.h"
 #include "view.h"
@@ -87,7 +91,7 @@ int detect_items(int pow)
 #ifdef USE_TILE
             // Don't replace previously seen items with an unseen one.
             if (!is_terrain_seen(*ri) && !is_terrain_mapped(*ri))
-                env.tile_bk_fg[ri->x][ri->y] = TILE_UNSEEN_ITEM;
+                env.tile_bk_fg(*ri) = TILE_UNSEEN_ITEM;
 #endif
         }
     }
@@ -97,9 +101,7 @@ int detect_items(int pow)
 
 static void _fuzz_detect_creatures(int pow, int *fuzz_radius, int *fuzz_chance)
 {
-#ifdef DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "dc_fuzz: Power is %d", pow);
-#endif
+    dprf("dc_fuzz: Power is %d", pow);
 
     pow = std::max(1, pow);
 
@@ -233,6 +235,54 @@ void corpse_rot()
     // Should make zombies decay into skeletons?
 }
 
+// We need to know what brands equate with what missile brands to know if
+// we should disallow temporary branding or not.
+special_missile_type _convert_to_missile(brand_type which_brand)
+{
+    switch (which_brand)
+    {
+    case SPWPN_NORMAL: return SPMSL_NORMAL;
+    case SPWPN_FLAME: // deliberate fall through
+    case SPWPN_FLAMING: return SPMSL_FLAME;
+    case SPWPN_FROST: // deliberate fall through
+    case SPWPN_FREEZING: return SPMSL_FROST;
+    case SPWPN_VENOM: return SPMSL_POISONED;
+    case SPWPN_CHAOS: return SPMSL_CHAOS;
+    case SPWPN_RETURNING: return SPMSL_RETURNING;
+    default: return SPMSL_NORMAL; // there are no equivalents for the rest
+                                  // of the ammo brands.
+    }
+}
+
+// Some launchers need to convert different brands.
+brand_type _convert_to_launcher(brand_type which_brand)
+{
+    switch (which_brand)
+    {
+    case SPWPN_FREEZING: return SPWPN_FROST; case SPWPN_FLAMING: return SPWPN_FLAME;
+    default: return (which_brand);
+    }
+}
+
+bool _ok_for_launchers(brand_type which_brand)
+{
+    switch (which_brand)
+    {
+    case SPWPN_NORMAL:
+    case SPWPN_FREEZING:
+    case SPWPN_FROST:
+    case SPWPN_FLAMING:
+    case SPWPN_FLAME:
+    case SPWPN_VENOM:
+    //case SPWPN_PAIN: -- no pain missile type yet
+    case SPWPN_RETURNING:
+    case SPWPN_CHAOS:
+        return (true);
+    default:
+        return (false);
+    }
+}
+
 bool brand_weapon(brand_type which_brand, int power)
 {
     if (!you.weapon())
@@ -241,8 +291,12 @@ bool brand_weapon(brand_type which_brand, int power)
     const bool temp_brand = you.duration[DUR_WEAPON_BRAND];
     item_def& weapon = *you.weapon();
 
-    // Can't brand non-weapons.
-    if (weapon.base_type != OBJ_WEAPONS || is_range_weapon(weapon))
+    // Can't brand non-weapons, but can brand some launchers (see later).
+    if (weapon.base_type != OBJ_WEAPONS)
+        return (false);
+
+    // But not blowguns.
+    if (weapon.sub_type == WPN_BLOWGUN)
         return (false);
 
     // Can't brand artefacts.
@@ -257,6 +311,30 @@ bool brand_weapon(brand_type which_brand, int power)
     if (temp_brand && (get_weapon_brand(weapon) != which_brand))
         return (false);
 
+    // Can only brand launchers with sensical brands
+    if (is_range_weapon(weapon))
+    {
+        // If the new missile type wouldn't match the launcher, say no
+        missile_type missile = fires_ammo_type(weapon);
+
+        // XXX: To deal with the fact that is_missile_brand_ok will be
+        // unhappy if we attempt to brand stones, tell it we're using
+        // sling bullets instead.
+        if (weapon.sub_type == WPN_SLING)
+            missile = MI_SLING_BULLET;
+
+        if (!is_missile_brand_ok(missile, _convert_to_missile(which_brand)))
+            return (false);
+
+        // If the brand isn't appropriate for that launcher, also say no.
+        if (!_ok_for_launchers(which_brand))
+            return (false);
+
+        // Otherwise, convert to the correct brand type, most specifically (but
+        // not necessarily only) flaming -> flame, freezing -> frost.
+        which_brand = _convert_to_launcher(which_brand);
+    }
+
     std::string msg = weapon.name(DESC_CAP_YOUR);
     const int wpn_type = get_vorpal_type(weapon);
 
@@ -264,8 +342,14 @@ bool brand_weapon(brand_type which_brand, int power)
     int duration_affected = 0;
     switch (which_brand)
     {
+    case SPWPN_FLAME:
     case SPWPN_FLAMING:
         msg += " bursts into flame!";
+        duration_affected = 7;
+        break;
+
+    case SPWPN_FROST:
+        msg += " frosts over!";
         duration_affected = 7;
         break;
 
@@ -304,14 +388,6 @@ bool brand_weapon(brand_type which_brand, int power)
 
         // [dshaligram] Clamping power to 2.
         power = 2;
-
-        // This brand is insanely powerful, this isn't even really
-        // a start to balancing it, but it needs something. -- bwr
-        // [dshaligram] At level 7 it's costly enough to experiment
-        // with removing the miscast effect. We may need to revise the spell
-        // to level 8 or 9. XXX.
-        // miscast_effect(SPTYP_TRANSLOCATION,
-        //                9, 90, 100, "distortion branding");
         break;
 
     case SPWPN_PAIN:
@@ -357,135 +433,6 @@ bool brand_weapon(brand_type which_brand, int power)
                           duration_affected + roll_dice(2, power), 50);
 
     return (true);
-}
-
-bool brand_ammo(special_missile_type which_type)
-{
-    const int ammo = you.equip[EQ_WEAPON];
-
-    if (ammo == -1
-        || you.inv[ammo].base_type != OBJ_MISSILES
-        || get_ammo_brand(you.inv[ammo]) != SPMSL_NORMAL
-        || you.inv[ammo].sub_type == MI_THROWING_NET)
-    {
-        return (false);
-    }
-
-    bool retval = false;
-    preserve_quiver_slots q;
-    const char *old_desc = you.inv[ammo].name(DESC_CAP_YOUR).c_str();
-
-    switch (which_type)
-    {
-        case SPMSL_POISONED:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_POISONED))
-            {
-                mprf("%s %s covered in a thin film of poison.", old_desc,
-                     (you.inv[ammo].quantity == 1) ? "is" : "are");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        case SPMSL_FLAME:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_FLAME))
-            {
-                mprf("%s %s warm to the touch.", old_desc,
-                     (you.inv[ammo].quantity == 1) ? "feels" : "feel");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        case SPMSL_FROST:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_FROST))
-            {
-                mprf("%s %s cool to the touch.", old_desc,
-                     (you.inv[ammo].quantity == 1) ? "feels" : "feel");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        case SPMSL_DISPERSAL:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_DISPERSAL))
-            {
-                mprf("%s %s rather jumpy.", old_desc,
-                    (you.inv[ammo].quantity == 1) ? "seems" : "seem");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        case SPMSL_ELECTRIC:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_ELECTRIC))
-            {
-                mprf("%s %s you!", old_desc,
-                    (you.inv[ammo].quantity == 1) ? "shocks" : "shock");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        case SPMSL_EXPLODING:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_EXPLODING))
-            {
-                mprf("%s %s unstable!", old_desc,
-                    (you.inv[ammo].quantity == 1) ? "seems" : "seem");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        case SPMSL_REAPING:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_REAPING))
-            {
-                mprf("%s %s briefly obscured by shadows.", old_desc,
-                    (you.inv[ammo].quantity == 1) ? "is" : "are");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        case SPMSL_RETURNING:
-            if (set_item_ego_type(you.inv[ammo], OBJ_MISSILES, SPMSL_RETURNING))
-            {
-                mprf("%s %s in your hand.", old_desc,
-                    (you.inv[ammo].quantity == 1) ? "wiggles" : "wiggle");
-
-                if (ammo == you.equip[EQ_WEAPON])
-                    you.wield_change = true;
-
-                retval = true;
-            }
-            break;
-
-        default:
-            break;
-    }
-
-    return (retval);
 }
 
 // Restore the stat in which_stat by the amount in stat_gain, displaying
@@ -624,9 +571,12 @@ static std::string _describe_monsters(const counted_monster_list &list)
 // Poisonous light passes right through invisible players
 // and monsters, and so, they are unaffected by this spell --
 // assumes only you can cast this spell (or would want to).
-void cast_toxic_radiance()
+void cast_toxic_radiance(bool non_player)
 {
-    mpr("You radiate a sickly green light!");
+    if (non_player)
+        mpr("The air is filled with a sickly green light!");
+    else
+        mpr("You radiate a sickly green light!");
 
     flash_view(GREEN);
     more();
@@ -654,10 +604,13 @@ void cast_toxic_radiance()
             // this check should not be !monster->invisible().
             if (!mi->has_ench(ENCH_INVIS))
             {
+                kill_category kc = KC_YOU;
+                if (non_player)
+                    kc = KC_OTHER;
                 bool affected =
-                    poison_monster(*mi, KC_YOU, 1, false, false);
+                    poison_monster(*mi, kc, 1, false, false);
 
-                if (coinflip() && poison_monster(*mi, KC_YOU, false, false))
+                if (coinflip() && poison_monster(*mi, kc, false, false))
                     affected = true;
 
                 if (affected)
@@ -684,14 +637,20 @@ void cast_toxic_radiance()
         {
             // Exclamation mark to suggest that a lot of creatures were
             // affected.
-            mpr("The monsters around you are poisoned!");
+            if (non_player)
+                mpr("Nearby monsters are poisoned!");
+            else
+                mpr("The monsters around you are poisoned!");
         }
     }
 }
 
-void cast_refrigeration(int pow)
+void cast_refrigeration(int pow, bool non_player)
 {
-    mpr("The heat is drained from your surroundings.");
+    if (non_player)
+        mpr("Something drains the heat from around you.");
+    else
+        mpr("The heat is drained from your surroundings.");
 
     flash_view(LIGHTCYAN);
     more();
@@ -751,7 +710,10 @@ void cast_refrigeration(int pow)
 
         // Calculate damage and apply.
         int hurt = mons_adjust_flavoured(*mi, beam, dam_dice.roll());
-        mi->hurt(&you, hurt, BEAM_COLD);
+        if (non_player)
+            mi->hurt(NULL, hurt, BEAM_COLD);
+        else
+            mi->hurt(&you, hurt, BEAM_COLD);
 
         // Cold-blooded creatures can be slowed.
         if (mi->alive()
@@ -815,10 +777,11 @@ bool vampiric_drain(int pow, const dist &vmove)
 {
     monsters *monster = monster_at(you.pos() + vmove.delta);
 
-    if (monster == NULL)
+    if (monster == NULL || monster->submerged())
     {
         mpr("There isn't anything there!");
-        return (false);
+        // Cost to disallow freely locating invisible monsters.
+        return (true);
     }
 
     god_conduct_trigger conducts[3];
@@ -892,7 +855,7 @@ bool burn_freeze(int pow, beam_type flavour, monsters *monster)
 {
     pow = std::min(25, pow);
 
-    if (monster == NULL)
+    if (monster == NULL || monster->submerged())
     {
         mpr("There isn't anything close enough!");
         // If there's no monster there, you still pay the costs in
@@ -1062,6 +1025,34 @@ bool cast_summon_small_mammals(int pow, god_type god)
     return (success);
 }
 
+static bool _snakable_missile(const item_def& item)
+{
+    return (item.base_type == OBJ_MISSILES && item.sub_type == MI_ARROW);
+}
+
+static bool _snakable_weapon(const item_def& item)
+{
+    return (item.base_type == OBJ_WEAPONS
+           && (item.sub_type == WPN_CLUB
+            || item.sub_type == WPN_SPEAR
+            || item.sub_type == WPN_QUARTERSTAFF
+            || item.sub_type == WPN_SCYTHE
+            || item.sub_type == WPN_GIANT_CLUB
+            || item.sub_type == WPN_GIANT_SPIKED_CLUB
+            || item.sub_type == WPN_BOW
+            || item.sub_type == WPN_LONGBOW
+            || item.sub_type == WPN_ANKUS
+            || item.sub_type == WPN_HALBERD
+            || item.sub_type == WPN_GLAIVE
+            || item.sub_type == WPN_BLOWGUN)
+           && !is_artefact(item));
+}
+
+bool item_is_snakable(const item_def& item)
+{
+    return (_snakable_missile(item) || _snakable_weapon(item));
+}
+
 bool cast_sticks_to_snakes(int pow, god_type god)
 {
     if (!you.weapon())
@@ -1081,24 +1072,24 @@ bool cast_sticks_to_snakes(int pow, god_type god)
         return (false);
     }
 
-    monster_type mon = MONS_PROGRAM_BUG;
-
     const int dur = std::min(3 + random2(pow) / 20, 5);
     int how_many_max = 1 + random2(1 + you.skills[SK_TRANSMUTATIONS]) / 4;
-    const bool friendly = (!item_cursed(wpn));
+    const bool friendly = (!wpn.cursed());
     const beh_type beha = (friendly) ? BEH_FRIENDLY : BEH_HOSTILE;
 
     int count = 0;
 
-    if (wpn.base_type == OBJ_MISSILES && wpn.sub_type == MI_ARROW)
+    if (_snakable_missile(wpn))
     {
         if (wpn.quantity < how_many_max)
             how_many_max = wpn.quantity;
 
         for (int i = 0; i <= how_many_max; i++)
         {
-            if (one_chance_in(5 - std::min(4, div_rand_round(pow * 2, 25)))
-                || get_ammo_brand(wpn) == SPMSL_POISONED)
+            monster_type mon;
+
+            if (get_ammo_brand(wpn) == SPMSL_POISONED
+                || one_chance_in(5 - std::min(4, div_rand_round(pow * 2, 25))))
             {
                 mon = x_chance_in_y(pow / 3, 100) ? MONS_WATER_MOCCASIN
                                                   : MONS_SNAKE;
@@ -1117,24 +1108,13 @@ bool cast_sticks_to_snakes(int pow, god_type god)
         }
     }
 
-    if (wpn.base_type == OBJ_WEAPONS
-        && (wpn.sub_type == WPN_CLUB
-            || wpn.sub_type == WPN_SPEAR
-            || wpn.sub_type == WPN_QUARTERSTAFF
-            || wpn.sub_type == WPN_SCYTHE
-            || wpn.sub_type == WPN_GIANT_CLUB
-            || wpn.sub_type == WPN_GIANT_SPIKED_CLUB
-            || wpn.sub_type == WPN_BOW
-            || wpn.sub_type == WPN_LONGBOW
-            || wpn.sub_type == WPN_ANKUS
-            || wpn.sub_type == WPN_HALBERD
-            || wpn.sub_type == WPN_GLAIVE
-            || wpn.sub_type == WPN_BLOWGUN))
+    if (_snakable_weapon(wpn))
     {
         // Upsizing Snakes to Water Moccasins as the base class for using
         // the really big sticks (so bonus applies really only to trolls
         // and ogres).  Still, it's unlikely any character is strong
         // enough to bother lugging a few of these around. - bwr
+        monster_type mon;
 
         if (item_mass(wpn) < 300)
             mon = MONS_SNAKE;
@@ -1151,7 +1131,7 @@ bool cast_sticks_to_snakes(int pow, god_type god)
             mon = MONS_BLACK_MAMBA;
 
         if (pow > 90 && one_chance_in(3))
-            mon = MONS_GREY_SNAKE;
+            mon = MONS_ANACONDA;
 
         if (create_monster(
                 mgen_data(mon, beha, &you,
@@ -1166,18 +1146,19 @@ bool cast_sticks_to_snakes(int pow, god_type god)
     if (wpn.quantity < count)
         count = wpn.quantity;
 
-    if (count > 0)
+    const bool success = (count > 0);
+
+    if (success)
     {
         dec_inv_item_quantity(you.equip[EQ_WEAPON], count);
-
-        mprf("You create %s snake%s!",
-             count > 1 ? "some" : "a",
-             count > 1 ? "s" : "");
-        return (true);
+        mpr((count > 1) ? "You create some snakes!" : "You create a snake!");
+    }
+    else
+    {
+        mprf("Your %s feel slithery!", your_hand(true).c_str());
     }
 
-    mprf("Your %s feel slithery!", your_hand(true).c_str());
-    return (false);
+    return (success);
 }
 
 bool cast_summon_scorpions(int pow, god_type god)
@@ -1189,7 +1170,7 @@ bool cast_summon_scorpions(int pow, god_type god)
 
     for (int i = 0; i < how_many; ++i)
     {
-        bool friendly = (random2(pow) > 3);
+        const bool friendly = (random2(pow) > 3);
 
         if (create_monster(
                 mgen_data(MONS_SCORPION,
@@ -1296,8 +1277,6 @@ bool cast_call_canine_familiar(int pow, god_type god)
                       0, god)) != -1)
     {
         success = true;
-
-        mpr("A canine appears!");
     }
     else
         canned_msg(MSG_NOTHING_HAPPENS);
@@ -1325,7 +1304,9 @@ bool cast_summon_elemental(int pow, god_type god,
     {
         mpr("Summon from material in which direction? ", MSGCH_PROMPT);
 
-        direction(smove, DIR_DIR, TARG_ANY);
+        direction_chooser_args args;
+        args.restricts = DIR_DIR;
+        direction(smove, args);
 
         if (!smove.isValid)
         {
@@ -1446,12 +1427,10 @@ bool cast_summon_elemental(int pow, god_type god,
 
 bool cast_summon_ice_beast(int pow, god_type god)
 {
-    monster_type mon = MONS_ICE_BEAST;
-
     const int dur = std::min(2 + (random2(pow) / 4), 6);
 
     if (create_monster(
-            mgen_data(mon, BEH_FRIENDLY, &you,
+            mgen_data(MONS_ICE_BEAST, BEH_FRIENDLY, &you,
                       dur, SPELL_SUMMON_ICE_BEAST,
                       you.pos(), MHITYOU,
                       0, god)) != -1)
@@ -1526,7 +1505,7 @@ bool summon_berserker(int pow, god_type god, int spell,
 {
     monster_type mon = MONS_PROGRAM_BUG;
 
-    int dur = std::min(2 + (random2(pow) / 4), 6);
+    const int dur = std::min(2 + (random2(pow) / 4), 6);
 
     if (pow <= 100)
     {
@@ -1536,10 +1515,7 @@ bool summon_berserker(int pow, god_type god, int spell,
     else if (pow <= 140)
     {
         // ogres
-        if (one_chance_in(3))
-            mon = MONS_TWO_HEADED_OGRE;
-        else
-            mon = MONS_OGRE;
+        mon = (one_chance_in(3) ? MONS_TWO_HEADED_OGRE : MONS_OGRE);
     }
     else if (pow <= 180)
     {
@@ -1663,17 +1639,14 @@ bool summon_holy_warrior(int pow, god_type god, int spell,
 bool cast_tukimas_dance(int pow, god_type god, bool force_hostile)
 {
     bool success = true;
-    conduct_type why;
-
     const int dur = std::min(2 + (random2(pow) / 5), 6);
-
-    const int wpn = you.equip[EQ_WEAPON];
+    item_def* wpn = you.weapon();
 
     // See if the wielded item is appropriate.
-    if (wpn == -1
-        || you.inv[wpn].base_type != OBJ_WEAPONS
-        || is_range_weapon(you.inv[wpn])
-        || is_special_unrandom_artefact(you.inv[wpn]))
+    if (!wpn
+        || wpn->base_type != OBJ_WEAPONS
+        || is_range_weapon(*wpn)
+        || is_special_unrandom_artefact(*wpn))
     {
         success = false;
     }
@@ -1688,7 +1661,7 @@ bool cast_tukimas_dance(int pow, god_type god, bool force_hostile)
         // Copy item now so that mitm[i] is occupied and doesn't get picked
         // by get_item_slot() when giving the dancing weapon its item
         // during create_monster().
-        mitm[i] = you.inv[wpn];
+        mitm[i] = *wpn;
     }
 
     int monster;
@@ -1696,7 +1669,7 @@ bool cast_tukimas_dance(int pow, god_type god, bool force_hostile)
     if (success)
     {
         // Cursed weapons become hostile.
-        const bool friendly = (!force_hostile && !item_cursed(you.inv[wpn]));
+        const bool friendly = (!force_hostile && !wpn->cursed());
 
         mgen_data mg(MONS_DANCING_WEAPON,
                      friendly ? BEH_FRIENDLY : BEH_HOSTILE,
@@ -1722,10 +1695,10 @@ bool cast_tukimas_dance(int pow, god_type god, bool force_hostile)
     {
         destroy_item(i);
 
-        if (wpn != -1)
+        if (wpn)
         {
             mprf("%s vibrates crazily for a second.",
-                 you.inv[wpn].name(DESC_CAP_YOUR).c_str());
+                 wpn->name(DESC_CAP_YOUR).c_str());
         }
         else
             mprf("Your %s twitch.", your_hand(true).c_str());
@@ -1737,8 +1710,8 @@ bool cast_tukimas_dance(int pow, god_type god, bool force_hostile)
     // effects.
     unwield_item();
 
-    // Copy the unwielded item.
-    mitm[i] = you.inv[wpn];
+    // Copy the unwielded item. Note that the pointer still points at it.
+    mitm[i] = *wpn;
     mitm[i].quantity = 1;
     mitm[i].pos.set(-2, -2);
     mitm[i].link = NON_ITEM + 1 + monster;
@@ -1747,24 +1720,31 @@ bool cast_tukimas_dance(int pow, god_type god, bool force_hostile)
     // tango's done.
     mitm[i].flags |= ISFLAG_THROWN;
 
-    mprf("%s dances into the air!", you.inv[wpn].name(DESC_CAP_YOUR).c_str());
-    you.inv[wpn].quantity = 0;
+    mprf("%s dances into the air!", wpn->name(DESC_CAP_YOUR).c_str());
 
-    destroy_item(menv[monster].inv[MSLOT_WEAPON]);
-    menv[monster].inv[MSLOT_WEAPON] = i;
+    // Find out what our god thinks before killing the item.
+    conduct_type why = good_god_hates_item_handling(*wpn);
+    if (!why)
+        why = god_hates_item_handling(*wpn);
+    // FIXME: Replace this with a call to a proper destructor.
+    wpn->quantity = 0;
+
+    monsters& dancing_weapon = menv[monster];
+
+    destroy_item(dancing_weapon.inv[MSLOT_WEAPON]);
+    dancing_weapon.inv[MSLOT_WEAPON] = i;
     burden_change();
 
     ghost_demon stats;
     stats.init_dancing_weapon(mitm[i], pow);
 
-    menv[monster].set_ghost(stats);
-    menv[monster].dancing_weapon_init();
+    dancing_weapon.set_ghost(stats);
+    dancing_weapon.dancing_weapon_init();
 
-    if ((why = good_god_hates_item_handling(you.inv[wpn]))
-        || (why = god_hates_item_handling(you.inv[wpn])))
+    if (why)
     {
         simple_god_message(" booms: How dare you animate that foul thing!");
-        did_god_conduct(why, 10, true, &menv[monster]);
+        did_god_conduct(why, 10, true, &dancing_weapon);
     }
 
     return (true);
@@ -1796,7 +1776,7 @@ bool cast_conjure_ball_lightning(int pow, god_type god)
         if (!found)
             target = you.pos();
 
-        int monster =
+        const int monster =
             mons_place(
                 mgen_data(MONS_BALL_LIGHTNING, BEH_FRIENDLY, &you,
                           0, SPELL_CONJURE_BALL_LIGHTNING,

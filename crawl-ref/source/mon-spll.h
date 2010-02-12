@@ -52,7 +52,7 @@
       }
     },
 
-    {  MST_GUARDIAN_NAGA,
+    {  MST_GUARDIAN_SERPENT,
       {
        SPELL_TELEPORT_OTHER,
        SPELL_TELEPORT_OTHER,
@@ -102,7 +102,7 @@
        SPELL_BOLT_OF_COLD,
        SPELL_INVISIBILITY,
        SPELL_ANIMATE_DEAD,
-       SPELL_IRON_SHOT,
+       SPELL_IOOD,
        SPELL_INVISIBILITY
       }
     },
@@ -213,7 +213,7 @@
        SPELL_NO_SPELL,
        SPELL_NO_SPELL,
        SPELL_NO_SPELL,
-       SPELL_NO_SPELL
+       SPELL_INK_CLOUD
       }
     },
 
@@ -967,6 +967,40 @@
       }
     },
 
+    // fake spell for monsters berserking when fleeing
+    {  MST_BERSERK_ESCAPE,
+      {
+       SPELL_NO_SPELL,
+       SPELL_NO_SPELL,
+       SPELL_NO_SPELL,
+       SPELL_NO_SPELL,
+       SPELL_NO_SPELL,
+       SPELL_BERSERKER_RAGE
+      }
+    },
+
+    {  MST_MERFOLK_AQUAMANCER,
+       {
+        SPELL_PRIMAL_WAVE,
+        SPELL_STEAM_BALL,
+        SPELL_NO_SPELL,
+        SPELL_THROW_ICICLE,
+        SPELL_NO_SPELL,
+        SPELL_BLINK
+       }
+    },
+
+    {  MST_ALLIGATOR,
+      {
+       SPELL_NO_SPELL,
+       SPELL_NO_SPELL,
+       SPELL_SWIFTNESS,
+       SPELL_NO_SPELL,
+       SPELL_NO_SPELL,
+       SPELL_NO_SPELL
+      }
+    },
+
     // ---------------------
     // uniques' "spellbooks"
     // ---------------------
@@ -1043,8 +1077,8 @@
 
     { MST_ILSUIW,
       {
-       SPELL_THROW_FROST, // was: SPELL_CONFUSED (jpeg)
-       SPELL_SLOW,
+       SPELL_THROW_ICICLE,
+       SPELL_CALL_TIDE,
        SPELL_INVISIBILITY,
        SPELL_BLINK,
        SPELL_WATER_ELEMENTALS,
@@ -1219,18 +1253,6 @@
       }
     },
 
-    // fake spell for monsters berserking when fleeing
-    {  MST_BERSERK_ESCAPE,
-      {
-       SPELL_NO_SPELL,
-       SPELL_NO_SPELL,
-       SPELL_NO_SPELL,
-       SPELL_NO_SPELL,
-       SPELL_NO_SPELL,
-       SPELL_BERSERKER_RAGE
-      }
-    },
-
     {  MST_KHUFU,
       {
        SPELL_SUMMON_DEMON,
@@ -1267,11 +1289,11 @@
     {  MST_AIZUL,
       {
        SPELL_VENOM_BOLT,
-       SPELL_BLINK_OTHER,
+       SPELL_SLEEP,
        SPELL_SLEEP,
        SPELL_POISON_ARROW,
-       SPELL_SLOW,
-       SPELL_MINOR_HEALING
+       SPELL_VENOM_BOLT,
+       SPELL_BLINK_OTHER
       }
     },
 
@@ -1294,6 +1316,50 @@
        SPELL_NO_SPELL,
        SPELL_NO_SPELL,
        SPELL_BLINK
+      }
+    },
+
+    {  MST_MARA,
+      {
+       SPELL_MISLEAD,
+       SPELL_FAKE_MARA_SUMMON,
+       SPELL_BOLT_OF_FIRE,
+       SPELL_SUMMON_ILLUSION,
+       SPELL_PAIN,
+       SPELL_TELEPORT_SELF
+      }
+    },
+
+    {  MST_MARA_FAKE,
+      {
+       SPELL_MISLEAD,
+       SPELL_NO_SPELL,
+       SPELL_BOLT_OF_FIRE,
+       SPELL_NO_SPELL,
+       SPELL_PAIN,
+       SPELL_TELEPORT_SELF
+      }
+    },
+
+    {  MST_BORIS,
+      {
+       SPELL_IRON_SHOT,
+       SPELL_BOLT_OF_COLD,
+       SPELL_INVISIBILITY,
+       SPELL_ANIMATE_DEAD,
+       SPELL_IOOD,
+       SPELL_INVISIBILITY
+      }
+    },
+
+    {  MST_FREDERICK,
+      {
+       SPELL_ISKENDERUNS_MYSTIC_BLAST,
+       SPELL_BOLT_OF_COLD,
+       SPELL_INVISIBILITY,
+       SPELL_ANIMATE_DEAD,
+       SPELL_IRON_SHOT,
+       SPELL_INVISIBILITY
       }
     },
 

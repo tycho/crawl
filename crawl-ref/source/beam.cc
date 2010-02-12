@@ -28,10 +28,12 @@
 #include "coord.h"
 #include "coordit.h"
 #include "delay.h"
+#include "dungeon.h"
 #include "dgnevent.h"
 #include "effects.h"
 #include "env.h"
 #include "enum.h"
+#include "godabil.h"
 #include "map_knowledge.h"
 #include "fprop.h"
 #include "fight.h"
@@ -40,6 +42,7 @@
 #include "items.h"
 #include "itemname.h"
 #include "itemprop.h"
+#include "libutil.h"
 #include "los.h"
 #include "message.h"
 #include "misc.h"
@@ -53,6 +56,7 @@
 #include "ouch.h"
 #include "player.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills.h"
 #include "spells1.h"
 #include "spells3.h"
@@ -61,7 +65,7 @@
 #include "stuff.h"
 #include "teleport.h"
 #include "terrain.h"
-#include "transfor.h"
+#include "transform.h"
 #include "traps.h"
 #include "view.h"
 #include "shout.h"
@@ -168,7 +172,7 @@ static void _zap_animation(int colour, const monsters *mon = NULL,
         tiles.add_overlay(p, tileidx_zap(colour));
 #else
         view_update();
-        cgotoxy(drawp.x, drawp.y, GOTO_DNGN);
+        cgotoxy(drawp.x, drawp.y, GOTO_CRT);
         put_colour_ch(colour, dchar_glyph(DCHAR_FIRED_ZAP));
 #endif
 
@@ -226,9 +230,7 @@ static void _ench_animation(int flavour, const monsters *mon, bool force)
 bool zapping(zap_type ztype, int power, bolt &pbolt,
              bool needs_tracer, const char* msg)
 {
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "zapping: power=%d", power);
-#endif
+    dprf("zapping: power=%d", power);
 
     pbolt.thrower = KILL_YOU_MISSILE;
 
@@ -307,9 +309,7 @@ bool player_tracer( zap_type ztype, int power, bolt &pbolt, int range)
     // "Fire through friendly?" prompts.
     if (pbolt.beam_cancelled)
     {
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "%s", "Beam cancelled.");
-#endif
+        dprf("%s", "Beam cancelled.");
         canned_msg(MSG_OK);
         you.turn_is_over = false;
         return (false);
@@ -411,14 +411,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_SLOWING,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_SLOW,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -427,14 +427,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_HASTING,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_HASTE,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -459,14 +459,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_HEALING,
-        "0",
+        "",
         100,
         new dicedef_calculator<1, 7, 1, 3>,
         NULL,
         BLACK,
         true,
         BEAM_HEALING,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -475,14 +475,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_PARALYSIS,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_PARALYSIS,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -522,15 +522,31 @@ const zap_info zap_data[] = {
     },
 
     {
+        ZAP_PRIMAL_WAVE,
+        "great wave of water",
+        200,
+        new calcdice_calculator<4, 14, 3, 5>,
+        new tohit_calculator<10, 1, 25>,
+        LIGHTBLUE,
+        false,
+        BEAM_WATER,
+        DCHAR_WAVY,
+        true,
+        false,
+        false,
+        6
+    },
+
+    {
         ZAP_CONFUSION,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_CONFUSION,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -539,14 +555,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_INVISIBILITY,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_INVISIBILITY,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -555,14 +571,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_DIGGING,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_DIGGING,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         true,
         false,
@@ -587,14 +603,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_TELEPORTATION,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_TELEPORT,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -619,14 +635,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_POLYMORPH_OTHER,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_POLYMORPH,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -715,14 +731,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_ENSLAVEMENT,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_CHARM,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -731,14 +747,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_PAIN,
-        "0",
+        "",
         100,
         new dicedef_calculator<1, 4, 1,5>,
         new tohit_calculator<0, 7, 2>,
         BLACK,
         true,
         BEAM_PAIN,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -763,14 +779,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_DISPEL_UNDEAD,
-        "0",
+        "",
         100,
         new calcdice_calculator<3, 20, 3, 4>,
         new tohit_calculator<0, 3, 2>,
         BLACK,
         true,
         BEAM_DISPEL_UNDEAD,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -799,14 +815,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_BANISHMENT,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_BANISH,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -815,14 +831,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_DEGENERATION,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_DEGENERATE,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -849,7 +865,7 @@ const zap_info zap_data[] = {
         ZAP_HELLFIRE,
         "hellfire",
         200,
-        new calcdice_calculator<3, 10, 3, 4>,
+        new calcdice_calculator<3, 8, 3, 5>,
         new tohit_calculator<20, 1, 10>,
         RED,
         false,
@@ -886,7 +902,7 @@ const zap_info zap_data[] = {
         BLACK,
         false,
         BEAM_MMISSILE,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         true,
         false,
         false,
@@ -1057,14 +1073,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_ENSLAVE_UNDEAD,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_ENSLAVE_UNDEAD,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1073,14 +1089,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_ENSLAVE_SOUL,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_ENSLAVE_SOUL,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1089,14 +1105,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_AGONY,
-        "0agony",
+        "agony",
         100,
         NULL,
         new tohit_calculator<0, 5, 1>,
         BLACK,
         true,
         BEAM_PAIN,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1105,14 +1121,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_DISINTEGRATION,
-        "0",
+        "",
         100,
         new calcdice_calculator<3, 15, 3, 4>,
         new tohit_calculator<0, 5, 2>,
         BLACK,
         true,
         BEAM_DISINTEGRATION,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         true,
         false,
@@ -1137,14 +1153,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_CONTROL_DEMON,
-        "0",
+        "",
         100,
         NULL,
         new tohit_calculator<0, 3, 2>,
         BLACK,
         true,
         BEAM_ENSLAVE_DEMON,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1201,14 +1217,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_CORONA,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLUE,
         true,
         BEAM_CORONA,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1217,14 +1233,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_HIBERNATION,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_HIBERNATION,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1313,14 +1329,14 @@ const zap_info zap_data[] = {
 
     {
         ZAP_PETRIFY,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_PETRIFY,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1336,7 +1352,7 @@ const zap_info zap_data[] = {
         RED,
         true,
         BEAM_PORKALATOR,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
@@ -1345,19 +1361,36 @@ const zap_info zap_data[] = {
 
     {
         ZAP_SLEEP,
-        "0",
+        "",
         100,
         NULL,
         NULL,
         BLACK,
         true,
         BEAM_SLEEP,
-        DCHAR_SPACE,
+        NUM_DCHAR_TYPES,
         false,
         false,
         false,
         0
-    }
+    },
+
+    {
+        ZAP_IOOD,
+        "",
+        200,
+        NULL,
+        new tohit_calculator<AUTOMATIC_HIT>,
+        WHITE,
+        false,
+        BEAM_NUKE,
+        NUM_DCHAR_TYPES, // no dchar, to get bolt.glyph == 0,
+                         // hence invisible
+        true,
+        true,
+        false,
+        0
+    },
 };
 
 static void _zappy(zap_type z_type, int power, bolt &pbolt)
@@ -1388,7 +1421,7 @@ static void _zappy(zap_type z_type, int power, bolt &pbolt)
     pbolt.flavour        = zinfo->flavour;
     pbolt.real_flavour   = zinfo->flavour;
     pbolt.colour         = zinfo->colour;
-    pbolt.type           = dchar_glyph(zinfo->glyph);
+    pbolt.glyph          = dchar_glyph(zinfo->glyph);
     pbolt.obvious_effect = zinfo->always_obvious;
     pbolt.is_beam        = zinfo->can_beam;
     pbolt.is_explosion   = zinfo->is_explosion;
@@ -1493,8 +1526,8 @@ static void _munge_bounced_bolt(bolt &old_bolt, bolt &new_bolt,
     ray_def temp_ray = new_ray;
     for (int tries = 0; tries < 20; tries++)
     {
-        shift = (double) random_range((int)(min * 10000),
-                                      (int)(max * 10000)) / 10000.0;
+        shift = random_range(static_cast<int>(min * 10000),
+                             static_cast<int>(max * 10000)) / 10000.0;
 
         if (new_deg < old_deg)
             shift = -shift;
@@ -1515,7 +1548,8 @@ static void _munge_bounced_bolt(bolt &old_bolt, bolt &new_bolt,
 #if DEBUG_DIAGNOSTICS || DEBUG_BEAM || DEBUG_CHAOS_BOUNCE
     mprf(MSGCH_DIAGNOSTICS,
          "chaos beam: old_deg = %5.2f, new_deg = %5.2f, shift = %5.2f",
-         (float) old_deg, (float) new_deg, (float) shift);
+         static_cast<float>(old_deg), static_cast<float>(new_deg),
+         static_cast<float>(shift));
 #endif
 
     // Don't use up range in bouncing off walls, so that chaos beams have
@@ -1525,9 +1559,9 @@ static void _munge_bounced_bolt(bolt &old_bolt, bolt &new_bolt,
     new_bolt.range += range_spent;
 }
 
-bool bolt::invisible() const
+bool bolt::visible() const
 {
-    return (type == 0 || is_enchantment());
+    return (glyph != 0 && !is_enchantment());
 }
 
 void bolt::initialise_fire()
@@ -1588,7 +1622,6 @@ void bolt::initialise_fire()
         range = LOS_RADIUS;
     }
 
-    ASSERT(!name.empty() || is_tracer);
     ASSERT(in_bounds(source));
     ASSERT(flavour > BEAM_NONE && flavour < BEAM_FIRST_PSEUDO);
     ASSERT(!drop_item || item && item->is_valid());
@@ -1600,7 +1633,7 @@ void bolt::initialise_fire()
     message_cache.clear();
 
     // seen might be set by caller to supress this.
-    if (!seen && you.see_cell(source) && range > 0 && !invisible() )
+    if (!seen && you.see_cell(source) && range > 0 && visible() )
     {
         seen = true;
         const monsters* mon = monster_at(source);
@@ -1618,7 +1651,7 @@ void bolt::initialise_fire()
 
     // Visible self-targeted beams are always seen, even though they don't
     // leave a path.
-    if (you.see_cell(source) && target == source && !invisible())
+    if (you.see_cell(source) && target == source && visible())
         seen = true;
 
     // Scale draw_delay to match change in arena_delay.
@@ -1630,7 +1663,7 @@ void bolt::initialise_fire()
 
 #ifdef DEBUG_DIAGNOSTICS
     mprf( MSGCH_DIAGNOSTICS, "%s%s%s [%s] (%d,%d) to (%d,%d): "
-          "ty=%d col=%d flav=%d hit=%d dam=%dd%d range=%d",
+          "gl=%d col=%d flav=%d hit=%d dam=%dd%d range=%d",
           (is_beam) ? "beam" : "missile",
           (is_explosion) ? "*" :
           (is_big_cloud) ? "+" : "",
@@ -1638,7 +1671,7 @@ void bolt::initialise_fire()
           name.c_str(),
           source.x, source.y,
           target.x, target.y,
-          type, colour, flavour,
+          glyph, colour, flavour,
           hit, damage.num, damage.size,
           range);
 #endif
@@ -1705,7 +1738,7 @@ void bolt::draw(const coord_def& p)
             cgotoxy(drawpos.x, drawpos.y);
             put_colour_ch(colour == BLACK ? random_colour()
                                           : element_colour(colour),
-                          type);
+                          glyph);
 #endif
             // Get curses to update the screen so we can see the beam.
             update_screen();
@@ -1760,6 +1793,8 @@ void bolt::digging_wall_effect()
         // Blood does not transfer onto floor.
         if (is_bloodcovered(pos()))
             env.pgrid(pos()) &= ~(FPROP_BLOODY);
+        if (is_moldy(pos()))
+            env.pgrid(pos()) &= ~(FPROP_MOLD);
 
         if (!msg_generated)
         {
@@ -1780,7 +1815,8 @@ void bolt::fire_wall_effect()
 {
     dungeon_feature_type feat;
     // Fire only affects wax walls and trees.
-    if ((feat = grd(pos())) != DNGN_WAX_WALL && feat != DNGN_TREES)
+    if ((feat = grd(pos())) != DNGN_WAX_WALL && feat != DNGN_TREES
+        || env.markers.property_at(pos(), MAT_ANY, "veto_fire") == "veto")
     {
         finish_beam();
         return;
@@ -1810,7 +1846,8 @@ void bolt::fire_wall_effect()
                 emit_message(MSGCH_PLAIN, "The wax bubbles and burns!");
             else if (you.can_smell())
                 emit_message(MSGCH_PLAIN, "You smell burning wax.");
-            place_cloud(CLOUD_FIRE, pos(), random2(10)+15, whose_kill(), killer());
+            place_cloud(CLOUD_FIRE, pos(), random2(10)+15,
+                        whose_kill(), killer());
             obvious_effect = true;
         }
     }
@@ -1819,7 +1856,7 @@ void bolt::fire_wall_effect()
         if (is_superhot())
         {
             // Destroy the wall.
-            grd(pos()) = DNGN_FLOOR;
+            grd(pos()) = dgn_tree_base_feature_at(pos());
             if (you.see_cell(pos()))
                 emit_message(MSGCH_PLAIN, "The tree burns like a torch!");
             else if (you.can_smell())
@@ -1828,9 +1865,22 @@ void bolt::fire_wall_effect()
                 did_god_conduct(DID_KILL_PLANT, 1, effect_known);
             else if (whose_kill() == KC_FRIENDLY)
                 did_god_conduct(DID_ALLY_KILLED_PLANT, 1, effect_known, 0);
-            place_cloud(CLOUD_FOREST_FIRE, pos(), random2(30)+25, whose_kill(), killer(), 5);
+            place_cloud(CLOUD_FOREST_FIRE, pos(), random2(30)+25,
+                        whose_kill(), killer(), 5);
             obvious_effect = true;
         }
+    }
+    finish_beam();
+}
+
+void bolt::elec_wall_effect()
+{
+    const dungeon_feature_type feat = grd(pos());
+    if (feat == DNGN_TREES
+        && env.markers.property_at(pos(), MAT_ANY, "veto_fire") != "veto")
+    {
+        fire_wall_effect();
+        return;
     }
     finish_beam();
 }
@@ -1853,6 +1903,8 @@ void bolt::nuke_wall_effect()
         // Blood does not transfer onto floor.
         if (is_bloodcovered(pos()))
             env.pgrid(pos()) &= ~(FPROP_BLOODY);
+        if (is_moldy(pos()))
+            env.pgrid(pos()) &= ~(FPROP_MOLD);
 
         grd(pos()) = DNGN_FLOOR;
         if (player_can_hear(pos()))
@@ -1868,6 +1920,8 @@ void bolt::nuke_wall_effect()
         // Blood does not transfer onto floor.
         if (is_bloodcovered(pos()))
             env.pgrid(pos()) &= ~(FPROP_BLOODY);
+        if (is_moldy(pos()))
+            env.pgrid(pos()) &= ~(FPROP_MOLD);
 
         if (player_can_hear(pos()))
         {
@@ -1887,6 +1941,22 @@ void bolt::nuke_wall_effect()
 
         obvious_effect = true;
     }
+    else if (feat == DNGN_TREES)
+    {
+        grd(pos()) = DNGN_FLOOR;
+
+        // Blood does not transfer onto floor.
+        if (is_bloodcovered(pos()))
+            env.pgrid(pos()) &= ~(FPROP_BLOODY);
+        env.pgrid(pos()) &= ~(FPROP_BLOODY);
+
+        if (you.see_cell(pos()))
+            mpr("The tree breaks and falls down!");
+        else if (player_can_hear(pos()))
+            mpr("You hear timber falling.", MSGCH_SOUND);
+
+        obvious_effect = true;
+    }
     finish_beam();
 }
 
@@ -1898,12 +1968,18 @@ void bolt::finish_beam()
 void bolt::affect_wall()
 {
     if (is_tracer)
+    {
+        if (affects_wall(grd(pos())) != B_TRUE)
+            finish_beam();
         return;
+    }
 
     if (flavour == BEAM_DIGGING)
         digging_wall_effect();
     else if (is_fiery())
         fire_wall_effect();
+    else if (flavour == BEAM_ELECTRICITY)
+        elec_wall_effect();
     else if (flavour == BEAM_DISINTEGRATION || flavour == BEAM_NUKE)
         nuke_wall_effect();
 
@@ -1919,6 +1995,13 @@ coord_def bolt::pos() const
         return ray.pos();
 }
 
+bool bolt::need_regress() const
+{
+    return ((is_explosion && !in_explosion_phase)
+            || drop_item
+            || origin_spell == SPELL_PRIMAL_WAVE);
+}
+
 // Returns true if the beam ended due to hitting the wall.
 bool bolt::hit_wall()
 {
@@ -1932,7 +2015,7 @@ bool bolt::hit_wall()
         && !feat_is_solid(grd(target)))
     {
         // Okay, with all those tests passed, this is probably an instance
-        // of the player manually targetting something whose line of fire
+        // of the player manually targeting something whose line of fire
         // is blocked, even though its line of sight isn't blocked.  Give
         // a warning about this fact.
         std::string prompt = "Your line of fire to ";
@@ -1963,7 +2046,7 @@ bool bolt::hit_wall()
 
     // Press trigger/switch/button in wall if hit by something solid
     // or solid-ish.
-    if (!is_explosion && !is_tracer && !monster_at(pos())
+    if (in_bounds(pos()) && !is_explosion && !is_tracer && !monster_at(pos())
         && (flavour == BEAM_MISSILE || flavour == BEAM_MMISSILE))
     {
         dgn_event event(DET_WALL_HIT, pos());;
@@ -1972,7 +2055,7 @@ bool bolt::hit_wall()
         dungeon_events.fire_vetoable_position_event(event, target);
     }
 
-    if (affects_wall(feat))
+    if (in_bounds(pos()) && affects_wall(feat))
         affect_wall();
     else if (is_bouncy(feat) && !in_explosion_phase)
         bounce();
@@ -1980,8 +2063,7 @@ bool bolt::hit_wall()
     {
         // Regress for explosions: blow up in an open grid (if regressing
         // makes any sense).  Also regress when dropping items.
-        if (pos() != source
-            && ((is_explosion && !in_explosion_phase) || drop_item))
+        if (pos() != source && need_regress())
         {
             do
                 ray.regress();
@@ -1999,7 +2081,7 @@ bool bolt::hit_wall()
     return (false);
 }
 
-void bolt::affect_cell(bool avoid_self)
+void bolt::affect_cell()
 {
     // Shooting through clouds affects accuracy.
     if (env.cgrid(pos()) != EMPTY_CLOUD)
@@ -2010,25 +2092,14 @@ void bolt::affect_cell(bool avoid_self)
     const coord_def old_pos = pos();
     const bool was_solid = feat_is_solid(grd(pos()));
 
-    bool avoid_monster = false;
-    bool avoid_player = false;
-
-    if (avoid_self)
-    {
-        if (YOU_KILL(thrower))
-            avoid_player = true;
-        else if (MON_KILL(thrower))
-            avoid_monster = true;
-    }
-
     if (was_solid)
     {
         // Some special casing.
         if (monsters* mon = monster_at(pos()))
         {
-            if (can_affect_wall_monster(mon) && !avoid_monster)
+            if (can_affect_wall_monster(mon))
                 affect_monster(mon);
-            else if (!avoid_monster)
+            else
             {
                 mprf("The %s protects %s from harm.",
                      raw_feature_description(grd(mon->pos())).c_str(),
@@ -2044,26 +2115,20 @@ void bolt::affect_cell(bool avoid_self)
             return;
     }
 
-    const bool still_wall = (was_solid && old_pos == pos());
-
-    bool hit_player = false;
     // If the player can ever walk through walls, this will need
     // special-casing too.
-    if (found_player() && !avoid_player)
-    {
+    bool hit_player = found_player();
+    if (hit_player)
         affect_player();
-        hit_player = true;
-    }
 
-    // We don't want to hit a monster in a wall square twice.  Also,
+    // We don't want to hit a monster in a wall square twice. Also,
     // stop single target beams from affecting a monster if they already
     // affected the player on this square. -cao
-    if ((!hit_player || is_beam || is_explosion)
-         && !still_wall && !avoid_monster)
-    {
-        if (monsters* m = monster_at(pos()) )
-            affect_monster(m);
-    }
+    const bool still_wall = (was_solid && old_pos == pos());
+    if ((!hit_player || is_beam || is_explosion) && !still_wall)
+        if (monsters* m = monster_at(pos()))
+            if (!m->submerged())
+                affect_monster(m);
 
     if (!feat_is_solid(grd(pos())))
         affect_ground();
@@ -2171,12 +2236,12 @@ void bolt::do_fire()
     }
 #endif
 
-    bool avoid_self = (!aimed_at_feet && (!is_explosion || !in_explosion_phase));
-
     msg_generated = false;
     if (!aimed_at_feet)
     {
         choose_ray();
+        // Take *one* step, so as not to hurt the source.
+        ray.advance();
     }
 
 #if defined(TARGET_OS_WINDOWS) && !defined(USE_TILE)
@@ -2186,16 +2251,14 @@ void bolt::do_fire()
         oldValue = set_buffering(false);
 #endif
 
-    while (in_bounds(pos()))
+    while (map_bounds(pos()))
     {
         path_taken.push_back(pos());
 
         if (!affects_nothing)
-            affect_cell(avoid_self);
+            affect_cell();
 
-        if (!avoid_self)
-            range_used++;
-
+        range_used++;
         if (range_used >= range)
             break;
 
@@ -2209,11 +2272,11 @@ void bolt::do_fire()
                 break;
         }
 
-        ASSERT((!feat_is_solid(grd(pos())) || avoid_self)
+        ASSERT(!feat_is_solid(grd(pos()))
                || is_tracer && affects_wall(grd(pos())));
 
         const bool was_seen = seen;
-        if (!was_seen && range > 0 && !invisible() && you.see_cell(pos()))
+        if (!was_seen && range > 0 && visible() && you.see_cell(pos()))
             seen = true;
 
         if (flavour != BEAM_VISUAL && !was_seen && seen && !is_tracer)
@@ -2232,20 +2295,18 @@ void bolt::do_fire()
         draw(pos());
 
         ray.advance();
-
-        avoid_self = false;
     }
 
-    if (!in_bounds(pos()))
+    if (!map_bounds(pos()))
     {
         ASSERT(!aimed_at_spot);
 
         int tries = std::max(GXM, GYM);
-        while (!in_bounds(ray.pos()) && tries-- > 0)
+        while (!map_bounds(ray.pos()) && tries-- > 0)
             ray.regress();
 
         // Something bizarre happening if we can't get back onto the map.
-        ASSERT(in_bounds(pos()));
+        ASSERT(map_bounds(pos()));
     }
 
     // The beam has terminated.
@@ -2338,6 +2399,17 @@ int mons_adjust_flavoured(monsters *monster, bolt &pbolt, int hurted,
                 simple_monster_message(monster, " is burned terribly!");
             else
                 simple_monster_message(monster, " is scalded terribly!");
+        }
+        break;
+
+    case BEAM_WATER:
+        hurted = resist_adjust_damage(monster, pbolt.flavour,
+                                      monster->res_asphyx(),
+                                      hurted, true);
+        if (doFlavouredEffects)
+        {
+            if (!hurted)
+                simple_monster_message(monster, " shrugs off the wave.");
         }
         break;
 
@@ -2631,6 +2703,12 @@ static bool _monster_resists_mass_enchantment(monsters *monster,
                                                              : " resists.");
             return (true);
         }
+    }
+    // Mass enchantments around lots of plants/fungi shouldn't cause a flood
+    // of "is unaffected" messages. --Eino
+    else if (mons_is_firewood(monster))
+    {
+        return(true);
     }
     else  // trying to enchant an unnatural creature doesn't work
     {
@@ -2952,6 +3030,31 @@ void mimic_alert(monsters *mimic)
         mimic->flags |= MF_KNOWN_MIMIC;
 }
 
+void create_feat_at(coord_def center,
+                    dungeon_feature_type overwriteable,
+                    dungeon_feature_type newfeat)
+{
+    if (grd(center) == overwriteable)
+        dungeon_terrain_changed(center, newfeat, true, false, true);
+}
+
+void create_feat_splash(coord_def center,
+                        dungeon_feature_type overwriteable,
+                        dungeon_feature_type newfeat,
+                        int radius,
+                        int nattempts)
+{
+    // Always affect center.
+    create_feat_at(center, overwriteable, newfeat);
+    for (int i = 0; i < nattempts; ++i)
+    {
+        const coord_def newp(dgn_random_point_visible_from(center, radius));
+        if (newp.origin() || grd(newp) != overwriteable)
+            continue;
+        create_feat_at(newp, overwriteable, newfeat);
+    }
+}
+
 bool bolt::is_bouncy(dungeon_feature_type feat) const
 {
     if (real_flavour == BEAM_CHAOS && feat_is_solid(feat))
@@ -2960,8 +3063,11 @@ bool bolt::is_bouncy(dungeon_feature_type feat) const
     if (is_enchantment())
         return (false);
 
-    if (flavour == BEAM_ELECTRICITY && feat != DNGN_METAL_WALL)
+    if (flavour == BEAM_ELECTRICITY && feat != DNGN_METAL_WALL
+        && feat != DNGN_TREES)
+    {
         return (true);
+    }
 
     if ((flavour == BEAM_FIRE || flavour == BEAM_COLD)
         && feat == DNGN_GREEN_CRYSTAL_WALL )
@@ -3035,6 +3141,24 @@ void bolt::affect_endpoint()
     if (is_tracer)
         return;
 
+    if (origin_spell == SPELL_PRIMAL_WAVE) // &&coinflip()
+    {
+        if (you.see_cell(pos()))
+        {
+            mprf("The wave splashes down.");
+            noisy(25, pos());
+        }
+        else
+        {
+            noisy(25, pos(), "You hear a splash.");
+        }
+        create_feat_splash(pos(),
+                           DNGN_FLOOR,
+                           DNGN_SHALLOW_WATER,
+                           2,
+                           random_range(1, 9, 2));
+    }
+
     // FIXME: why don't these just have is_explosion set?
     // They don't explode in tracers: why not?
     if  (name == "orb of electricity"
@@ -3089,7 +3213,7 @@ void bolt::drop_object()
         return;
     }
 
-    if (!thrown_object_destroyed(item, pos(), false))
+    if (!thrown_object_destroyed(item, pos()))
     {
         if (item->sub_type == MI_THROWING_NET)
         {
@@ -3103,7 +3227,27 @@ void bolt::drop_object()
                     set_item_stationary(*item);
             }
         }
+
         copy_item_to_grid(*item, pos(), 1);
+    }
+    else if (item->sub_type == MI_LARGE_ROCK)
+    {
+        // Large rocks mulch to stone.
+        bool in_view = you.see_cell(pos());
+        if (in_view)
+            mprf("%s shatters into pieces!", item->name(DESC_CAP_THE).c_str());
+        noisy(12, pos(), in_view ? NULL : "You hear a cracking sound!");
+
+        item->sub_type = MI_STONE;
+        item->quantity = 10 + random2(41);
+        // Remove thrown flag: we might not want to pick up the stones.
+        item->flags &= ~ISFLAG_THROWN;
+
+        copy_item_to_grid(*item, pos(), item->quantity);
+    }
+    else
+    {
+        item_was_destroyed(*item, NON_MONSTER);
     }
 }
 
@@ -3131,47 +3275,63 @@ void bolt::affect_ground()
     // Spore explosions might spawn a fungus.  The spore explosion
     // covers 21 tiles in open space, so the expected number of spores
     // produced is the x in x_chance_in_y() in the conditional below.
-    if (is_explosion && flavour == BEAM_SPORE
-        && x_chance_in_y(2, 21)
-        && mons_class_can_pass(MONS_BALLISTOMYCETE, env.grid(pos()))
-        && !actor_at(pos()))
+    if (is_explosion && flavour == BEAM_SPORE)
     {
-        beh_type beh;
-        // Half the fungi in arena mode are friendly.
-        if (crawl_state.arena)
+        if (env.grid(pos()) >= DNGN_FLOOR_MIN
+            && env.grid(pos())<= DNGN_FLOOR_MAX)
         {
-            beh = coinflip() ? BEH_FRIENDLY : BEH_HOSTILE;
+            env.pgrid(pos()) |= FPROP_MOLD;
         }
-        else
+
+        if(x_chance_in_y(2, 21)
+           && mons_class_can_pass(MONS_BALLISTOMYCETE, env.grid(pos()))
+           && !actor_at(pos()))
         {
-            switch (this->attitude)
+            beh_type beh;
+            // Half the fungi in arena mode are friendly.
+            if (crawl_state.arena)
             {
-            case ATT_NEUTRAL:
-                beh = BEH_NEUTRAL;
-                break;
+                beh = coinflip() ? BEH_FRIENDLY : BEH_HOSTILE;
+            }
+            else
+            {
+                switch (this->attitude)
+                {
+                case ATT_NEUTRAL:
+                    beh = BEH_NEUTRAL;
+                    break;
 
-            case ATT_FRIENDLY:
-            case ATT_GOOD_NEUTRAL:
-                beh = BEH_GOOD_NEUTRAL;
-                break;
+                case ATT_FRIENDLY:
+                    beh = BEH_FRIENDLY;
+                    break;
 
-            default:
-                beh = BEH_HOSTILE;
-                break;
+                case ATT_GOOD_NEUTRAL:
+                    beh = BEH_GOOD_NEUTRAL;
+                    break;
+
+                default:
+                    beh = BEH_HOSTILE;
+                    break;
+                }
+            }
+
+            int rc = create_monster(mgen_data(MONS_BALLISTOMYCETE,
+                                              beh,
+                                              NULL,
+                                              0,
+                                              0,
+                                              pos(),
+                                              MHITNOT,
+                                              MG_FORCE_PLACE));
+
+            if (rc != -1)
+            {
+                env.pgrid(pos()) &= ~FPROP_MOLD;
+                if (you.see_cell(pos()))
+                    mpr("A fungus suddenly grows.");
+
             }
         }
-
-        int rc = create_monster(mgen_data(MONS_BALLISTOMYCETE,
-                                          beh,
-                                          agent(),
-                                          0,
-                                          0,
-                                          pos(),
-                                          MHITNOT,
-                                          MG_FORCE_PLACE));
-
-        if (rc != -1 && you.see_cell(pos()))
-            mpr("A fungus suddenly grows.");
     }
 
     if (affects_items)
@@ -3193,37 +3353,49 @@ bool bolt::is_fiery() const
 
 bool bolt::is_superhot() const
 {
-    if (!is_fiery())
+    if (!is_fiery() && flavour != BEAM_ELECTRICITY)
         return (false);
 
     return (name == "bolt of fire"
             || name == "bolt of magma"
             || name == "fireball"
+            || name == "bolt of lightning"
             || name.find("hellfire") != std::string::npos
                && in_explosion_phase);
 }
 
-bool bolt::affects_wall(dungeon_feature_type wall) const
+maybe_bool bolt::affects_wall(dungeon_feature_type wall) const
 {
     // digging
-    if (flavour == BEAM_DIGGING)
-        return (true);
-
-    if (flavour == BEAM_DISINTEGRATION && damage.num >= 3)
-        return (true);
+    if (flavour == BEAM_DIGGING
+        && (wall == DNGN_ROCK_WALL || wall == DNGN_CLEAR_ROCK_WALL))
+    {
+        return (B_TRUE);
+    }
 
     if (is_fiery() && (wall == DNGN_WAX_WALL || wall == DNGN_TREES))
-        return (true);
+        return (is_superhot() ? B_TRUE : B_MAYBE);
 
-    // eye of devastation?
-    if (flavour == BEAM_NUKE)
-        return (true);
+    if (flavour == BEAM_ELECTRICITY && wall == DNGN_TREES)
+        return (is_superhot() ? B_TRUE : B_MAYBE);
+
+    if (flavour == BEAM_DISINTEGRATION && damage.num >= 3
+        || flavour == BEAM_NUKE)
+    {
+        if (wall == DNGN_ROCK_WALL
+            || wall == DNGN_WAX_WALL
+            || wall == DNGN_CLEAR_ROCK_WALL
+            || wall == DNGN_GRANITE_STATUE
+            || wall == DNGN_ORCISH_IDOL
+            || wall == DNGN_TREES)
+        return (B_TRUE);
+    }
 
     // Lee's Rapid Deconstruction
     if (flavour == BEAM_FRAG)
-        return (true);
+        return (B_TRUE); // smite targetting, we don't care
 
-    return (false);
+    return (B_FALSE);
 }
 
 void bolt::affect_place_clouds()
@@ -3249,17 +3421,18 @@ void bolt::affect_place_clouds()
             if (p == you.pos())
             {
                 mprf("The %s you are in turns into %s!",
-                     cloud_name(ctype).c_str(), cloud_name(new_type).c_str());
+                     cloud_name(cloudidx).c_str(), cloud_name(new_type).c_str());
                 obvious_effect = true;
             }
             else if (you.see_cell(p))
             {
                 mprf("A cloud of %s turns into %s.",
-                     cloud_name(ctype).c_str(), cloud_name(new_type).c_str());
+                     cloud_name(cloudidx).c_str(), cloud_name(new_type).c_str());
                 obvious_effect = true;
             }
 
             ctype = new_type;
+            env.cloud[cloudidx].name = "";
             return;
         }
 
@@ -3437,7 +3610,7 @@ void bolt::internal_ouch(int dam)
             if (aimed_at_feet && effect_known)
                 ouch(dam, NON_MONSTER, KILLED_BY_SELF_AIMED, name.c_str());
             else
-                ouch(dam, NON_MONSTER, KILLED_BY_TARGETTING);
+                ouch(dam, NON_MONSTER, KILLED_BY_TARGETING);
         }
     }
     else if (flavour == BEAM_DISINTEGRATION || flavour == BEAM_NUKE)
@@ -3485,6 +3658,9 @@ bool bolt::fuzz_invis_tracer()
 static bool _test_beam_hit(int attack, int defence, bool is_beam,
                            bool deflect, bool repel, defer_rand &r)
 {
+    if (attack == AUTOMATIC_HIT)
+        return (true);
+
     if (is_beam && deflect)
     {
         attack = r[0].random2(attack * 2) / 3;
@@ -3503,19 +3679,12 @@ static bool _test_beam_hit(int attack, int defence, bool is_beam,
         attack = r[0].random2(attack);
     }
 
-#ifdef DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Beam attack: %d, defence: %d", attack, defence);
-#endif
-    // Reproducing old behavior here; magic dart is dodgable with DMsl
-    if (attack == AUTOMATIC_HIT)
-        return (true);
+    dprf("Beam attack: %d, defence: %d", attack, defence);
 
     attack = r[1].random2(attack);
     defence = r[2].random2avg(defence, 2);
 
-#ifdef DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Beam new attack: %d, defence: %d", attack, defence);
-#endif
+    dprf("Beam new attack: %d, defence: %d", attack, defence);
 
     return (attack >= defence);
 }
@@ -3578,9 +3747,7 @@ bool bolt::is_harmless(const monsters *mon) const
 
 bool bolt::harmless_to_player() const
 {
-#ifdef DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "beam flavour: %d", flavour);
-#endif
+    dprf("beam flavour: %d", flavour);
 
     switch (flavour)
     {
@@ -3634,12 +3801,6 @@ bool bolt::is_reflectable(const item_def *it) const
     return (it && is_shield(*it) && shield_reflects(*it));
 }
 
-static void _ident_reflector(item_def *item)
-{
-    if (!is_artefact(*item))
-        set_ident_flags(*item, ISFLAG_KNOW_TYPE);
-}
-
 // Reflect a beam back the direction it came. This is used
 // by shields of reflection.
 void bolt::reflect()
@@ -3648,7 +3809,7 @@ void bolt::reflect()
 
     // If it bounced off a wall before being reflected then head back towards
     // the wall.
-    if (bounces > 0 && in_bounds(bounce_pos))
+    if (bounces > 0 && map_bounds(bounce_pos))
         target = bounce_pos;
     else
         target = source;
@@ -3734,12 +3895,15 @@ bool bolt::misses_player()
     const int dodge_less = player_evasion(EV_IGNORE_PHASESHIFT);
     int real_tohit  = hit;
 
-    // Monsters shooting at an invisible player are very inaccurate.
-    if (you.invisible() && !can_see_invis)
-        real_tohit /= 2;
+    if (real_tohit != AUTOMATIC_HIT)
+    {
+        // Monsters shooting at an invisible player are very inaccurate.
+        if (you.invisible() && !can_see_invis)
+            real_tohit /= 2;
 
-    if (you.backlit())
-        real_tohit += 2 + random2(8);
+        if (you.backlit() && !you.halo_radius())
+            real_tohit += 2 + random2(8);
+    }
 
     // Wow, what a horrid test.  These cannot be blocked or dodged
     if (!is_beam && !is_blockable())
@@ -3758,10 +3922,7 @@ bool bolt::misses_player()
 
         const int block = you.shield_bonus();
 
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "Beamshield: hit: %d, block %d",
-             testhit, block);
-#endif
+        dprf("Beamshield: hit: %d, block %d", testhit, block);
         if (testhit < block)
         {
             if (is_reflectable(you.shield()))
@@ -3769,7 +3930,7 @@ bool bolt::misses_player()
                 mprf( "Your %s reflects the %s!",
                       you.shield()->name(DESC_PLAIN).c_str(),
                       name.c_str() );
-                _ident_reflector(you.shield());
+                ident_reflector(you.shield());
                 reflect();
             }
             else
@@ -3785,8 +3946,8 @@ bool bolt::misses_player()
         train_shields_more = true;
     }
 
-    if (player_light_armour(true) && !aimed_at_feet && coinflip())
-        exercise(SK_DODGING, 1);
+    if (!aimed_at_feet && coinflip())
+        you.check_train_dodging();
 
     defer_rand r;
     bool miss = true;
@@ -3834,7 +3995,7 @@ bool bolt::misses_player()
     }
 
     if (coinflip() && train_shields_more)
-            exercise(SK_SHIELDS, one_chance_in(3) ? 1 : 0);
+        exercise(SK_SHIELDS, one_chance_in(3) ? 1 : 0);
 
     return (miss);
 }
@@ -3884,7 +4045,7 @@ void bolt::affect_player_enchantment()
         break;
 
     case BEAM_SLEEP:
-        you.put_to_sleep(ench_power);
+        you.put_to_sleep(NULL, ench_power);
         break;
 
     case BEAM_CORONA:
@@ -4080,6 +4241,16 @@ void bolt::affect_player_enchantment()
         obvious_effect = true;
         break;
 
+    case BEAM_BERSERK:
+        potion_effect( POT_BERSERK_RAGE, ench_power );
+        obvious_effect = true;
+        break;
+
+    case BEAM_MIGHT:
+        potion_effect( POT_MIGHT, ench_power );
+        obvious_effect = true;
+        break;
+
     default:
         // _All_ enchantments should be enumerated here!
         mpr("Software bugs nibble your toes!");
@@ -4106,8 +4277,7 @@ void bolt::affect_player_enchantment()
         else
             foe_info.hurt++;
     }
-
-    if (nice)
+    else if (nice)
     {
         if (mons_att_wont_attack(attitude))
             friend_info.helped++;
@@ -4183,10 +4353,12 @@ void bolt::affect_player()
     int armour_damage_reduction = random2( 1 + you.armour_class() );
     if (flavour == BEAM_ELECTRICITY)
         armour_damage_reduction /= 2;
+    else if (flavour == BEAM_HELLFIRE)
+        armour_damage_reduction = 0;
     hurted -= armour_damage_reduction;
 
     // shrapnel has triple AC reduction
-    if (flavour == BEAM_FRAG && !player_light_armour())
+    if (flavour == BEAM_FRAG)
     {
         hurted -= random2( 1 + you.armour_class() );
         hurted -= random2( 1 + you.armour_class() );
@@ -4197,15 +4369,8 @@ void bolt::affect_player()
          "Player damage: rolled=%d; after AC=%d", roll, hurted );
 #endif
 
-    if (you.equip[EQ_BODY_ARMOUR] != -1)
-    {
-        if (!player_light_armour(false) && one_chance_in(4)
-            && x_chance_in_y(item_mass(you.inv[you.equip[EQ_BODY_ARMOUR]]) + 1,
-                             1000))
-        {
-            exercise( SK_ARMOUR, 1 );
-        }
-    }
+    if (one_chance_in(4))
+        you.check_train_armour();
 
     bool was_affected = false;
     int  old_hp       = you.hp;
@@ -4292,9 +4457,7 @@ void bolt::affect_player()
             expose_player_to_element(BEAM_SPORE, burn_power);
     }
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Damage: %d", hurted );
-#endif
+    dprf("Damage: %d", hurted );
 
     was_affected = apply_hit_funcs(&you, hurted) || was_affected;
 
@@ -4328,6 +4491,9 @@ void bolt::affect_player()
     internal_ouch(hurted);
 
     range_used += range_used_on_hit(&you);
+
+    if (flavour == BEAM_WATER && origin_spell == SPELL_PRIMAL_WAVE)
+        water_hits_actor(&you);
 }
 
 int bolt::beam_source_as_target() const
@@ -4398,41 +4564,6 @@ void bolt::tracer_enchantment_affect_monster(monsters* mon)
 bool bolt::determine_damage(monsters* mon, int& preac, int& postac, int& final,
                             std::vector<std::string>& messages)
 {
-    // Fedhas worshippers can fire through monsters of the same
-    // alignment.  This means Fedhas-worshipping players can fire through
-    // allied plants, and also means that Fedhas-worshipping oklob plants
-    // can fire through plants with the same attitude.
-    bool originator_worships_fedhas = false;
-
-    // Checking beam_source to decide whether the player or a monster
-    // fired the beam (so we can check their religion).  This is
-    // complicated by the fact that this beam may in fact be an
-    // explosion caused by a miscast effect.  In that case, the value of
-    // beam_source may be negative (god-induced miscast) or greater than
-    // NON_MONSTER (various other miscast sources).  So we check whether
-    // or not this is an explosion, and also the range of beam_source
-    // before attempting to reference env.mons with it. -cao
-    if (!is_explosion && beam_source == NON_MONSTER)
-        originator_worships_fedhas = (you.religion == GOD_FEDHAS);
-    else if (!is_explosion && beam_source >= 0 && beam_source < MAX_MONSTERS)
-        originator_worships_fedhas = (env.mons[beam_source].god == GOD_FEDHAS);
-
-    if (!is_enchantment()
-        && attitude == mon->attitude
-        && originator_worships_fedhas
-        && fedhas_protects(mon))
-    {
-        if (!is_tracer)
-        {
-            // FIXME: Could use a better message, something about
-            // dodging that doesn't sound excessively weird would be
-            // nice.
-            mprf(MSGCH_GOD, "Fedhas protects %s plant from harm.",
-                 attitude == ATT_FRIENDLY ? "your" : "a");
-        }
-        return (false);
-    }
-
     // preac: damage before AC modifier
     // postac: damage after AC modifier
     // final: damage after AC and resists
@@ -4446,26 +4577,6 @@ bool bolt::determine_damage(monsters* mon, int& preac, int& postac, int& final,
 
     if (!apply_dmg_funcs(mon, preac, messages))
         return (false);
-
-    // Submerged monsters get some perks.
-    if (mon->submerged())
-    {
-        // The beam will pass overhead unless it's aimed at them.
-        if (!aimed_at_spot)
-            return (false);
-
-        // Electricity is ineffective.
-        if (flavour == BEAM_ELECTRICITY)
-        {
-            if (!is_tracer && you.see_cell(mon->pos()))
-                mprf("The %s arcs harmlessly into the water.", name.c_str());
-            finish_beam();
-            return (false);
-        }
-
-        // Otherwise, 1/3 damage reduction.
-        preac = (preac * 2) / 3;
-    }
 
     postac = preac - maybe_random2(1 + mon->ac, !is_tracer);
 
@@ -4579,10 +4690,6 @@ void bolt::tracer_affect_monster(monsters* mon)
 
 void bolt::enchantment_affect_monster(monsters* mon)
 {
-    // Submerged monsters are unaffected by enchantments.
-    if (mon->submerged())
-        return;
-
     god_conduct_trigger conducts[3];
     disable_attack_conducts(conducts);
 
@@ -4694,6 +4801,23 @@ void bolt::monster_post_hit(monsters* mon, int dmg)
         mimic_alert(mon);
     else if (dmg)
         beogh_follower_convert(mon, true);
+
+    if (flavour == BEAM_WATER && origin_spell == SPELL_PRIMAL_WAVE)
+        water_hits_actor(mon);
+}
+
+void bolt::water_hits_actor(actor *act)
+{
+    const coord_def oldpos(act->pos());
+    if (knockback_actor(act))
+    {
+        if (you.can_see(act))
+            mprf("%s %s knocked back by the %s.",
+                 act->name(DESC_CAP_THE).c_str(),
+                 act->conj_verb("are").c_str(),
+                 this->name.c_str());
+        act->apply_location_effects(oldpos, killer(), beam_source);
+    }
 }
 
 // Return true if the block succeeded (including reflections.)
@@ -4717,7 +4841,7 @@ bool bolt::attempt_block(monsters* mon)
                          name.c_str(),
                          mon->pronoun(PRONOUN_NOCAP_POSSESSIVE).c_str(),
                          shield->name(DESC_PLAIN).c_str());
-                    _ident_reflector(shield);
+                    ident_reflector(shield);
                 }
                 else if (you.see_cell(pos()))
                     mprf("The %s bounces off of thin air!", name.c_str());
@@ -4790,11 +4914,33 @@ void bolt::affect_monster(monsters* mon)
         return;
     }
 
+    // All kinds of beams go past orbs of destruction.
+    // We don't check mons_is_projectile() since that probably won't be the
+    // case for rolling boulders.
+    if (mon->type == MONS_ORB_OF_DESTRUCTION)
+    {
+        apply_hit_funcs(mon, 0);
+        return;
+    }
+
     // Missiles go past bushes.
     if (mon->type == MONS_BUSH && !is_beam && !is_explosion
         && (flavour == BEAM_MISSILE || flavour == BEAM_MMISSILE))
     {
         apply_hit_funcs(mon, 0);
+        return;
+    }
+    if (fedhas_shoot_through(*this, mon))
+    {
+        apply_hit_funcs(mon, 0);
+        if (!is_tracer)
+        {
+            // FIXME: Could use a better message, something about
+            // dodging that doesn't sound excessively weird would be
+            // nice.
+            mprf(MSGCH_GOD, "Fedhas protects %s plant from harm.",
+                 attitude == ATT_FRIENDLY ? "your" : "a");
+        }
         return;
     }
 
@@ -4832,9 +4978,6 @@ void bolt::affect_monster(monsters* mon)
         enchantment_affect_monster(mon);
         return;
     }
-
-    if (mon->submerged() && !aimed_at_spot)
-        return;                 // passes overhead
 
     if (is_explosion && !in_explosion_phase)
     {
@@ -4905,11 +5048,15 @@ void bolt::affect_monster(monsters* mon)
 
     // Make a copy of the to-hit before we modify it.
     int beam_hit = hit;
-    if (mon->invisible() && !can_see_invis)
-        beam_hit /= 2;
 
-    if (mon->backlit())
-        beam_hit += 2 + random2(8);
+    if (beam_hit != AUTOMATIC_HIT)
+    {
+        if (mon->invisible() && !can_see_invis)
+            beam_hit /= 2;
+
+        if (mon->backlit() && !mon->halo_radius())
+            beam_hit += 2 + random2(8);
+    }
 
     defer_rand r;
     int rand_ev = random2(mon->ev);
@@ -4928,7 +5075,9 @@ void bolt::affect_monster(monsters* mon)
             {
                 msg::stream << mon->name(DESC_CAP_THE) << " deflects the "
                             << name << '!' << std::endl;
-            } else {
+            }
+            else
+            {
                 msg::stream << "The " << name << " misses "
                             << mon->name(DESC_NOCAP_THE) << '.' << std::endl;
             }
@@ -5003,20 +5152,23 @@ void bolt::affect_monster(monsters* mon)
     // Apply flavoured specials.
     mons_adjust_flavoured(mon, *this, postac, true);
 
-    // If the beam is an actual missile or of the MMISSILE type (Earth magic)
-    // we might bleed on the floor.
-    if (!engulfs
-        && (flavour == BEAM_MISSILE || flavour == BEAM_MMISSILE)
-        && !mon->is_summoned() && !mon->submerged())
+    // mons_adjust_flavoured may kill the monster directly.
+    if (mon->alive())
     {
-        // Using raw_damage instead of the flavoured one!
-        // assumes DVORP_PIERCING, factor: 0.5
-        const int blood = std::min(postac/2, mon->hit_points);
-        bleed_onto_floor(mon->pos(), mon->type, blood, true);
+        // If the beam is an actual missile or of the MMISSILE type
+        // (Earth magic) we might bleed on the floor.
+        if (!engulfs
+            && (flavour == BEAM_MISSILE || flavour == BEAM_MMISSILE)
+            && !mon->is_summoned())
+        {
+            // Using raw_damage instead of the flavoured one!
+            // assumes DVORP_PIERCING, factor: 0.5
+            const int blood = std::min(postac/2, mon->hit_points);
+            bleed_onto_floor(mon->pos(), mon->type, blood, true);
+        }
+        // Now hurt monster.
+        mon->hurt(agent(), final, flavour, false);
     }
-
-    // Now hurt monster.
-    mon->hurt(agent(), final, flavour, false);
 
     int      corpse = -1;
     monsters orig   = *mon;
@@ -5045,7 +5197,12 @@ void bolt::affect_monster(monsters* mon)
             corpse = monster_die(mon, KILL_MON, beam_source_as_target());
         }
         else
-            corpse = monster_die(mon, thrower, beam_source_as_target());
+        {
+            killer_type ref_killer = thrower;
+            if (!YOU_KILL(thrower) && reflector == NON_MONSTER)
+                ref_killer = KILL_YOU_MISSILE;
+            corpse = monster_die(mon, ref_killer, beam_source_as_target());
+        }
     }
 
     // Give the callbacks a dead-but-valid monster object.
@@ -5229,10 +5386,7 @@ mon_resist_type bolt::apply_enchantment_to_monster(monsters* mon)
         const god_type god =
             (crawl_state.is_god_acting()) ? crawl_state.which_god_acting()
                                           : GOD_NO_GOD;
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS,
-             "HD: %d; pow: %d", mon->hit_dice, ench_power);
-#endif
+        dprf("HD: %d; pow: %d", mon->hit_dice, ench_power);
 
         obvious_effect = true;
         if (player_will_anger_monster(mon))
@@ -5254,10 +5408,7 @@ mon_resist_type bolt::apply_enchantment_to_monster(monsters* mon)
 
     case BEAM_ENSLAVE_SOUL:
     {
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS,
-             "HD: %d; pow: %d", mon->hit_dice, ench_power);
-#endif
+        dprf("HD: %d; pow: %d", mon->hit_dice, ench_power);
 
         if (!mons_can_be_zombified(mon) || mons_intel(mon) < I_NORMAL)
         {
@@ -5281,10 +5432,7 @@ mon_resist_type bolt::apply_enchantment_to_monster(monsters* mon)
     }
 
     case BEAM_ENSLAVE_DEMON:
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS,
-             "HD: %d; pow: %d", mon->hit_dice, ench_power);
-#endif
+        dprf("HD: %d; pow: %d", mon->hit_dice, ench_power);
 
         if (mon->hit_dice * 11 / 2 >= random2(ench_power)
             || mons_is_unique(mon->type))
@@ -5348,6 +5496,8 @@ mon_resist_type bolt::apply_enchantment_to_monster(monsters* mon)
         return (MON_AFFECTED);
 
     case BEAM_HASTE:
+        if (YOU_KILL(thrower))
+            did_god_conduct(DID_HASTY, 6, effect_known);
         if (mon->del_ench(ENCH_SLOW, true))
         {
             if (simple_monster_message(mon, " is no longer moving slowly."))
@@ -5434,15 +5584,17 @@ mon_resist_type bolt::apply_enchantment_to_monster(monsters* mon)
         if (mon->has_ench(ENCH_SLEEPY))
             return (MON_UNAFFECTED);
 
-        if (mon->add_ench(mon_enchant(ENCH_SLEEPY, 0, whose_kill())))
-        {
-            if (simple_monster_message(mon, " falls asleep!"))
-                obvious_effect = true;
-        }
+        mon->put_to_sleep(agent(), 0);
+        if (simple_monster_message(mon, " falls asleep!"))
+            obvious_effect = true;
+
         return (MON_AFFECTED);
 
     case BEAM_INVISIBILITY:
     {
+        if (mons_is_mimic(mon->type))
+            return (MON_UNAFFECTED);
+
         // Store the monster name before it becomes an "it" -- bwr
         const std::string monster_name = mon->name(DESC_CAP_THE);
 
@@ -5559,6 +5711,37 @@ int bolt::range_used_on_hit(const actor* victim) const
     return (used);
 }
 
+// Checks whether the beam knocks back the supplied actor. The actor
+// should have already failed their EV check, so the save is entirely
+// body-mass-based.
+bool bolt::knockback_actor(actor *act)
+{
+    ASSERT(ray.pos() == act->pos());
+
+    const coord_def oldpos(ray.pos());
+    const ray_def ray_copy(ray);
+    ray.advance();
+
+    const coord_def newpos(ray.pos());
+    if (newpos == oldpos
+        || actor_at(newpos)
+        || feat_is_solid(grd(newpos))
+        || !act->can_pass_through(newpos)
+        || !act->is_habitable(newpos)
+        // Save is based on target's body weight.
+        || random2(2500) < act->body_weight())
+    {
+        ray = ray_copy;
+        return false;
+    }
+
+    act->move_to_pos(newpos);
+
+    // Knockback cannot ever kill the actor directly - caller must do
+    // apply_location_effects after messaging.
+    return true;
+}
+
 // Takes a bolt and refines it for use in the explosion function.
 // Explosions which do not follow from beams (e.g., scrolls of
 // immolation) bypass this function.
@@ -5587,7 +5770,7 @@ void bolt::refine_for_explosion()
         seeMsg  = tmp.c_str();
         hearMsg = "You hear an explosion.";
 
-        type    = dchar_glyph(DCHAR_FIRED_BURST);
+        glyph   = dchar_glyph(DCHAR_FIRED_BURST);
     }
 
     if (name.find("hellfire") != std::string::npos)
@@ -5595,7 +5778,7 @@ void bolt::refine_for_explosion()
         seeMsg  = "The hellfire explodes!";
         hearMsg = "You hear a strangely unpleasant explosion.";
 
-        type    = dchar_glyph(DCHAR_FIRED_BURST);
+        glyph   = dchar_glyph(DCHAR_FIRED_BURST);
         flavour = BEAM_HELLFIRE;
     }
 
@@ -5604,7 +5787,7 @@ void bolt::refine_for_explosion()
         seeMsg  = "The fireball explodes!";
         hearMsg = "You hear an explosion.";
 
-        type    = dchar_glyph(DCHAR_FIRED_BURST);
+        glyph   = dchar_glyph(DCHAR_FIRED_BURST);
         flavour = BEAM_FIRE;
         ex_size = 1;
     }
@@ -5614,7 +5797,7 @@ void bolt::refine_for_explosion()
         seeMsg  = "The orb of electricity explodes!";
         hearMsg = "You hear a clap of thunder!";
 
-        type       = dchar_glyph(DCHAR_FIRED_BURST);
+        glyph      = dchar_glyph(DCHAR_FIRED_BURST);
         flavour    = BEAM_ELECTRICITY;
         colour     = LIGHTCYAN;
         damage.num = 1;
@@ -5633,7 +5816,7 @@ void bolt::refine_for_explosion()
         hearMsg = "You hear an explosion!";
 
         name    = "blast of shrapnel";
-        type    = dchar_glyph(DCHAR_FIRED_ZAP);
+        glyph   = dchar_glyph(DCHAR_FIRED_ZAP);
         flavour = BEAM_FRAG;     // Sets it from pure damage to shrapnel
                                  // (which is absorbed extra by armour).
     }
@@ -5644,7 +5827,7 @@ void bolt::refine_for_explosion()
         hearMsg = "You hear a raging storm!";
 
         name       = "ice storm";
-        type       = dchar_glyph(DCHAR_FIRED_ZAP);
+        glyph      = dchar_glyph(DCHAR_FIRED_ZAP);
         colour     = WHITE;
         ex_size    = is_tracer ? 3 : (2 + (random2(ench_power) > 75));
     }
@@ -5735,7 +5918,6 @@ static sweep_type _radial_sweep(int r)
 }
 
 #define MAX_EXPLOSION_RADIUS 9
-
 // Returns true if we saw something happening.
 bool bolt::explode(bool show_more, bool hole_in_the_middle)
 {
@@ -5767,8 +5949,8 @@ bool bolt::explode(bool show_more, bool hole_in_the_middle)
 
 #if DEBUG_DIAGNOSTICS
     mprf(MSGCH_DIAGNOSTICS,
-         "explosion at (%d, %d) : t=%d c=%d f=%d hit=%d dam=%dd%d r=%d",
-         pos().x, pos().y, type, colour, flavour, hit, damage.num, damage.size, r);
+         "explosion at (%d, %d) : g=%d c=%d f=%d hit=%d dam=%dd%d r=%d",
+         pos().x, pos().y, glyph, colour, flavour, hit, damage.num, damage.size, r);
 #endif
 
     if (!is_tracer)
@@ -5886,7 +6068,7 @@ void bolt::explosion_draw_cell(const coord_def& p)
         // bounds check
         if (in_los_bounds(drawpos))
         {
-            cgotoxy(drawpos.x, drawpos.y, GOTO_DNGN);
+            cgotoxy(drawpos.x, drawpos.y, GOTO_CRT);
             put_colour_ch(colour == BLACK ? random_colour() : colour,
                           dchar_glyph(DCHAR_EXPLOSION));
         }
@@ -5948,7 +6130,8 @@ void bolt::determine_affected_cells(explosion_map& m, const coord_def& delta,
     for (unsigned int i = 0; i < aoe_funcs.size(); ++i)
         hits = (*aoe_funcs[i])(*this, loc) && hits;
 
-    if (hits) {
+    if (hits)
+    {
         // Hmm, I think we're OK.
         m(delta + centre) = std::min(count, m(delta + centre));
     }
@@ -5988,6 +6171,12 @@ bool bolt::nasty_to(const monsters *mon) const
     // Cleansing flame.
     if (flavour == BEAM_HOLY)
         return (mon->res_holy_energy(agent()) <= 0);
+
+    // The orbs are made of pure disintegration energy.  This also has the side
+    // effect of not stopping us from firing further orbs when the previous one
+    // is still flying.
+    if (flavour == BEAM_DISINTEGRATION || flavour == BEAM_NUKE)
+        return (mon->type != MONS_ORB_OF_DESTRUCTION);
 
     // Take care of other non-enchantments.
     if (!is_enchantment())
@@ -6065,21 +6254,24 @@ bool bolt::nice_to(const monsters *mon) const
 //
 // TODO: Eventually it'd be nice to have a proper factory for these things
 // (extended from setup_mons_cast() and zapping() which act as limited ones).
-bolt::bolt() : range(-2), type('*'), colour(BLACK), flavour(BEAM_MAGIC),
-    real_flavour(BEAM_MAGIC), drop_item(false), item(NULL), source(), target(),
-    damage(0, 0), ench_power(0), hit(0), thrower(KILL_MISC), ex_size(0),
-    beam_source(MHITNOT), source_name(), name(), short_name(), hit_verb(),
-    loudness(0), noise_msg(), is_beam(false), is_explosion(false),
-    is_big_cloud(false), aimed_at_spot(false), aux_source(),
-    affects_nothing(false), affects_items(true), effect_known(true),
-    draw_delay(15), special_explosion(NULL), range_funcs(), damage_funcs(),
-    hit_funcs(), aoe_funcs(), obvious_effect(false), seen(false), heard(false),
-    path_taken(), range_used(0), is_tracer(false), aimed_at_feet(false),
-    msg_generated(false), passed_target(false), in_explosion_phase(false),
-    smart_monster(false), can_see_invis(false), attitude(ATT_HOSTILE),
-    foe_ratio(0), chose_ray(false), beam_cancelled(false),
-    dont_stop_player(false), bounces(false), bounce_pos(), reflections(0),
-    reflector(-1), auto_hit(false)
+bolt::bolt() : origin_spell(SPELL_NO_SPELL),
+               range(-2), glyph('*'), colour(BLACK), flavour(BEAM_MAGIC),
+               real_flavour(BEAM_MAGIC), drop_item(false), item(NULL),
+               source(), target(), damage(0, 0), ench_power(0), hit(0),
+               thrower(KILL_MISC), ex_size(0), beam_source(MHITNOT),
+               source_name(), name(), short_name(), hit_verb(),
+               loudness(0), noise_msg(), is_beam(false), is_explosion(false),
+               is_big_cloud(false), aimed_at_spot(false), aux_source(),
+               affects_nothing(false), affects_items(true), effect_known(true),
+               draw_delay(15), special_explosion(NULL), range_funcs(),
+               damage_funcs(), hit_funcs(), aoe_funcs(), obvious_effect(false),
+               seen(false), heard(false), path_taken(), range_used(0),
+               is_tracer(false), aimed_at_feet(false), msg_generated(false),
+               passed_target(false), in_explosion_phase(false),
+               smart_monster(false), can_see_invis(false),
+               attitude(ATT_HOSTILE), foe_ratio(0), chose_ray(false),
+               beam_cancelled(false), dont_stop_player(false), bounces(false),
+               bounce_pos(), reflections(0), reflector(-1), auto_hit(false)
 {
 }
 
@@ -6208,6 +6400,7 @@ std::string beam_type_name(beam_type type)
 
     case BEAM_POTION_COLD:          // fall through
     case BEAM_COLD:                 return ("cold");
+    case BEAM_WATER:                return ("water");
 
     case BEAM_MAGIC:                return ("magic");
     case BEAM_ELECTRICITY:          return ("electricity");
@@ -6275,6 +6468,8 @@ std::string beam_type_name(beam_type type)
     case BEAM_VISUAL:               return ("visual effects");
     case BEAM_TORMENT_DAMAGE:       return ("torment damage");
     case BEAM_STEAL_FOOD:           return ("steal food");
+    case BEAM_GLOOM:                return ("gloom");
+    case BEAM_INK:                  return ("ink");
 
     case NUM_BEAMS:                 DEBUGSTR("invalid beam type");
                                     return ("INVALID");

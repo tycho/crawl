@@ -11,6 +11,7 @@
 
 #include "dlua.h"
 #include "externs.h"
+#include "libutil.h"
 #include "monster.h"
 #include "tags.h"
 #include "travel.h"
@@ -951,7 +952,6 @@ const CrawlStoreValue &CrawlStoreValue::operator
 
 /////////////////////
 // Typecast operators
-#ifdef TARGET_COMPILER_VC
 CrawlStoreValue::operator bool&()                  { return get_bool();       }
 CrawlStoreValue::operator char&()                  { return get_byte();       }
 CrawlStoreValue::operator short&()                 { return get_short();      }
@@ -964,79 +964,8 @@ CrawlStoreValue::operator CrawlVector&()           { return get_vector();     }
 CrawlStoreValue::operator item_def&()              { return get_item();       }
 CrawlStoreValue::operator level_id&()              { return get_level_id();   }
 CrawlStoreValue::operator level_pos&()             { return get_level_pos();  }
-CrawlStoreValue::operator monster&()               { return get_monster();    }
-CrawlStoreValue::operator dlua_chunk&()            { return get_dlua_chunk(); }
-#else
-&CrawlStoreValue::operator bool()
-{
-    return get_bool();
-}
-
-&CrawlStoreValue::operator char()
-{
-    return get_byte();
-}
-
-&CrawlStoreValue::operator short()
-{
-    return get_short();
-}
-
-&CrawlStoreValue::operator float()
-{
-    return get_float();
-}
-
-&CrawlStoreValue::operator long()
-{
-    return get_long();
-}
-
-&CrawlStoreValue::operator std::string()
-{
-    return get_string();
-}
-
-&CrawlStoreValue::operator coord_def()
-{
-    return get_coord();
-}
-
-&CrawlStoreValue::operator CrawlHashTable()
-{
-    return get_table();
-}
-
-&CrawlStoreValue::operator CrawlVector()
-{
-    return get_vector();
-}
-
-&CrawlStoreValue::operator item_def()
-{
-    return get_item();
-}
-
-&CrawlStoreValue::operator level_id()
-{
-    return get_level_id();
-}
-
-&CrawlStoreValue::operator level_pos()
-{
-    return get_level_pos();
-}
-
-&CrawlStoreValue::operator monsters()
-{
-    return get_monster();
-}
-
-&CrawlStoreValue::operator dlua_chunk()
-{
-    return get_lua();
-}
-#endif
+CrawlStoreValue::operator monsters&()              { return get_monster();    }
+CrawlStoreValue::operator dlua_chunk&()            { return get_lua(); }
 
 ///////////////////////////
 // Const typecast operators
@@ -1732,7 +1661,7 @@ void CrawlVector::assert_validity() const
 void CrawlVector::set_max_size(vec_size _size)
 {
     ASSERT(_size > 0);
-    ASSERT(max_size == VEC_MAX_SIZE || max_size == _size);
+    ASSERT(max_size == VEC_MAX_SIZE || max_size < _size);
     max_size = _size;
 
     vector.reserve(max_size);

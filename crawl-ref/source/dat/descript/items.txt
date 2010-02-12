@@ -8,7 +8,8 @@ one is skilled in the appropriate elemental magic.
 %%%%
 amulet of clarity
 
-This amulet protects its wearer from some forms of mental confusion.
+This amulet protects its wearer from some forms of mental confusion,
+including being infuriated against one's will.
 %%%%
 amulet of conservation
 
@@ -25,8 +26,8 @@ wearer of the benefits of levitation.
 %%%%
 amulet of guardian spirit
 
-This amulet makes its wearer immune to damage, draining magical power
-instead.  Should the reserves of magic be depleted, the spirit will
+This amulet makes its wearer immune to external damage, draining magical
+power instead.  Should the reserves of magic be depleted, the spirit will
 fail to provide its protection until more power is available.
 %%%%
 amulet of inaccuracy
@@ -51,12 +52,6 @@ amulet of resist mutation
 This amulet protects its wearer from mutations, although not
 infallibly so.
 %%%%
-amulet of resist slowing
-
-This amulet protects its wearer from some magically induced forms of
-slowness, and increases the duration of enchantments which speed his
-or her actions.
-%%%%
 amulet of the gourmand
 
 This amulet protects its wearer from sickness due to eating fresh raw
@@ -68,6 +63,22 @@ amulet of warding
 This amulet repels some of the attacks of creatures which have been
 magically summoned, and also makes the wearer more resistant to
 draining attacks.
+%%%%
+amulet of faith
+
+This is a talisman crafted to call the attention of the gods to its
+wearer. This divine attention makes it easier to please your god, but
+your god is also less likely to forgive your transgressions, and the
+amulet will drain some of your divine favour when removed.
+%%%%
+amulet of stasis
+
+An amulet meticulously constructed with magical wards to block magical
+and physiological effects that would otherwise teleport, slow, haste,
+or paralyse its wearer.
+
+While the amulet is effective against most translocular magic, plane
+shifts such as banishment are beyond its ability to block.
 %%%%
 ankus
 
@@ -346,17 +357,10 @@ book of wizardry
 
 A book of magic spells.
 %%%%
-book of elemental missiles
+book of brands
 
-This book contains spells relating to ammunition and forms of ranged combat.
-%%%%
-book of warped missiles
-
-This book contains spells relating to ammunition and forms of ranged combat.
-%%%%
-book of devastating missiles
-
-This book contains spells relating to ammunition and forms of ranged combat.
+This book contains magical spells related to the branding of weapons and
+launchers, as well as spells that are helpful in all forms of ranged combat.
 %%%%
 bottled efreet
 
@@ -460,7 +464,7 @@ It causes massive damage when used for backstabbing.
 %%%%
 dart
 
-A small throwing weapon. It can also be fired from a hand crossbow.
+A small throwing weapon.
 %%%%
 deck of changes
 
@@ -642,10 +646,6 @@ The kind of thing you hit nails with, adapted for battle.
 hand axe
 
 A small axe designed for either hand combat or throwing.
-%%%%
-hand crossbow
-
-A small crossbow, for firing darts.
 %%%%
 helm
 
@@ -859,6 +859,11 @@ plate mail
 
 A suit of mail and large plates of metal.
 %%%%
+potion of agility
+
+A magic potion which greatly increases the dexterity and evasiveness
+of one who drinks it.
+%%%%
 potion of berserk rage
 
 A potion which can send one into an incoherent rage.
@@ -867,6 +872,11 @@ potion of blood
 
 A potion containing the essence of life. Vital for all living
 creatures, as well as some undead ones.
+%%%%
+potion of brilliance
+
+A magic potion which greatly increases the intelligence and magical power
+of one who drinks it.
 %%%%
 potion of coagulated blood
 
@@ -938,16 +948,6 @@ energy.
 potion of might
 
 A magic potion which greatly increases the strength and physical power
-of one who drinks it.
-%%%%
-potion of brilliance
-
-A magic potion which greatly increases the intelligence and magical power
-of one who drinks it.
-%%%%
-potion of agility
-
-A magic potion which greatly increases the dexterity and evasiveness
 of one who drinks it.
 %%%%
 potion of mutation
@@ -1087,7 +1087,8 @@ This ring increases its wearer's resistance to hostile enchantments.
 ring of regeneration
 
 This wonderful ring greatly increases the recuperative powers of its
-wearer, but also considerably speeds his or her metabolism.
+wearer, but also considerably speeds his or her metabolism while doing
+so.
 %%%%
 ring of see invisible
 
@@ -1378,7 +1379,7 @@ amount of damage on impact. Unlike with other launchers, wearing a shield does n
 %%%%
 sling bullet
 
-A small heavy projectile made of lead. It can be fired from a sling.
+A small heavy projectile made of lead. It can be fired from a sling. They are more effective as ammunition than simple stones, and can also come with various enchantments.
 %%%%
 snozzcumber
 

@@ -27,6 +27,10 @@ struct Branch
 {
     branch_type id;
     branch_type parent_branch;
+
+    int mindepth;               // min/max possible depth for this branch
+    int maxdepth;
+
     int depth;
     int startdepth;             // which level of the parent branch,
                                 // 1 for first level
@@ -59,6 +63,7 @@ extern Branch branches[];
 Branch& your_branch();
 
 bool at_branch_bottom();
+bool is_hell_subbranch(branch_type branch);
 
 branch_type str_to_branch(const std::string &branch,
                           branch_type err = NUM_BRANCHES);

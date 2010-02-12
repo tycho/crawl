@@ -23,6 +23,7 @@
 #include "env.h"
 #include "initfile.h"
 #include "jobs.h"
+#include "libutil.h"
 #include "mapmark.h"
 #include "message.h"
 #include "monster.h"
@@ -56,9 +57,9 @@ static void _dump_level_info(FILE* file)
 
     fprintf(file, "Place info:" EOL);
 
-    fprintf(file, "your_level = %d, branch = %d, level_type = %d, "
+    fprintf(file, "absdepth0 = %d, branch = %d, level_type = %d, "
                   "type_name = %s" EOL EOL,
-            you.your_level, (int) you.where_are_you, (int) you.level_type,
+            you.absdepth0, (int) you.where_are_you, (int) you.level_type,
             you.level_type_name.c_str());
 
     std::string place = level_id::current().describe();
@@ -112,13 +113,13 @@ static void _dump_player(FILE *file)
 
     if (name_overrun)
     {
-        fprintf(file, "class_name runs past end of buffer." EOL);
+        fprintf(file, "job_name runs past end of buffer." EOL);
         you.class_name[29] = '\0';
     }
 
     fprintf(file, "Name:       [%s]" EOL, you.your_name.c_str());
     fprintf(file, "Species:    %s" EOL, species_name(you.species, 27).c_str());
-    fprintf(file, "Class:      %s" EOL EOL, get_class_name(you.char_class));
+    fprintf(file, "Job:        %s" EOL EOL, get_job_name(you.char_class));
     fprintf(file, "class_name: %s" EOL EOL, you.class_name);
 
     fprintf(file, "HP: %d/%d; base: %d/%d" EOL, you.hp, you.hp_max,
@@ -502,7 +503,7 @@ void do_crash_dump()
         // We crashed during exit() callbacks, so it's likely that
         // any global C++ instances we could reference would be
         // free'd and invalid, plus their content likely wouldn't help
-        // tracking it down anyways.  Thus, just do the bare bones
+        // tracking it down anyway.  Thus, just do the bare bones
         // info to stderr and quit.
         fprintf(stderr, "Crashed while calling exit()!!!!" EOL);
 
@@ -635,7 +636,7 @@ void do_crash_dump()
 static void _BreakStrToDebugger(const char *mesg)
 {
 #if defined(TARGET_OS_MACOSX) || defined(TARGET_COMPILER_MINGW)
-    fprintf(stderr, mesg);
+    fprintf(stderr, "%s", mesg);
 // raise(SIGINT);               // this is what DebugStr() does on OS X according to Tech Note 2030
     int* p = NULL;              // but this gives us a stack crawl...
     *p = 0;
@@ -687,4 +688,3 @@ void DEBUGSTR(const char *format, ...)
 }
 
 #endif
-

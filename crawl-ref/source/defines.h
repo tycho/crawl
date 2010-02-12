@@ -120,7 +120,7 @@ const int LABYRINTH_BORDER = 4;
 #define VIEW_BASE_WIDTH 33      // FIXME: never used
 #define VIEW_MIN_WIDTH  ENV_SHOW_DIAMETER
 #define VIEW_MIN_HEIGHT ENV_SHOW_DIAMETER
-#define MSG_MIN_HEIGHT  7
+#define MSG_MIN_HEIGHT  5
 
 // max traps per level
 #define MAX_TRAPS 100
@@ -141,7 +141,9 @@ const int ANON_FRIENDLY_MONSTER = -1999;
 const int DEBUG_COOKIE = 32767;
 
 const int MAX_SKILL_LEVEL = 27;
-const unsigned int MAX_EXP_TOTAL = 8999999;
+const int MAX_EXP_TOTAL = 8999999;
+const int MAX_EXP_POOL = 20000;
+const int FULL_EXP_POOL = MAX_EXP_POOL;
 
 const int MIN_HIT_MISS_PERCENTAGE = 5;
 
@@ -282,8 +284,7 @@ enum GotoRegion
     GOTO_MSG,  // cprintf > message
     GOTO_STAT, // cprintf > character status
     GOTO_DNGN, // cprintf > dungeon screen
-    GOTO_MLIST,// cprintf > monster list
-    GOTO_LAST  // cprintf > last active region or CRT, if none
+    GOTO_MLIST // cprintf > monster list
 };
 
 // Mouse modes (for tiles)

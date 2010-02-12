@@ -136,6 +136,11 @@ function iter.rect_iterator(top_corner, bottom_corner, filter, rvi)
   return iter.rectangle_iterator:new(top_corner, bottom_corner, filter, rvi)
 end
 
+function iter.rect_size_iterator(top_corner, size, filter, rvi)
+  return iter.rect_iterator(top_corner, top_corner + size - dgn.point(1, 1),
+                            filter, rvi)
+end
+
 function iter.mons_rect_iterator (top_corner, bottom_corner, filter)
   return iter.rect_iterator(top_corner, bottom_corner, iter.monster_filter(filter), true)
 end
@@ -212,7 +217,7 @@ function iter.adjacent_iterator (ic, filter, center, rvi)
 
   local function check_adj (point)
     local _x, _y = point:xy()
-    local npoint = nil
+    local npoint = point
 
     if filter ~= nil then
       if rvi then
@@ -246,8 +251,12 @@ function iter.mons_adjacent_iterator (ic, filter, center)
   return iter.adjacent_iterator(ic, iter.monster_filter(filter), center, true)
 end
 
+function iter.adjacent_iterator_to(center, include_center, filter)
+  return iter.adjacent_iterator(include_center, filter, center, true)
+end
+
 -------------------------------------------------------------------------------
--- circle_iterator
+-- Circle_iterator
 -------------------------------------------------------------------------------
 
 function iter.circle_iterator (radius, ic, filter, center, rvi)
@@ -329,16 +338,16 @@ function iter.stack_search (coord, term, extra)
 
   local stack = dgn.items_at(_x, _y)
   if #stack == 0 then
-    error("no stack at " .. _x .. "/" .. _y)
+    return nil
   end
 
   for _, item in ipairs(stack) do
-    if string.find(items.name(item), (term)) then
+    if string.find(item.name(), (term)) then
       return item
     end
   end
 
-  return false
+  return nil
 end
 
 function iter.stack_destroy(coord, extra)
@@ -355,15 +364,15 @@ function iter.stack_destroy(coord, extra)
   local stack = dgn.items_at(_x, _y)
 
   while #stack ~= 0 do
-    if items.destroy(stack[1]) then
+    if stack[1].destroy() then
       if #stack >= dgn.items_at(_x, _y) then
-        error("destroyed an item ('" .. items.name(stack[1]) .. "'), but the "
+        error("destroyed an item ('" .. stack[1].name() .. "'), but the "
               .. "stack size is the same")
         return
       end
       stack = dgn.items_at(_x, _y)
     else
-      error("couldn't destroy item '" .. items.name(stack[1]) .. "'")
+      error("couldn't destroy item '" .. stack[1].name() .. "'")
       return false
     end
   end
@@ -449,7 +458,7 @@ end
 function iter.point_iterator:check_filter(point)
   if self.filter ~= nil then
     if self.filter(point) then
-      if self.rvi then 
+      if self.rvi then
         return self.filter(point)
       else
         return point
@@ -468,5 +477,82 @@ end
 
 -- An easier and more posh way of interfacing with find_marker_positions_by_prop.
 function iter.slave_iterator (prop, value)
-  return iter.point_iterator:new(dgn.find_marker_positions_by_prop(prop, value))
+  local ptable = dgn.find_marker_positions_by_prop(prop, value)
+  if #ptable == 0 then
+    error("Didn't find any props for " .. prop .. "=" .. value)
+  else
+    return iter.point_iterator:new(ptable)
+  end
+end
+
+-------------------------------------------------------------------------------
+-- Inventory iterator
+-------------------------------------------------------------------------------
+
+iter.invent_iterator = {}
+
+function iter.invent_iterator:_new ()
+  local m = {}
+  setmetatable(m, self)
+  self.__index = self
+  return m
+end
+
+function iter.invent_iterator:new (itable, filter, rv_instead)
+  if itable == nil then
+    error("itable cannot be nil for invent_iterator")
+  end
+
+  local mt  = iter.invent_iterator:_new()
+  mt.cur_p  = 0
+  mt.table  = itable
+  mt.rvi    = rv_instead or false
+  mt.filter = filter or nil
+
+  return mt:iter()
+end
+
+function iter.invent_iterator:next()
+  local point = nil
+  local q = 0
+  repeat
+    q = q + 1
+    self.cur_p = self.cur_p + 1
+    point = self:check_filter(self.table[self.cur_p])
+  until point or q == 10
+
+  return point
+end
+
+function iter.invent_iterator:check_filter(item)
+  if self.filter ~= nil then
+    if self.filter(item) then
+      if self.rvi then
+        return self.filter(item)
+      else
+        return item
+      end
+    else
+      return nil
+    end
+  else
+    return item
+  end
+end
+
+function iter.invent_iterator:iter ()
+  return function() return self:next() end, nil, nil
+end
+
+-- An easier and more posh way of interfacing with find_marker_positions_by_prop.
+function iter.inventory_iterator ()
+  return iter.invent_iterator:new(items.inventory())
+end
+
+function iter.stash_iterator (point, y)
+  if y == nil then
+    return iter.invent_iterator:new(dgn.items_at(point.x, point.y))
+  else
+    return iter.invent_iterator:new(dgn.items_at(point, y))
+  end
 end

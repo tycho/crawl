@@ -19,6 +19,7 @@
 #include "files.h"
 #include "items.h"
 #include "l_defs.h"
+#include "libutil.h"
 #include "mapmark.h"
 #include "maps.h"
 #include "message.h"
@@ -39,7 +40,7 @@ static dungeon_feature_type _find_appropriate_stairs(bool down)
 {
     if (you.level_type == LEVEL_DUNGEON)
     {
-        int depth = subdungeon_depth(you.where_are_you, you.your_level);
+        int depth = subdungeon_depth(you.where_are_you, you.absdepth0);
         if (down)
             depth++;
         else
@@ -153,7 +154,7 @@ bool _take_portal_vault_stairs( const bool down )
     you.set_position(stair_pos);
 
     if (down)
-        down_stairs(you.your_level);
+        down_stairs(you.absdepth0);
     else
         up_stairs();
 
@@ -181,7 +182,7 @@ void wizard_level_travel( bool down )
     }
 
     if (down)
-        down_stairs(you.your_level, stairs);
+        down_stairs(you.absdepth0, stairs);
     else
         up_stairs(stairs);
 }
@@ -190,22 +191,22 @@ static void _wizard_go_to_level(const level_pos &pos)
 {
     const int abs_depth = absdungeon_depth(pos.id.branch, pos.id.depth);
     dungeon_feature_type stair_taken =
-        abs_depth > you.your_level? DNGN_STONE_STAIRS_DOWN_I
+        abs_depth > you.absdepth0? DNGN_STONE_STAIRS_DOWN_I
                                   : DNGN_STONE_STAIRS_UP_I;
 
-    if (abs_depth > you.your_level && pos.id.depth == 1
+    if (abs_depth > you.absdepth0 && pos.id.depth == 1
         && pos.id.branch != BRANCH_MAIN_DUNGEON)
     {
         stair_taken = branches[pos.id.branch].entry_stairs;
     }
 
-    const int old_level = you.your_level;
+    const int old_level = you.absdepth0;
     const branch_type old_where = you.where_are_you;
     const level_area_type old_level_type = you.level_type;
 
     you.level_type    = LEVEL_DUNGEON;
     you.where_are_you = static_cast<branch_type>(pos.id.branch);
-    you.your_level    = abs_depth;
+    you.absdepth0    = abs_depth;
 
     const bool newlevel = load(stair_taken, LOAD_ENTER_LEVEL, old_level_type,
         old_level, old_where);
@@ -269,70 +270,64 @@ void wizard_create_portal()
     }
 }
 
-void wizard_create_feature_number()
+void wizard_create_feature()
 {
     char specs[256];
     int feat_num;
-    mpr("Create which feature (by number)? ", MSGCH_PROMPT);
+    dungeon_feature_type feat;
+    mpr("Create which feature? ", MSGCH_PROMPT);
 
-    if (!cancelable_get_line(specs, sizeof(specs))
-        && (feat_num = atoi(specs)))
-    {
-        dungeon_feature_type feat = static_cast<dungeon_feature_type>(feat_num);
-        if (feat == DNGN_ENTER_SHOP)
-        {
-            debug_make_shop();
-            return;
-        }
-
-        dungeon_terrain_changed(you.pos(), feat, false);
-#ifdef USE_TILE
-        env.tile_flv(you.pos()).special = 0;
-#endif
-    }
-    else
-        canned_msg(MSG_OK);
-}
-
-void wizard_create_feature_name()
-{
-    char specs[256];
-    mpr("Create which feature (by name)? ", MSGCH_PROMPT);
     if (!cancelable_get_line(specs, sizeof(specs)) && specs[0] != 0)
     {
-        // Accept both "shallow_water" and "Shallow water"
-        std::string name = lowercase_string(specs);
-        name = replace_all(name, " ", "_");
-
-        dungeon_feature_type feat = dungeon_feature_by_name(name);
-        if (feat == DNGN_UNSEEN) // no exact match
+        if ((feat_num = atoi(specs)))
         {
-            std::vector<std::string> matches = dungeon_feature_matches(name);
-
-            if (matches.empty())
+            feat = static_cast<dungeon_feature_type>(feat_num);
+        }
+        else
+        {
+            std::string name = lowercase_string(specs);
+            name = replace_all(name, " ", "_");
+            feat = dungeon_feature_by_name(name);
+            if (feat == DNGN_UNSEEN) // no exact match
             {
-                mprf(MSGCH_DIAGNOSTICS, "No features matching '%s'",
-                     name.c_str());
-                return;
-            }
+                std::vector<std::string> matches =
+                    dungeon_feature_matches(name);
 
-            // Only one possible match, use that.
-            if (matches.size() == 1)
-            {
-                name = matches[0];
-                feat = dungeon_feature_by_name(name);
-            }
-            // Multiple matches, list them to wizard
-            else
-            {
-                std::string prefix = "No exact match for feature '" +
-                    name +  "', possible matches are: ";
+                if (matches.empty())
+                {
+                    const feature_property_type fprop(str_to_fprop(name));
+                    if (fprop != FPROP_NONE)
+                    {
+                        env.pgrid(you.pos()) |= fprop;
+                        mprf("Set fprops \"%s\" at (%d,%d)",
+                             name.c_str(), you.pos().x, you.pos().y);
+                    }
+                    else
+                    {
+                        mprf(MSGCH_DIAGNOSTICS, "No features matching '%s'",
+                             name.c_str());
+                    }
+                    return;
+                }
 
-                // Use mpr_comma_separated_list() because the list
-                // might be *LONG*.
-                mpr_comma_separated_list(prefix, matches, " and ", ", ",
-                                         MSGCH_DIAGNOSTICS);
-                return;
+                // Only one possible match, use that.
+                if (matches.size() == 1)
+                {
+                    name = matches[0];
+                    feat = dungeon_feature_by_name(name);
+                }
+                // Multiple matches, list them to wizard
+                else
+                {
+                    std::string prefix = "No exact match for feature '" +
+                        name +  "', possible matches are: ";
+
+                    // Use mpr_comma_separated_list() because the list
+                    // might be *LONG*.
+                    mpr_comma_separated_list(prefix, matches, " and ", ", ",
+                                             MSGCH_DIAGNOSTICS);
+                    return;
+                }
             }
         }
 
@@ -342,8 +337,6 @@ void wizard_create_feature_name()
             return;
         }
 
-        mprf(MSGCH_DIAGNOSTICS, "Setting (%d,%d) to %s (%d)",
-             you.pos().x, you.pos().y, name.c_str(), feat);
         dungeon_terrain_changed(you.pos(), feat, false);
 #ifdef USE_TILE
         env.tile_flv(you.pos()).special = 0;
@@ -565,7 +558,7 @@ void debug_make_shop()
 
     representative = !!strchr(requested_shop, '*');
 
-    place_spec_shop(you.your_level, you.pos(),
+    place_spec_shop(you.absdepth0, you.pos(),
                     new_shop_type, representative);
     link_items();
     mprf("Done.");

@@ -19,10 +19,10 @@
 #include "env.h"
 #include "it_use2.h"
 #include "kills.h"
+#include "libutil.h"
 #include "misc.h"
 #include "mon-place.h"
 #include "mgen_data.h"
-#include "coord.h"
 #include "mon-stuff.h"
 #include "mon-util.h"
 #include "mutation.h"
@@ -33,7 +33,7 @@
 #include "stuff.h"
 #include "areas.h"
 #include "terrain.h"
-#include "transfor.h"
+#include "transform.h"
 #include "view.h"
 #include "shout.h"
 #include "viewchar.h"
@@ -194,7 +194,7 @@ void MiscastEffect::init()
         act_source = target;
 
         kc = KC_OTHER;
-        kt = KILL_MISC;
+        kt = KILL_MISCAST;
 
         if (source == ZOT_TRAP_MISCAST)
         {
@@ -237,14 +237,16 @@ void MiscastEffect::init()
     // Explosion stuff.
     beam.is_explosion = true;
 
+    // [ds] Don't attribute the beam's cause to the actor, because the
+    // death message will name the actor anyway.
     if (cause.empty())
-        cause = get_default_cause();
+        cause = get_default_cause(false);
     beam.aux_source  = cause;
     beam.beam_source = kill_source;
     beam.thrower     = kt;
 }
 
-std::string MiscastEffect::get_default_cause()
+std::string MiscastEffect::get_default_cause(bool attribute_to_user) const
 {
     // This is only for true miscasts, which means both a spell and that
     // the source of the miscast is the same as the target of the miscast.
@@ -255,7 +257,7 @@ std::string MiscastEffect::get_default_cause()
     if (source == NON_MONSTER)
     {
         ASSERT(target->atype() == ACT_PLAYER);
-        std::string str = "your miscasting ";
+        std::string str = "miscasting ";
         str += spell_title(spell);
         return str;
     }
@@ -263,13 +265,17 @@ std::string MiscastEffect::get_default_cause()
     ASSERT(act_source->atype() == ACT_MONSTER);
     ASSERT(act_source == target);
 
-    if (you.can_see(act_source))
+    if (attribute_to_user)
     {
-        return apostrophise(source_as_monster()->base_name(DESC_PLAIN))
-            + " spell miscasting";
+        return (std::string(you.can_see(act_source)?
+                            act_source->name(DESC_NOCAP_A)
+                            : "something")
+                + " miscasting " + spell_title(spell));
     }
     else
-        return "something's spell miscasting";
+    {
+        return std::string("miscast of ") + spell_title(spell);
+    }
 }
 
 bool MiscastEffect::neither_end_silenced()
@@ -291,10 +297,8 @@ void MiscastEffect::do_miscast()
     // killed a target which was alive when the object was created.
     if (!target->alive())
     {
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "Miscast target '%s' already dead",
+        dprf("Miscast target '%s' already dead",
              target->name(DESC_PLAIN, true).c_str());
-#endif
         return;
     }
 
@@ -713,7 +717,7 @@ bool MiscastEffect::_create_monster(monster_type what, int abj_deg,
                                       : GOD_NO_GOD;
 
     if (cause.empty())
-        cause = get_default_cause();
+        cause = get_default_cause(true);
     mgen_data data = mgen_data::hostile_at(what, cause, alert,
                                            abj_deg, 0, target->pos(), 0, god);
 
@@ -907,7 +911,7 @@ void MiscastEffect::_conjuration(int severity)
             all_msg = "There is a sudden explosion of magical energy!";
 
             beam.flavour = BEAM_MISSILE;
-            beam.type    = dchar_glyph(DCHAR_FIRED_BURST);
+            beam.glyph   = dchar_glyph(DCHAR_FIRED_BURST);
             beam.damage  = dice_def(3, 20);
             beam.name    = "explosion";
             beam.colour  = random_colour();
@@ -991,7 +995,7 @@ void MiscastEffect::_enchantment(int severity)
             {
                 all_msg        = "You hear something strange.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 10;
+                sound_loudness = 2;
                 return;
             }
             else if (target->atype() == ACT_PLAYER)
@@ -1244,7 +1248,7 @@ void MiscastEffect::_summoning(int severity)
             {
                 all_msg        = "You hear strange voices.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 15;
+                sound_loudness = 2;
             }
             else if (target->atype() == ACT_PLAYER)
                 you_msg = "You feel momentarily dizzy.";
@@ -1284,7 +1288,7 @@ void MiscastEffect::_summoning(int severity)
                 you_msg        = "Distant voices call out to you!";
                 mon_msg_seen   = "Distant voices call out to @the_monster@!";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 15;
+                sound_loudness = 2;
             }
             else if (target->atype() == ACT_PLAYER)
                 you_msg = "You feel watched.";
@@ -1364,7 +1368,7 @@ void MiscastEffect::_summoning(int severity)
                                  " you!";
                 mon_msg        = "A chorus of chattering voices calls out!";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 15;
+                sound_loudness = 3;
             }
             do_msg();
             break;
@@ -1429,7 +1433,7 @@ void MiscastEffect::_divination_you(int severity)
             if (!silenced(you.pos()))
             {
                 mpr("You hear strange voices.", MSGCH_SOUND);
-                noisy(10, you.pos());
+                noisy(2, you.pos());
             }
             else
                 mpr("Your nose twitches.");
@@ -1591,7 +1595,7 @@ void MiscastEffect::_necromancy(int severity)
             {
                 all_msg        = "You hear strange and distant voices.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 15;
+                sound_loudness = 3;
             }
             else if (target->atype() == ACT_PLAYER)
                 you_msg = "You feel homesick.";
@@ -2021,7 +2025,7 @@ void MiscastEffect::_fire(int severity)
             {
                 all_msg        = "You hear a sizzling sound.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 10;
+                sound_loudness = 2;
             }
             else if (target->atype() == ACT_PLAYER)
                 you_msg = "You feel like you have heartburn.";
@@ -2074,7 +2078,7 @@ void MiscastEffect::_fire(int severity)
             mon_msg_unseen = "Fire explodes from out of thin air!";
 
             beam.flavour = BEAM_FIRE;
-            beam.type    = dchar_glyph(DCHAR_FIRED_BURST);
+            beam.glyph   = dchar_glyph(DCHAR_FIRED_BURST);
             beam.damage  = dice_def(3, 14);
             beam.name    = "explosion";
             beam.colour  = RED;
@@ -2099,7 +2103,7 @@ void MiscastEffect::_fire(int severity)
             all_msg = "There is a sudden and violent explosion of flames!";
 
             beam.flavour = BEAM_FIRE;
-            beam.type    = dchar_glyph(DCHAR_FIRED_BURST);
+            beam.glyph   = dchar_glyph(DCHAR_FIRED_BURST);
             beam.damage  = dice_def(3, 20);
             beam.name    = "fireball";
             beam.colour  = RED;
@@ -2190,7 +2194,7 @@ void MiscastEffect::_ice(int severity)
             {
                 all_msg        = "You hear a crackling sound.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 10;
+                sound_loudness = 2;
             }
             else if (target->atype() == ACT_PLAYER)
                 you_msg = "A snowflake lands on your nose.";
@@ -2245,7 +2249,7 @@ void MiscastEffect::_ice(int severity)
             mon_msg_unseen = "Ice and frost explode from out of thin air!";
 
             beam.flavour = BEAM_COLD;
-            beam.type    = dchar_glyph(DCHAR_FIRED_BURST);
+            beam.glyph   = dchar_glyph(DCHAR_FIRED_BURST);
             beam.damage  = dice_def(3, 11);
             beam.name    = "explosion";
             beam.colour  = WHITE;
@@ -2316,7 +2320,7 @@ void MiscastEffect::_earth(int severity)
             {
                 all_msg        = "You hear a distant rumble.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 10;
+                sound_loudness = 2;
             }
             else if (target->atype() == ACT_PLAYER)
                 you_msg = "You sympathise with the stones.";
@@ -2412,7 +2416,7 @@ void MiscastEffect::_earth(int severity)
             mon_msg_unseen = "Flying shrapnel explodes from thin air!";
 
             beam.flavour = BEAM_FRAG;
-            beam.type    = dchar_glyph(DCHAR_FIRED_BURST);
+            beam.glyph   = dchar_glyph(DCHAR_FIRED_BURST);
             beam.damage  = dice_def(3, 15);
             beam.name    = "explosion";
             beam.colour  = CYAN;
@@ -2492,7 +2496,7 @@ void MiscastEffect::_air(int severity)
             {
                 all_msg        = "You hear a whooshing sound.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 10;
+                sound_loudness = 2;
             }
             else if (you.can_smell())
                 all_msg = "You smell ozone.";
@@ -2508,7 +2512,7 @@ void MiscastEffect::_air(int severity)
             {
                 all_msg        = "You hear a crackling sound.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 10;
+                sound_loudness = 2;
             }
             else if (you.can_smell())
                 all_msg = "You smell something musty.";
@@ -2583,7 +2587,7 @@ void MiscastEffect::_air(int severity)
                              "thin air!";
 
             beam.flavour = BEAM_ELECTRICITY;
-            beam.type    = dchar_glyph(DCHAR_FIRED_BURST);
+            beam.glyph   = dchar_glyph(DCHAR_FIRED_BURST);
             beam.damage  = dice_def(3, 8);
             beam.name    = "explosion";
             beam.colour  = LIGHTBLUE;
@@ -2652,7 +2656,7 @@ void MiscastEffect::_poison(int severity)
             {
                 all_msg        = "You hear a slurping sound.";
                 msg_ch         = MSGCH_SOUND;
-                sound_loudness = 10;
+                sound_loudness = 2;
             }
             else if (you.species != SP_MUMMY)
                 you_msg = "You taste almonds.";

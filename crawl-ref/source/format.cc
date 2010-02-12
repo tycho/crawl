@@ -3,10 +3,13 @@
  *  Created by: haranp on Sat Feb 17 13:35:54 2007 UTC
  */
 
+#include <limits.h>
+
 #include "AppHdr.h"
 
 #include "colour.h"
 #include "format.h"
+#include "libutil.h"
 #include "showsymb.h"
 #include "viewchar.h"
 
@@ -435,7 +438,7 @@ int formatted_string::find_last_colour() const
 
 formatted_string formatted_string::substr(size_t start, size_t substr_length) const
 {
-    const unsigned int NONE = (unsigned int)-1;
+    const unsigned int NONE = UINT_MAX; // from limits.h
     unsigned int last_FSOP_COLOUR = NONE;
     unsigned int last_FSOP_CURSOR = NONE;
 
@@ -512,15 +515,17 @@ void formatted_string::clear()
     ops.clear();
 }
 
+bool formatted_string::empty()
+{
+    return (ops.empty());
+}
+
 void formatted_string::cprintf(const char *s, ...)
 {
-    char buf[1000];
     va_list args;
     va_start(args, s);
-    vsnprintf(buf, sizeof buf, s, args);
+    cprintf(vmake_stringf(s, args));
     va_end(args);
-
-    cprintf(std::string(buf));
 }
 
 void formatted_string::cprintf(const std::string &s)

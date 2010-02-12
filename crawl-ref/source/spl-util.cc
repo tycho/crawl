@@ -25,6 +25,7 @@
 #include "godabil.h"
 #include "stuff.h"
 #include "env.h"
+#include "libutil.h"
 #include "macro.h"
 #include "mon-behv.h"
 #include "mon-util.h"
@@ -33,7 +34,11 @@
 #include "religion.h"
 #include "spells4.h"
 #include "spl-cast.h"
+#include "spl-book.h"
 #include "terrain.h"
+#include "itemprop.h"
+#include "item_use.h"
+#include "transform.h"
 
 
 struct spell_desc
@@ -73,7 +78,8 @@ static struct spell_desc *_seekspell(spell_type spellid);
 static bool _cloud_helper(cloud_func func, const coord_def& where,
                           int pow, int spread_rate,
                           cloud_type ctype, kill_category whose,
-                          killer_type killer);
+                          killer_type killer, int colour,
+                          std::string name, std::string tile);
 
 //
 //             BEGIN PUBLIC FUNCTIONS
@@ -108,7 +114,7 @@ void init_spell_descs(void)
                 data.title);
         }
 
-        if (data.flags & SPFLAG_TARGETTING_MASK)
+        if (data.flags & SPFLAG_TARGETING_MASK)
         {
             if (data.min_range <= -1 || data.max_range <= 0)
             {
@@ -352,7 +358,7 @@ bool spell_harms_target(spell_type spell)
     if (flags & (SPFLAG_HELPFUL | SPFLAG_NEUTRAL))
         return false;
 
-    if (flags & SPFLAG_TARGETTING_MASK)
+    if (flags & SPFLAG_TARGETING_MASK)
         return true;
 
     return false;
@@ -642,9 +648,12 @@ int apply_random_around_square(cell_func cf, const coord_def& where,
 int apply_one_neighbouring_square(cell_func cf, int power, actor *agent)
 {
     dist bmove;
+    direction_chooser_args args;
+    args.restricts = DIR_DIR;
+    args.mode = TARG_ANY;
 
     mpr("Which direction? [ESC to cancel]", MSGCH_PROMPT);
-    direction(bmove, DIR_DIR, TARG_ENEMY);
+    direction(bmove, args);
 
     if (!bmove.isValid)
     {
@@ -677,13 +686,14 @@ int apply_area_within_radius(cell_func cf, const coord_def& where,
 void apply_area_cloud( cloud_func func, const coord_def& where,
                        int pow, int number, cloud_type ctype,
                        kill_category whose, killer_type killer,
-                       int spread_rate )
+                       int spread_rate, int colour, std::string name,
+                       std::string tile)
 {
     int good_squares = 0;
     int neighbours[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     if (number && _cloud_helper(func, where, pow, spread_rate, ctype, whose,
-                                killer))
+                                killer, colour, name, tile))
         number--;
 
     if (number == 0)
@@ -703,7 +713,8 @@ void apply_area_cloud( cloud_func func, const coord_def& where,
         {
             const int aux = arrs[m][i];
             if ( _cloud_helper(func, where + Compass[aux],
-                               pow, spread_rate, ctype, whose, killer))
+                               pow, spread_rate, ctype, whose, killer, colour,
+                               name, tile))
             {
                 number--;
                 good_squares++;
@@ -729,28 +740,39 @@ void apply_area_cloud( cloud_func func, const coord_def& where,
         number -= spread;
         good_squares--;
         apply_area_cloud(func, where + Compass[j], pow, spread, ctype, whose,
-                         killer, spread_rate);
+                         killer, spread_rate, colour, name, tile);
     }
 }
 
 // Select a spell direction and fill dist and pbolt appropriately.
 // Return false if the user canceled, true otherwise.
+// FIXME: this should accept a direction_chooser_args directly rather
+// than move the arguments into one.
 bool spell_direction( dist &spelld, bolt &pbolt,
-                      targetting_type restrict, targ_mode_type mode,
+                      targeting_type restrict, targ_mode_type mode,
                       int range,
                       bool needs_path, bool may_target_monster,
-                      bool may_target_self, const char *prompt,
-                      bool cancel_at_self )
+                      bool may_target_self, const char *target_prefix,
+                      const char* top_prompt, bool cancel_at_self )
 {
-    if (restrict != DIR_DIR)
-        message_current_target();
-
     if (range < 1)
         range = (pbolt.range < 1) ? LOS_RADIUS : pbolt.range;
 
-    direction( spelld, restrict, mode, range, false, needs_path,
-               may_target_monster, may_target_self, prompt, NULL,
-               cancel_at_self );
+    direction_chooser_args args;
+    args.restricts = restrict;
+    args.mode = mode;
+    args.range = range;
+    args.just_looking = false;
+    args.needs_path = needs_path;
+    args.may_target_monster = may_target_monster;
+    args.may_target_self = may_target_self;
+    args.target_prefix = target_prefix;
+    if (top_prompt)
+        args.top_prompt = top_prompt;
+    args.behaviour = NULL;
+    args.cancel_at_self = cancel_at_self;
+
+    direction(spelld, args);
 
     if (!spelld.isValid)
     {
@@ -893,11 +915,13 @@ bool is_valid_spell(spell_type spell)
 static bool _cloud_helper(cloud_func func, const coord_def& where,
                           int pow, int spread_rate,
                           cloud_type ctype, kill_category whose,
-                          killer_type killer)
+                          killer_type killer, int colour, std::string name,
+                          std::string tile)
 {
     if (!feat_is_solid(grd(where)) && env.cgrid(where) == EMPTY_CLOUD)
     {
-        func(where, pow, spread_rate, ctype, whose, killer);
+        func(where, pow, spread_rate, ctype, whose, killer, colour, name,
+             tile);
         return (true);
     }
 
@@ -992,6 +1016,8 @@ spell_type zap_type_to_spell(zap_type zap)
         return(SPELL_BOLT_OF_FIRE);
     case ZAP_COLD:
         return(SPELL_BOLT_OF_COLD);
+    case ZAP_PRIMAL_WAVE:
+        return(SPELL_PRIMAL_WAVE);
     case ZAP_CONFUSION:
         return(SPELL_CONFUSE);
     case ZAP_INVISIBILITY:
@@ -1017,3 +1043,190 @@ spell_type zap_type_to_spell(zap_type zap)
     }
     return SPELL_NO_SPELL;
 }
+
+bool spell_is_useful(spell_type spell)
+{
+    if (you_cannot_memorise(spell) || god_hates_spell(spell, you.religion))
+        return (false);
+    if (you.duration[DUR_CONF] > 0)
+        return (false);
+
+    // due to the way this function is used, you should generally try to be
+    // fairly specific about the circumstances in which a spell is "useful".
+    switch (spell)
+    {
+    case SPELL_SWIFTNESS:
+        // looking at player_movement_speed, this should be correct ~DMB
+        if (player_movement_speed() > 6
+            && you.duration[DUR_CONTROLLED_FLIGHT] > 0
+            && you.duration[DUR_SWIFTNESS]  < 1)
+            return (true);
+        break;
+    case SPELL_CONTROL_TELEPORT:
+        if (you.duration[DUR_TELEPORT] > 0
+            && you.duration[DUR_CONTROL_TELEPORT] < 1)
+            return (true);
+        break;
+    case SPELL_STONESKIN:
+        if (you.duration[DUR_TRANSFORMATION] > 0
+            && you.attribute[ATTR_TRANSFORMATION] == TRAN_STATUE
+            && you.duration[DUR_STONESKIN] < 1)
+            return (true);
+        break;
+    case SPELL_OZOCUBUS_ARMOUR:
+        if (you.duration[DUR_TRANSFORMATION] > 0
+            && you.attribute[ATTR_TRANSFORMATION] == TRAN_ICE_BEAST
+            && you.duration[DUR_ICY_ARMOUR] < 1)
+            return (true);
+        break;
+    default: // quash unhandled constants warnings
+        break;
+    }
+
+    return (false);
+}
+
+// This function attempts to determine if 'spell' is useless to
+// the player. if 'transient' is true, then it will include checks
+// for volitile or temporary states (such as status effects, mana, etc.)
+//
+// its notably used by 'spell_highlight_by_utility'
+bool spell_is_useless(spell_type spell, bool transient)
+{
+    if (you_cannot_memorise(spell))
+        return (true);
+    if(transient)
+    {
+        if(you.duration[DUR_CONF] > 0
+          || (spell_mana(spell) > you.magic_points)
+          || spell_no_hostile_in_range(spell, get_dist_to_nearest_monster()))
+            return (true);
+    }
+
+    switch(spell)
+    {
+    case SPELL_BLINK:
+    case SPELL_CONTROLLED_BLINK:
+    case SPELL_TELEPORT_SELF:
+        // TODO: Its not very well behaved to do this manually, but...
+        // FIXME: somehow its not reliably realising when an amulet is
+        // IDed, and thus fails to flag TP as useless...
+        if (item_blocks_teleport(false, false) )
+            return true;
+        break;
+    case SPELL_SWIFTNESS:
+        // looking at player_movement_speed, this should be correct ~DMB
+        if(player_movement_speed() <= 6)
+            return (true);
+        break;
+    case SPELL_LEVITATION:
+    case SPELL_FLY:
+        if (you.mutation[MUT_BIG_WINGS] >= 1
+            || (you.species == SP_KENKU && you.experience_level >= 5))
+        {
+            return (true);
+        }
+        if (transient && you.duration[DUR_LEVITATION] > 0)
+            return (true);
+        break;
+    case SPELL_REGENERATION:
+        if (you.species == SP_DEEP_DWARF)
+            return (true);
+        break;
+    case SPELL_INVISIBILITY:
+        if (transient
+           && (you.duration[DUR_INVIS] > 0
+              || you.backlit() ) )
+            return (true);
+        break;
+    case SPELL_CONTROL_TELEPORT:
+        if (transient && you.duration[DUR_CONTROL_TELEPORT] > 0)
+            return (true);
+        break;
+    default:
+        break; // quash unhandled constants warnings
+    }
+
+    return (false);
+}
+
+
+// This function takes a spell, and determines what color it should be highlighted with
+// You shouldn't have to touch this unless you want to add new highlighting options.
+// as you can see, the functions it uses to determine highlights are:
+//       spell_is_useful(spell)
+//       spell_is_useless(spell, transient)
+//       god_likes_spell(spell, god)
+//       god_hates_spell(spell, god)
+int spell_highlight_by_utility(spell_type spell, int default_color, bool transient)
+{
+    // If your god hates the spell, that overrides all other concerns
+    if (god_hates_spell(spell, you.religion))
+        return (COL_FORBIDDEN);
+
+    if (god_likes_spell(spell, you.religion))
+        default_color = COL_FAVORED;
+
+    if (spell_is_useless(spell, transient))
+        default_color = COL_USELESS;
+
+    // Specific utility should override general uselessness
+    // Note: its not an issue atm, but should undead-incompatible
+    // spells be added to 'spell_is_useful()' this will not play
+    // nicely. ~ DMB
+    if (spell_is_useful(spell))
+        default_color = COL_USEFUL;
+
+    return (default_color);
+}
+
+bool spell_no_hostile_in_range(spell_type spell, int minRange)
+{
+    if (minRange < 0)
+        return (false);
+
+    bool bonus = 0;
+    switch (spell)
+    {
+    // These don't target monsters.
+    case SPELL_APPORTATION:
+    case SPELL_PROJECTED_NOISE:
+    case SPELL_CONJURE_FLAME:
+    case SPELL_DIG:
+    case SPELL_PASSWALL:
+
+    // Airstrike has LOS_RANGE and can go through glass walls.
+    case SPELL_AIRSTRIKE:
+
+    // These bounce and may be aimed elsewhere to bounce at monsters
+    // outside range (I guess).
+    case SPELL_SHOCK:
+    case SPELL_LIGHTNING_BOLT:
+        return (false);
+
+    case SPELL_EVAPORATE:
+    case SPELL_MEPHITIC_CLOUD:
+    case SPELL_FIREBALL:
+    case SPELL_FREEZING_CLOUD:
+    case SPELL_POISONOUS_CLOUD:
+        // Increase range by one due to cloud radius.
+        bonus = 1;
+        break;
+    default:
+        break;
+    }
+
+    // The healing spells.
+    if (testbits(get_spell_flags(spell), SPFLAG_HELPFUL))
+        return (false);
+
+    const int range = calc_spell_range(spell);
+    if (range < 0)
+        return (false);
+
+    if (range + bonus < minRange)
+        return (true);
+
+    return (false);
+}
+

@@ -53,6 +53,7 @@ struct show_type
     operator bool() const { return (cls != SH_NOTHING); }
 
     bool operator < (const show_type &other) const;
+    bool is_cleanable_monster() const;
 };
 
 struct show_info
@@ -83,7 +84,7 @@ public:
 };
 
 // Convert a show object as in env.show to one to be stored in
-// env.map_knowledge (dropping feature colour mainly).
-show_type to_knowledge(show_type obj, bool emph);
+// env.map_knowledge (re-setting feature colour mainly).
+show_type to_knowledge(show_type obj);
 
 #endif

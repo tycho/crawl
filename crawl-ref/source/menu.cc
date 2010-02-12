@@ -25,6 +25,9 @@
  #include "newgame.h"
  #include "terrain.h"
  #include "tiles.h"
+ #include "tiledef-dngn.h"
+ #include "tiledef-main.h"
+ #include "tiledef-player.h"
  #include "travel.h"
 #endif
 
@@ -303,6 +306,9 @@ std::vector<MenuEntry *> Menu::show(bool reuse_selections)
         pagesize = max_pagesize;
 #endif
 
+    if (is_set(MF_START_AT_END))
+        first_entry = std::max((int)items.size() - pagesize, 0);
+
     do_menu();
 
     return (sel);
@@ -437,7 +443,7 @@ bool Menu::process_key( int keyin )
         textcolor(WHITE);
         cprintf("Select what? (regex) ");
         textcolor(LIGHTGREY);
-        bool validline = !cancelable_get_line(linebuf, sizeof linebuf, 80);
+        bool validline = !cancelable_get_line(linebuf, sizeof linebuf);
         if (validline && linebuf[0])
         {
             text_pattern tpat(linebuf, true);
@@ -1716,12 +1722,15 @@ formatted_scroller::formatted_scroller(int _flags, const std::string& s) :
     add_text(s);
 }
 
-void formatted_scroller::add_text(const std::string& s)
+void formatted_scroller::add_text(const std::string& s, bool new_line)
 {
     std::vector<formatted_string> parts;
     formatted_string::parse_string_to_multiple(s, parts);
     for (unsigned int i = 0; i < parts.size(); ++i)
         add_item_formatted_string(parts[i]);
+
+    if (new_line)
+        add_item_formatted_string(formatted_string::parse_string(EOL));
 }
 
 void formatted_scroller::add_item_formatted_string(const formatted_string& fs,
@@ -1881,31 +1890,6 @@ std::string get_linebreak_string(const std::string& s, int maxcol)
     std::string r = s;
     linebreak_string2(r, maxcol);
     return r;
-}
-
-// Takes a (possibly tagged) string, breaks it into lines and
-// prints it into the given message channel.
-void print_formatted_paragraph(std::string &s, msg_channel_type channel)
-{
-    int maxcol = get_number_of_cols();
-    if (Options.delay_message_clear)
-        --maxcol;
-
-    linebreak_string2(s,maxcol);
-    std::string text;
-
-    size_t loc = 0, oldloc = 0;
-    while ( loc < s.size() )
-    {
-        if (s[loc] == '\n')
-        {
-            text = s.substr(oldloc, loc-oldloc);
-            formatted_message_history( text, channel );
-            oldloc = ++loc;
-        }
-        loc++;
-    }
-    formatted_message_history( s.substr(oldloc, loc-oldloc), channel );
 }
 
 bool formatted_scroller::jump_to( int i )

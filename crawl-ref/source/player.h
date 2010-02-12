@@ -9,22 +9,22 @@
 #define PLAYER_H
 
 #include "actor.h"
+#include "quiver.h"
 #include "itemprop-enum.h"
 #include "species.h"
 
 #include <vector>
+#include <stdint.h>
 
 #ifdef USE_TILE
-// This used to be in tiles.h. (jpeg)
-#include "tiledef-main.h"
-#include "tiledef-dngn.h"
-#include "tiledef-player.h"
-
 struct dolls_data
 {
-    dolls_data() { memset(parts, 0, sizeof(parts)); }
+    dolls_data();
+    dolls_data(const dolls_data& orig);
+    const dolls_data& operator=(const dolls_data& other);
+    ~dolls_data();
 
-    int parts[TILEP_PART_MAX];
+    int *parts;
 };
 #endif
 
@@ -55,21 +55,16 @@ public:
 
   unsigned short unrand_reacts;
 
-  double elapsed_time;        // total amount of elapsed time in the game
-  // This is NOT a fraction; double is merely used as a portable long long here
-
-  unsigned char synch_time;   // amount to wait before calling handle_time()
+  long elapsed_time;        // total amount of elapsed time in the game
 
   int disease;
 
   char max_level;
 
-  coord_def youpos;
-
   coord_def prev_move;
 
   int hunger;
-  FixedVector<char, NUM_EQUIP> equip;
+  FixedVector<signed char, NUM_EQUIP> equip;
 
   int hp;
   int hp_max;
@@ -111,6 +106,7 @@ public:
   bool redraw_evasion;
 
   unsigned char flash_colour;
+  unsigned char mold_colour;
 
   unsigned char hit_points_regeneration;
   unsigned char magic_points_regeneration;
@@ -136,7 +132,7 @@ public:
 
   unsigned short pet_target;
 
-  int your_level; // offset by one (-1 == 0, 0 == 1, etc.) for display
+  int absdepth0; // offset by one (-1 == 0, 0 == 1, etc.) for display
 
   // durational things
   FixedVector<int, NUM_DURATIONS> duration;
@@ -146,7 +142,7 @@ public:
   int berserk_penalty;                // penalty for moving while berserk
 
   FixedVector<unsigned long, NUM_ATTRIBUTES> attribute;
-  FixedVector<unsigned char, NUM_QUIVER> quiver; // default items for quiver
+  FixedVector<unsigned char, NUM_AMMO> quiver; // default items for quiver
   FixedVector<long, NUM_OBJECT_CLASSES> sacrifice_value;
 
   undead_state_type is_undead;
@@ -171,7 +167,7 @@ public:
 
   // NOTE: The kills member is a pointer to a KillMaster object,
   // rather than the object itself, so that we can get away with
-  // just a foward declare of the KillMaster class, rather than
+  // just a forward declare of the KillMaster class, rather than
   // having to #include kills.h and thus make every single .cc file
   // dependant on kills.h.  Having a pointer means that we have
   // to do our own implementations of copying the player object,
@@ -237,11 +233,13 @@ public:
 
   FixedVector<bool, NUM_FIXED_BOOKS> had_book;
   FixedVector<bool, NUM_SPELLS>      seen_spell;
+  FixedVector<uint32_t, NUM_WEAPONS> seen_weapon;
+  FixedVector<uint32_t, NUM_ARMOURS> seen_armour;
 
   unsigned char normal_vision;        // how far the species gets to see
   unsigned char current_vision;       // current sight radius (cells)
 
-  unsigned char hell_exit;            // which level plyr goes to on hell exit.
+  unsigned char hell_exit;            // which level player goes to on hell exit
 
   // This field is here even in non-WIZARD compiles, since the
   // player might have been playing previously under wiz mode.
@@ -318,6 +316,7 @@ public:
     void set_position(const coord_def &c);
     // Low-level move the player. Use this instead of changing pos directly.
     void moveto(const coord_def &c);
+    bool move_to_pos(const coord_def &c);
     // Move the player during an abyss shift.
     void shiftto(const coord_def &c);
     bool blink_to(const coord_def& c, bool quiet = false);
@@ -325,10 +324,12 @@ public:
     void reset_prev_move();
 
     bool in_water() const;
-    bool can_swim() const;
+    bool can_swim(bool permanently = false) const;
+    int visible_igrd(const coord_def&) const;
     bool is_levitating() const;
     bool cannot_speak() const;
     bool invisible() const;
+    bool misled() const;
     bool can_see_invisible() const;
     bool can_see_invisible(bool unid) const;
     bool visible_to(const actor *looker) const;
@@ -366,13 +367,17 @@ public:
     size_type transform_size(int psize = PSIZE_TORSO) const;
     std::string shout_verb() const;
 
-    item_def *slot_item(equipment_type eq);
+    item_def *slot_item(equipment_type eq, bool include_melded);
 
     // actor
     monster_type id() const;
     int mindex() const;
     int       get_experience_level() const;
     actor_type atype() const { return ACT_PLAYER; }
+    monsters* as_monster() { return NULL; }
+    player* as_player() { return this; }
+    const monsters* as_monster() const { return NULL; }
+    const player* as_player() const { return this; }
 
     god_type  deity() const;
     bool      alive() const;
@@ -385,7 +390,7 @@ public:
     bool      can_pass_through_feat(dungeon_feature_type grid) const;
     bool      is_habitable_feat(dungeon_feature_type actual_grid) const;
     size_type body_size(size_part_type psize = PSIZE_TORSO, bool base = false) const;
-    int       body_weight() const;
+    int       body_weight(bool base = false) const;
     int       total_weight() const;
     int       damage_brand(int which_attack = -1);
     int       damage_type(int which_attack = -1);
@@ -416,8 +421,8 @@ public:
 
     void attacking(actor *other);
     bool can_go_berserk() const;
-    bool can_go_berserk(bool verbose) const;
-    void go_berserk(bool intentional);
+    bool can_go_berserk(bool intentional, bool potion = false) const;
+    void go_berserk(bool intentional, bool potion = false);
     bool berserk() const;
     bool can_mutate() const;
     bool can_safely_mutate() const;
@@ -466,6 +471,7 @@ public:
     int res_poison() const;
     int res_rotting() const;
     int res_asphyx() const;
+    int res_water_drowning() const;
     int res_sticky_flame() const;
     int res_holy_energy(const actor *) const;
     int res_negative_energy() const;
@@ -489,7 +495,7 @@ public:
 
     bool asleep() const;
     void hibernate(int power = 0);
-    void put_to_sleep(int power = 0);
+    void put_to_sleep(actor *, int power = 0);
     void awake();
     void check_awaken(int disturbance);
 
@@ -514,6 +520,10 @@ public:
     int  skill(skill_type skill, bool skill_bump = false) const;
 
     bool do_shaft();
+
+    void apply_location_effects(const coord_def &oldpos,
+                                killer_type killer = KILL_NONE,
+                                int killernum = -1);
 
     ////////////////////////////////////////////////////////////////
 
@@ -541,10 +551,7 @@ public:
     void set_duration(duration_type dur, int turns, int cap = 0,
                       const char *msg = NULL);
 
-    // How large can the experience pool grow without loss?
-    int exp_pool_cutoff() const;
-    // Step down experience above cutoff.
-    void step_down_exp_pool();
+
 
 protected:
     void _removed_beholder();
@@ -591,9 +598,8 @@ bool player_can_hit_monster(const monsters *mon);
 
 bool player_is_shapechanged(void);
 
-bool is_light_armour( const item_def &item );
-
-bool player_light_armour(bool with_skill = false);
+bool is_effectively_light_armour(const item_def *item);
+bool player_effectively_in_light_armour();
 
 bool player_under_penance(void);
 
@@ -608,6 +614,9 @@ int check_stealth(void);
 
 int player_energy(void);
 
+int player_adjusted_shield_evasion_penalty(int scale);
+int player_adjusted_body_armour_evasion_penalty(int scale);
+int player_armour_shield_spell_penalty();
 int player_evasion(ev_ignore_type evit = EV_IGNORE_NONE);
 
 int player_movement_speed(void);
@@ -671,6 +680,7 @@ int player_spec_poison(void);
 int player_spec_summ(void);
 
 int player_speed(void);
+int player_ponderousness();
 
 int player_spell_levels(void);
 
@@ -766,7 +776,7 @@ void dec_napalm_player(int delay);
 bool slow_player(int turns);
 void dec_slow_player(int delay);
 
-void haste_player(int turns);
+bool haste_player(int turns);
 void dec_haste_player(int delay);
 
 void dec_disease_player(int delay);

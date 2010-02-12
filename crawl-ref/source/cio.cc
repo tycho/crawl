@@ -9,6 +9,7 @@
 #include "cio.h"
 #include "externs.h"
 #include "options.h"
+#include "libutil.h"
 #include "macro.h"
 #include "message.h"
 #include "state.h"
@@ -206,9 +207,9 @@ void cursorxy(int x, int y)
     if (Options.use_fake_cursor)
         fakecursorxy(x, y);
     else
-        cgotoxy(x, y, GOTO_DNGN);
+        cgotoxy(x, y, GOTO_CRT);
 #else
-    cgotoxy(x, y, GOTO_DNGN);
+    cgotoxy(x, y, GOTO_CRT);
 #endif
 }
 
@@ -296,12 +297,12 @@ int wrapcprintf( int wrapcol, const char *s, ... )
     return (olen);
 }
 
-int cancelable_get_line( char *buf, int len, int maxcol,
-                         input_history *mh, int (*keyproc)(int &ch) )
+int cancelable_get_line(char *buf, int len, input_history *mh,
+                        int (*keyproc)(int &ch))
 {
     flush_prev_message();
 
-    line_reader reader(buf, len, maxcol);
+    line_reader reader(buf, len, get_number_of_cols());
     reader.set_input_history(mh);
     reader.set_keyproc(keyproc);
 
@@ -372,9 +373,9 @@ void input_history::clear()
 // line_reader
 
 line_reader::line_reader(char *buf, size_t sz, int wrap)
-    : buffer(buf), bufsz(sz), history(NULL), start_x(0),
-      start_y(0), keyfn(NULL), wrapcol(wrap), cur(NULL),
-      length(0), pos(-1)
+    : buffer(buf), bufsz(sz), history(NULL), region(GOTO_CRT),
+      start(coord_def(0,0)), keyfn(NULL), wrapcol(wrap),
+      cur(NULL), length(0), pos(-1)
 {
 }
 
@@ -399,9 +400,24 @@ void line_reader::set_keyproc(keyproc fn)
 
 void line_reader::cursorto(int ncx)
 {
-    int x = (start_x + ncx - 1) % wrapcol + 1;
-    int y = start_y + (start_x + ncx - 1) / wrapcol;
-    ::cgotoxy(x, y, GOTO_LAST);
+    int x = (start.x + ncx - 1) % wrapcol + 1;
+    int y = start.y + (start.x + ncx - 1) / wrapcol;
+    int diff = y - cgetsize(region).y;
+    if (diff > 0)
+    {
+        // There's no space left in the region, so we scroll it.
+        // XXX: cscroll only implemented for GOTO_MSG.
+        // XXX: wrapcprintf works in GOTO_SCREEN; in particular
+        //      it wraps to the screen's first column, so this
+        //      won't work for regions that don't start at the
+        //      left edge.
+        cscroll(diff, region);
+        start.y -= diff;
+        y -= diff;
+        cgotoxy(start.x, start.y, region);
+        wrapcprintf(wrapcol, "%s", buffer);
+    }
+    cgotoxy(x, y, region);
 }
 
 int line_reader::read_line(bool clear_previous)
@@ -414,8 +430,8 @@ int line_reader::read_line(bool clear_previous)
     if (clear_previous)
         *buffer = 0;
 
-    start_x = wherex();
-    start_y = wherey();
+    region = get_cursor_region();
+    start = cgetpos(region);
 
     length = strlen(buffer);
 
@@ -479,7 +495,7 @@ void line_reader::backspace()
         char *c = cur;
         while (*c)
         {
-            *c = c[1];
+            *c = *(c+1);
             c++;
         }
         --pos;
@@ -549,7 +565,7 @@ int line_reader::process_key(int ch)
         {
             int olen = length;
             length = text->length();
-            if (length >= (int) bufsz)
+            if (length >= static_cast<int>(bufsz))
                 length = bufsz - 1;
             memcpy(buffer, text->c_str(), length);
             buffer[length] = 0;
@@ -644,7 +660,7 @@ int line_reader::process_key(int ch)
     case CK_MOUSE_CLICK:
         return (-1);
     default:
-        if (isprint(ch) && length < (int) bufsz - 1)
+        if (isprint(ch) && length < static_cast<int>(bufsz) - 1)
         {
             if (pos < length)
             {
@@ -655,15 +671,13 @@ int line_reader::process_key(int ch)
                     c--;
                 }
             }
-            *cur++ = (char) ch;
+            *cur++ = static_cast<char>(ch);
             ++length;
+            buffer[length] = 0;
             ++pos;
             putch(ch);
             if (pos < length)
-            {
-                buffer[length] = 0;
-                wrapcprintf( wrapcol, "%s", cur );
-            }
+                wrapcprintf(wrapcol, "%s", cur);
             cursorto(pos);
         }
         break;

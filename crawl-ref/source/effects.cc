@@ -27,6 +27,7 @@
 #include "coordit.h"
 #include "decks.h"
 #include "delay.h"
+#include "dgn-shoals.h"
 #include "dungeon.h"
 #include "directn.h"
 #include "dgnevent.h"
@@ -69,6 +70,7 @@
 #include "stuff.h"
 #include "terrain.h"
 #include "traps.h"
+#include "travel.h"
 #include "tutorial.h"
 #include "view.h"
 #include "shout.h"
@@ -347,7 +349,7 @@ int torment(int caster, const coord_def& where)
         attacker = &menv[caster];
     else if (caster < 0 && you.turn_is_over && where == you.pos()
              && !(crawl_state.is_god_acting()
-                  &&crawl_state.is_god_retribution()))
+                  && crawl_state.is_god_retribution()))
     {
         // Maybe monsters should still consider it your fault if it's
         // caused by divine retribution?
@@ -390,7 +392,7 @@ void immolation(int pow, int caster, coord_def where, bool known,
     }
 
     beam.flavour       = BEAM_FIRE;
-    beam.type          = dchar_glyph(DCHAR_FIRED_BURST);
+    beam.glyph         = dchar_glyph(DCHAR_FIRED_BURST);
     beam.damage        = dice_def(3, pow);
     beam.target        = where;
     beam.name          = "fiery explosion";
@@ -449,7 +451,7 @@ void conduct_electricity(coord_def where, actor *attacker)
     bolt beam;
 
     beam.flavour       = BEAM_ELECTRICITY;
-    beam.type          = dchar_glyph(DCHAR_FIRED_BURST);
+    beam.glyph         = dchar_glyph(DCHAR_FIRED_BURST);
     beam.damage        = dice_def(1, 15);
     beam.target        = where;
     beam.name          = "electric current";
@@ -498,7 +500,7 @@ void cleansing_flame(int pow, int caster, coord_def where,
     }
 
     beam.flavour      = BEAM_HOLY;
-    beam.type         = dchar_glyph(DCHAR_FIRED_BURST);
+    beam.glyph        = dchar_glyph(DCHAR_FIRED_BURST);
     beam.damage       = dice_def(2, pow);
     beam.target       = you.pos();
     beam.name         = "golden flame";
@@ -673,7 +675,7 @@ void banished(dungeon_feature_type gate_type, const std::string &who)
         take_note(Note(NOTE_MESSAGE, 0, 0, what.c_str()), true);
     }
 
-    down_stairs(you.your_level, gate_type, you.entry_cause);  // heh heh
+    down_stairs(you.absdepth0, gate_type, you.entry_cause);  // heh heh
 }
 
 bool forget_spell(void)
@@ -897,9 +899,7 @@ void direct_effect(monsters *source, spell_type spell,
         pbolt.flavour    = BEAM_MISSILE;
         pbolt.aux_source = "by the air";
 
-        damage_taken     = 8 + random2(random2(4)
-                                       + (random2(12 * source->hit_dice) / 6)
-                                       + (random2(12 * source->hit_dice) / 7));
+        damage_taken     = 10 + 2 * source->hit_dice;
 
         // Apply "bonus" against flying/levitating characters after AC
         // has been checked.
@@ -910,7 +910,8 @@ void direct_effect(monsters *source, spell_type spell,
         }
 
         // Previous method of damage calculation (in line with player
-        // airstrike) favoured high-AC player characters.
+        // airstrike) had absurd variance.
+        damage_taken = random2avg(damage_taken, 3);
         damage_taken -= random2(defender->armour_class());
         break;
 
@@ -935,6 +936,13 @@ void direct_effect(monsters *source, spell_type spell,
         else
             mpr("You sense an evil presence.");
         mons_cast_haunt(source);
+        break;
+
+    case SPELL_MISLEAD:
+        if (!def)
+            mons_cast_mislead(source);
+        else
+            defender->confuse(source, source->hit_dice * 12);
         break;
 
     default:
@@ -1011,13 +1019,13 @@ void random_uselessness(int scroll_slot)
 
     case 6:
         mpr("You hear the tinkle of a tiny bell.", MSGCH_SOUND);
-        noisy(10, you.pos());
+        noisy(2, you.pos());
         cast_summon_butterflies(100);
         break;
 
     case 7:
         mprf(MSGCH_SOUND, "You hear %s.", weird_sound().c_str());
-        noisy(10, you.pos());
+        noisy(2, you.pos());
         break;
     }
 }
@@ -1267,20 +1275,18 @@ static bool _try_give_plain_armour(item_def &arm)
         // Consider shield slot filled in some cases.
         if (armour_slots[i] == EQ_SHIELD)
         {
-            if (you.equip[EQ_WEAPON] == -1)
+            const item_def* weapon = you.weapon();
+
+            // Unarmed fighters don't need shields.
+            if (!weapon && you.skills[SK_UNARMED_COMBAT] > random2(8))
+                continue;
+
+            // Two-handed weapons and ranged weapons conflict with shields.
+            if (weapon
+                && (hands_reqd(*weapon, you.body_size()) == HANDS_TWO
+                    || is_range_weapon(*weapon)))
             {
-                if (you.skills[SK_UNARMED_COMBAT] > random2(8))
-                    continue;
-            }
-            else
-            {
-                const item_def weapon = you.inv[you.equip[EQ_WEAPON]];
-                const hands_reqd_type hand = hands_reqd(weapon, you.body_size());
-                if (hand == HANDS_TWO || item_is_rod(weapon)
-                    || is_range_weapon(weapon))
-                {
-                    continue;
-                }
+                continue;
             }
         }
 
@@ -1335,7 +1341,11 @@ void _acquirement_determine_food(int& type_wanted, int& quantity,
         // but it's easier to just give them a potion of blood
         // class type is set elsewhere
         type_wanted = POT_BLOOD;
-        quantity = 2 + random2(4);
+    }
+    else if (you.religion == GOD_FEDHAS)
+    {
+        // Fedhas worshippers get fruit to use for growth and evolution
+        type_wanted = one_chance_in(3) ? FOOD_BANANA : FOOD_ORANGE;
     }
     else
     {
@@ -1360,21 +1370,31 @@ void _acquirement_determine_food(int& type_wanted, int& quantity,
 
     quantity = 3 + random2(5);
 
+    if (type_wanted == FOOD_BANANA || type_wanted == FOOD_ORANGE)
+    {
+        quantity = 8 + random2avg(15, 2);
+    }
     // giving more of the lower food value items
-    if (type_wanted == FOOD_HONEYCOMB || type_wanted == FOOD_CHUNK)
+    else if (type_wanted == FOOD_HONEYCOMB || type_wanted == FOOD_CHUNK)
     {
         quantity += random2avg(10, 2);
     }
+    else if (type_wanted == POT_BLOOD)
+    {
+    // this was above in the vampire block, but gets overwritten by line 1371
+    // so moving here {due}
+        quantity = 2 + random2(4);
+    }
 }
 
-static int _acquirement_weapon_subtype()
+static int _acquirement_weapon_subtype(bool divine)
 {
     // Asking for a weapon is biased towards your skills.
     // First pick a skill, weighting towards those you have.
     int count = 0;
     int skill = SK_FIGHTING;
 
-    for (int i = SK_SHORT_BLADES; i <= SK_DARTS; i++)
+    for (int i = SK_SHORT_BLADES; i <= SK_CROSSBOWS; i++)
     {
         if (is_invalid_skill(i))
             continue;
@@ -1406,15 +1426,36 @@ static int _acquirement_weapon_subtype()
     {
         item_considered.sub_type = i;
 
+        // Can't get blessed blades through acquirement, only from TSO
+        if (is_blessed(item_considered)) {
+            continue;
+        }
+
         int acqweight = property(item_considered, PWPN_ACQ_WEIGHT);
 
         if (!acqweight)
             continue;
 
-        if (hands_reqd(item_considered, you.body_size()) >= HANDS_TWO) // HANDS_DOUBLE > HANDS_TWO
+        // HANDS_DOUBLE > HANDS_TWO
+        const bool two_handed = hands_reqd(item_considered, you.body_size()) >= HANDS_TWO;
+
+        // For non-Trog/Okawaru acquirements, give a boost to high-end items.
+        if (!divine && !is_range_weapon(item_considered))
+        {
+            int damage = property(item_considered, PWPN_DAMAGE);
+            if (!two_handed)
+                damage = damage * 3 / 2;
+            damage *= damage * damage;
+            acqweight *= damage / property(item_considered, PWPN_SPEED);
+        }
+
+        if (two_handed)
             acqweight = acqweight * dont_shield / want_shield;
         else
             acqweight = acqweight * want_shield / dont_shield;
+
+        if (!you.seen_weapon[i])
+            acqweight *= 5; // strong emphasis on type variety, brands go only second
 
         int wskill = range_skill(OBJ_WEAPONS, i);
         if (wskill == SK_THROWING)
@@ -1445,7 +1486,7 @@ static missile_type _acquirement_missile_subtype()
     int count = 0;
     int skill = SK_THROWING;
 
-    for (int i = SK_SLINGS; i <= SK_DARTS; i++)
+    for (int i = SK_SLINGS; i <= SK_THROWING; i++)
     {
         if (you.skills[i])
         {
@@ -1459,19 +1500,11 @@ static missile_type _acquirement_missile_subtype()
 
     switch (skill)
     {
-    case SK_SLINGS: result = MI_STONE; break;
-    case SK_BOWS:   result = MI_ARROW; break;
+    case SK_SLINGS:    result = MI_SLING_BULLET; break;
+    case SK_BOWS:      result = MI_ARROW; break;
+    case SK_CROSSBOWS: result = MI_BOLT; break;
 
-    case SK_CROSSBOWS:
-        // Assuming that crossbow in inventory means that they
-        // want bolts for it (not darts for a hand crossbow)...
-        // perhaps we should check for both and compare ammo
-        // amounts on hand?
-        result = (_have_item_with_types(OBJ_WEAPONS, WPN_CROSSBOW) ? MI_BOLT
-                                                                   : MI_DART);
-        break;
-
-    case SK_DARTS:
+    case SK_THROWING:
         // Assuming that blowgun in inventory means that they
         // may want needles for it (but darts might also be
         // wanted).  Maybe expand this... see above comment.
@@ -1672,6 +1705,7 @@ static int _find_acquirement_subtype(object_class_type class_wanted,
 
     do
     {
+        const bool divine = (agent == GOD_OKAWARU || agent == GOD_XOM || agent == GOD_TROG);
         switch (class_wanted)
         {
         case OBJ_FOOD:
@@ -1679,14 +1713,9 @@ static int _find_acquirement_subtype(object_class_type class_wanted,
             _acquirement_determine_food(type_wanted, quantity, already_has);
             break;
 
-        case OBJ_WEAPONS:  type_wanted = _acquirement_weapon_subtype();  break;
-        case OBJ_MISSILES: type_wanted = _acquirement_missile_subtype(); break;
-        case OBJ_ARMOUR:
-        {
-            const bool divine = (agent == GOD_OKAWARU || agent == GOD_XOM);
-            type_wanted = _acquirement_armour_subtype(divine);
-            break;
-        }
+        case OBJ_WEAPONS:    type_wanted = _acquirement_weapon_subtype(divine);  break;
+        case OBJ_MISSILES:   type_wanted = _acquirement_missile_subtype(); break;
+        case OBJ_ARMOUR:     type_wanted = _acquirement_armour_subtype(divine); break;
         case OBJ_MISCELLANY: type_wanted = _acquirement_misc_subtype(); break;
         case OBJ_WANDS:      type_wanted = _acquirement_wand_subtype(); break;
         case OBJ_STAVES:     type_wanted = _acquirement_staff_subtype(already_has);
@@ -1762,6 +1791,30 @@ static int _book_weight(book_type book)
     return (total_weight);
 }
 
+static bool _is_magic_skill(int skill)
+{
+    return (skill >= SK_SPELLCASTING && skill < SK_INVOCATIONS);
+}
+
+static bool _skill_useless_with_god(int skill)
+{
+    switch (you.religion)
+    {
+    case GOD_TROG:
+        return (_is_magic_skill(skill) || skill == SK_INVOCATIONS);
+    case GOD_ZIN:
+    case GOD_SHINING_ONE:
+    case GOD_ELYVILON:
+    case GOD_FEDHAS:
+        return (skill == SK_NECROMANCY);
+    case GOD_XOM:
+    case GOD_NEMELEX_XOBEH:
+        return (skill == SK_INVOCATIONS);
+    default:
+        return (false);
+    }
+}
+
 static bool _do_book_acquirement(item_def &book, int agent)
 {
     // items() shouldn't make book a randart for acquirement items.
@@ -1813,7 +1866,7 @@ static bool _do_book_acquirement(item_def &book, int agent)
             if (i == SK_SPELLCASTING && weight >= 1)
                 weight--;
 
-            if (i >= SK_SPELLCASTING && i <= SK_POISON_MAGIC)
+            if (_is_magic_skill(i))
                 magic_weights += weight;
             else
                 other_weights += weight;
@@ -1912,7 +1965,7 @@ static bool _do_book_acquirement(item_def &book, int agent)
 
             int skill = you.skills[i];
 
-            if (skill == 27)
+            if (skill == 27 || you.species == SP_DEMIGOD && i == SK_INVOCATIONS)
             {
                 weights[i] = 0;
                 continue;
@@ -1928,9 +1981,14 @@ static bool _do_book_acquirement(item_def &book, int agent)
                 w += 5;
             }
 
+            // Greatly reduce the chances of getting a manual for a skill
+            // you couldn't use unless you switched your religion.
+            if (_skill_useless_with_god(i))
+                w /= 2;
+
             // If we don't have any magic skills, make non-magic skills
             // more likely.
-            if (!knows_magic && (i < SK_SPELLCASTING || i > SK_POISON_MAGIC))
+            if (!knows_magic && !_is_magic_skill(i))
                 w *= 2;
 
             weights[i] = w;
@@ -1946,8 +2004,8 @@ static bool _do_book_acquirement(item_def &book, int agent)
         // Set number of reads possible before it "crumbles to dust".
         book.plus2    = 3 + random2(15);
         break;
-    }
-    }
+    } // manuals
+    } // switch book choice
     return (true);
 }
 
@@ -1959,9 +2017,8 @@ static int _failed_acquirement(bool quiet)
 }
 
 int acquirement_create_item(object_class_type class_wanted,
-                            int agent,
-                            bool quiet,
-                            const coord_def &pos)
+                            int agent, bool quiet,
+                            const coord_def &pos, bool debug)
 {
     ASSERT(class_wanted != OBJ_RANDOM);
 
@@ -1987,6 +2044,18 @@ int acquirement_create_item(object_class_type class_wanted,
             continue;
 
         item_def &doodad(mitm[thing_created]);
+
+        // Try to not generate brands that were already seen, although unlike
+        // jewelry and books, this is not absolute.
+        while (!is_artefact(doodad)
+               && (doodad.base_type == OBJ_WEAPONS
+                     && you.seen_weapon[doodad.sub_type] & (1<<get_weapon_brand(doodad))
+                   || doodad.base_type == OBJ_ARMOUR
+                     && you.seen_armour[doodad.sub_type] & (1<<get_weapon_brand(doodad)))
+               && !one_chance_in(5))
+        {
+            reroll_brand(doodad, MAKE_GOOD_ITEM);
+        }
 
         // For plain armour, try to change the subtype to something
         // matching a currently unfilled equipment slot.
@@ -2124,10 +2193,7 @@ int acquirement_create_item(object_class_type class_wanted,
     // Easier to read this way.
     item_def& thing(mitm[thing_created]);
 
-    // Give some more gold.
-    if (class_wanted == OBJ_GOLD)
-        thing.quantity += 150;
-    else if (class_wanted == OBJ_WANDS)
+    if (class_wanted == OBJ_WANDS)
         thing.plus = std::max((int) thing.plus, 3 + random2(3));
     else if (quant > 1)
         thing.quantity = quant;
@@ -2145,7 +2211,10 @@ int acquirement_create_item(object_class_type class_wanted,
             destroy_item(thing, true);
             return _failed_acquirement(quiet);
         }
-        mark_had_book(thing);
+        // Don't mark books as seen if only generated for the
+        // acquirement statistics.
+        if (!debug)
+            mark_had_book(thing);
     }
     else if (thing.base_type == OBJ_JEWELLERY)
     {
@@ -2276,19 +2345,28 @@ int acquirement_create_item(object_class_type class_wanted,
     if (agent > GOD_NO_GOD && agent < NUM_GODS && agent == you.religion)
         thing.inscription = "god gift";
 
-    move_item_to_grid( &thing_created, pos );
-
-    // This should never actually be NON_ITEM because of the way
-    // move_item_to_grid works (doesn't create a new item ever),
-    // but we're checking it anyways. -- bwr
+    // Moving this above the move since it might not exist after falling.
     if (thing_created != NON_ITEM && !quiet)
         canned_msg(MSG_SOMETHING_APPEARS);
+
+    // If a god wants to give you something but the floor doesn't want it,
+    // it counts as a failed acquirement - no piety, etc cost.
+    if (feat_destroys_item(grd(pos), thing) && (agent > GOD_NO_GOD) &&
+        (agent < NUM_GODS))
+    {
+        if (agent == GOD_XOM)
+            simple_god_message(" snickers.", GOD_XOM);
+        else
+            return _failed_acquirement(quiet);
+    }
+
+    move_item_to_grid( &thing_created, pos );
 
     return (thing_created);
 }
 
 bool acquirement(object_class_type class_wanted, int agent,
-                 bool quiet, int* item_index)
+                 bool quiet, int* item_index, bool debug)
 {
     ASSERT(!crawl_state.arena);
 
@@ -2303,8 +2381,9 @@ bool acquirement(object_class_type class_wanted, int agent,
     {
         ASSERT(!quiet);
         mesclr();
-        mpr("[a] Weapon  [b] Armour  [c] Jewellery      [d] Book");
-        mpr("[e] Staff   [f] Wand    [g] Miscellaneous  [h] Food  [i] Gold");
+        mpr ("[a] Weapon  [b] Armour  [c] Jewellery      [d] Book");
+        mprf("[e] Staff   [f] Wand    [g] Miscellaneous  [h] %s [i] Gold",
+            (you.religion == GOD_FEDHAS ? "Fruit" : "Food "));
         mpr("What kind of item would you like to acquire? ", MSGCH_PROMPT);
 
         const int keyin = tolower( get_ch() );
@@ -2341,37 +2420,9 @@ bool acquirement(object_class_type class_wanted, int agent,
         }
     }
 
-    if (feat_destroys_items(grd(you.pos())))
-    {
-        // How sad (and stupid).
-        if (!silenced(you.pos()) && !quiet)
-            mprf(MSGCH_SOUND, feat_item_destruction_message(grd(you.pos())));
+    acquirement_create_item(class_wanted, agent, quiet, you.pos(), debug);
 
-        if (agent > GOD_NO_GOD && agent < NUM_GODS)
-        {
-            if (agent == GOD_XOM)
-                simple_god_message(" snickers.", GOD_XOM);
-            else
-            {
-                ASSERT(!"God gave gift item while player was on grid which "
-                        "destroys items.");
-                mprf(MSGCH_ERROR, "%s gave a god gift while you were on "
-                                  "terrain which destroys items.",
-                     god_name((god_type) agent).c_str());
-            }
-        }
-
-        *item_index = NON_ITEM;
-
-        // Well, the item may have fallen in the drink, but the intent is
-        // that acquirement happened. -- bwr
-        return (true);
-    }
-
-    *item_index =
-        acquirement_create_item(class_wanted, agent, quiet, you.pos());
-
-    return (*item_index != NON_ITEM);
+    return (true);
 }
 
 bool recharge_wand(int item_slot)
@@ -2461,7 +2512,7 @@ bool recharge_wand(int item_slot)
 
             if (wand.plus2 < MAX_ROD_CHARGE * ROD_CHARGE_MULT)
             {
-                wand.plus2 += ROD_CHARGE_MULT;
+                wand.plus2 += ROD_CHARGE_MULT * random_range(1,2);
 
                 if (wand.plus2 > MAX_ROD_CHARGE * ROD_CHARGE_MULT)
                     wand.plus2 = MAX_ROD_CHARGE * ROD_CHARGE_MULT;
@@ -2472,6 +2523,17 @@ bool recharge_wand(int item_slot)
             if (wand.plus < wand.plus2)
             {
                 wand.plus = wand.plus2;
+                work = true;
+            }
+
+            if (short(wand.props["rod_enchantment"]) < MAX_WPN_ENCHANT)
+            {
+                static_cast<short&>(wand.props["rod_enchantment"])
+                    += random_range(1,2);
+
+                if (short(wand.props["rod_enchantment"]) > MAX_WPN_ENCHANT)
+                    wand.props["rod_enchantment"] = short(MAX_WPN_ENCHANT);
+
                 work = true;
             }
 
@@ -2668,8 +2730,14 @@ void yell(bool force)
             }
         }
 
-        mpr("Gang up on whom?", MSGCH_PROMPT);
-        direction(targ, DIR_TARGET, TARG_HOSTILE, -1, false, false);
+        {
+            direction_chooser_args args;
+            args.restricts = DIR_TARGET;
+            args.mode = TARG_HOSTILE;
+            args.needs_path = false;
+            args.top_prompt = "Gang up on whom?";
+            direction(targ, args);
+        }
 
         if (targ.isCancel)
         {
@@ -2930,11 +2998,6 @@ static void _hell_effects()
     }
 }
 
-static bool _is_floor(const dungeon_feature_type feat)
-{
-    return (!feat_is_solid(feat) && !feat_destroys_items(feat));
-}
-
 // This function checks whether we can turn a wall into a floor space and
 // still keep a corridor-like environment. The wall in position x is a
 // a candidate for switching if it's flanked by floor grids to two sides
@@ -2956,8 +3019,8 @@ static bool _feat_is_flanked_by_walls(const coord_def &p)
             return (false);
 
     return (feat_is_wall(grd(adjs[0])) && feat_is_wall(grd(adjs[1]))
-               && _is_floor(grd(adjs[2])) && _is_floor(grd(adjs[3]))
-            || _is_floor(grd(adjs[0])) && _is_floor(grd(adjs[1]))
+               && feat_has_solid_floor(grd(adjs[2])) && feat_has_solid_floor(grd(adjs[3]))
+            || feat_has_solid_floor(grd(adjs[0])) && feat_has_solid_floor(grd(adjs[1]))
                && feat_is_wall(grd(adjs[2])) && feat_is_wall(grd(adjs[3])));
 }
 
@@ -3062,7 +3125,7 @@ static bool _deadend_check_floor(const coord_def &p)
                 continue;
 
             const coord_def a(p.x, p.y+2*i);
-            if (!in_bounds(a) || _is_floor(grd(a)))
+            if (!in_bounds(a) || feat_has_solid_floor(grd(a)))
                 continue;
 
             for (int j = -1; j <= 1; j++)
@@ -3075,7 +3138,7 @@ static bool _deadend_check_floor(const coord_def &p)
                     continue;
 
                 const coord_def c(p.x+j, p.y+i);
-                if (_is_floor(grd(c)) && !_is_floor(grd(b)))
+                if (feat_has_solid_floor(grd(c)) && !feat_has_solid_floor(grd(b)))
                     return (false);
             }
         }
@@ -3088,7 +3151,7 @@ static bool _deadend_check_floor(const coord_def &p)
                 continue;
 
             const coord_def a(p.x+2*i, p.y);
-            if (!in_bounds(a) || _is_floor(grd(a)))
+            if (!in_bounds(a) || feat_has_solid_floor(grd(a)))
                 continue;
 
             for (int j = -1; j <= 1; j++)
@@ -3101,7 +3164,7 @@ static bool _deadend_check_floor(const coord_def &p)
                     continue;
 
                 const coord_def c(p.x+i, p.y+j);
-                if (_is_floor(grd(c)) && !_is_floor(grd(b)))
+                if (feat_has_solid_floor(grd(c)) && !feat_has_solid_floor(grd(b)))
                     return (false);
             }
         }
@@ -3210,7 +3273,7 @@ void change_labyrinth(bool msg)
         // Use the adjacent floor grids as source and destination.
         coord_def src(c.x-1,c.y);
         coord_def dst(c.x+1,c.y);
-        if (!_is_floor(grd(src)) || !_is_floor(grd(dst)))
+        if (!feat_has_solid_floor(grd(src)) || !feat_has_solid_floor(grd(dst)))
         {
             src = coord_def(c.x, c.y-1);
             dst = coord_def(c.x, c.y+1);
@@ -3349,7 +3412,7 @@ void change_labyrinth(bool msg)
                 int floor_count = 0;
                 coord_def new_adj(p);
                 for (adjacent_iterator ai(c); ai; ++ai)
-                    if (_is_floor(grd(*ai)) && one_chance_in(++floor_count))
+                    if (feat_has_solid_floor(grd(*ai)) && one_chance_in(++floor_count))
                         new_adj = *ai;
 
                 if (new_adj != p && maybe_bloodify_square(new_adj))
@@ -3397,7 +3460,7 @@ void change_labyrinth(bool msg)
             if (!in_bounds(p))
                 continue;
 
-            if (_is_floor(grd(p)))
+            if (feat_has_solid_floor(grd(p)))
             {
                 // Once a valid grid is found, move all items from the
                 // stack onto it.
@@ -3674,15 +3737,35 @@ static void _rot_inventory_food(long time_delta)
     }
 }
 
-// Do various time related actions...
-// This function is called about every 20 turns.
-void handle_time(long time_delta)
+// Get around C++ dividing integers towards 0.
+static int _div(int num, int denom)
 {
+    div_t res = div(num, denom);
+    return (res.rem >= 0 ? res.quot : res.quot - 1);
+}
+
+// Do various time related actions...
+void handle_time()
+{
+    int base_time = you.elapsed_time % 200;
+    int old_time = base_time - you.time_taken;
+
+    // The checks below assume the function is called at least
+    // once every 50 elapsed time units.
+
+    // Every 5 turns, spawn random monsters.
+    if (_div(base_time, 50) > _div(old_time, 50))
+        spawn_random_monsters();
+
+    // Every 20 turns, a variety of other effects.
+    if (! (_div(base_time, 200) > _div(old_time, 200)))
+        return;
+
+    int time_delta = 200;
+
     // Update all of the corpses, food chunks, and potions of blood on
     // the floor.
     update_corpses(time_delta);
-
-    spawn_random_monsters();
 
     if (crawl_state.arena)
         return;
@@ -3815,7 +3898,7 @@ void handle_time(long time_delta)
                 bolt beam;
 
                 beam.flavour      = BEAM_RANDOM;
-                beam.type         = dchar_glyph(DCHAR_FIRED_BURST);
+                beam.glyph        = dchar_glyph(DCHAR_FIRED_BURST);
                 beam.damage       = dice_def(3, you.magic_contamination
                                              * (you.is_undead ? 4 : 2) / 4);
                 beam.target       = you.pos();
@@ -3925,25 +4008,21 @@ void handle_time(long time_delta)
     _rot_inventory_food(time_delta);
 
     // Exercise armour *xor* stealth skill: {dlb}
-    if (!player_light_armour(true))
+    if (one_chance_in(6) && you.check_train_armour())
     {
-        // lowered random roll from 7 to 6 -- bwross
-        if (random2(1000) > item_mass(you.inv[you.equip[EQ_BODY_ARMOUR]])
-            && one_chance_in(6))
-        {
-            exercise(SK_ARMOUR, 1);
-        }
+        // Armour trained in check_train_armour
     }
     // Exercise stealth skill:
     else if (you.burden_state == BS_UNENCUMBERED
              && !you.berserk()
              && !you.attribute[ATTR_SHADOWS])
     {
-        // Diminishing returns for stealth training by waiting.
-        if ((you.equip[EQ_BODY_ARMOUR] == -1
-            || you.equip[EQ_BODY_ARMOUR] != -1
-                && random2(item_mass(you.inv[you.equip[EQ_BODY_ARMOUR]])) < 100)
-            && you.skills[SK_STEALTH] <= 2 + random2(3) && one_chance_in(18))
+        const item_def *body_armour = you.slot_item(EQ_BODY_ARMOUR, false);
+        const int armour_mass = body_armour? item_mass(*body_armour) : 0;
+        if (!x_chance_in_y(armour_mass, 1000)
+            // Diminishing returns for stealth training by waiting.
+            && you.skills[SK_STEALTH] <= 2 + random2(3)
+            && one_chance_in(18))
         {
             exercise(SK_STEALTH, 1);
         }
@@ -4027,6 +4106,10 @@ static void _catchup_monster_moves(monsters *mon, int turns)
         return;
     }
 
+    // Don't shift giant spores since that would disrupt their trail.
+    if (mon->type == MONS_GIANT_SPORE)
+        return;
+
     // Let sleeping monsters lie.
     if (mon->asleep() || mon->paralysed())
         return;
@@ -4072,14 +4155,18 @@ static void _catchup_monster_moves(monsters *mon, int turns)
     }
 
     bool changed = 0;
-    for  (int i = 0; i < range/x; i++) {
+    for  (int i = 0; i < range/x; i++)
+    {
         if (mon->behaviour == BEH_SLEEP)
             break;
-        if (coinflip()) {
+
+        if (coinflip())
+        {
             changed = 1;
-            if (coinflip()) {
+            if (coinflip())
                 mon->behaviour = BEH_SLEEP;
-            } else {
+            else
+            {
                 mon->behaviour = BEH_WANDER;
                 mon->foe = MHITNOT;
                 mon->target = random_in_bounds();
@@ -4125,9 +4212,7 @@ static void _catchup_monster_moves(monsters *mon, int turns)
                 }
             }
 
-#if DEBUG_DIAGNOSTICS
-            mpr("backing off...", MSGCH_DIAGNOSTICS);
-#endif
+            dprf("backing off...");
         }
         else
         {
@@ -4190,11 +4275,11 @@ static void _catchup_monster_moves(monsters *mon, int turns)
 // Update the level when the player returns to it.
 //
 //---------------------------------------------------------------
-void update_level(double elapsedTime)
+void update_level(long elapsedTime)
 {
     ASSERT(!crawl_state.arena);
 
-    const int turns = static_cast<int>(elapsedTime / 10.0);
+    const int turns = elapsedTime / 10;
 
 #if DEBUG_DIAGNOSTICS
     int mons_total = 0;
@@ -4203,6 +4288,8 @@ void update_level(double elapsedTime)
 #endif
 
     update_corpses(elapsedTime);
+    shoals_apply_tides(turns, true);
+    recharge_rods(turns, true);
 
     if (env.sanctuary_time)
     {
@@ -4582,16 +4669,19 @@ int spawn_corpse_mushrooms(item_def &corpse,
 
         fringe.pop();
 
-        actor * occupant = NULL;
+        monsters * monster = monster_at(current);
+
+        bool player_occupant = you.pos() == current;
 
         // Is this square occupied by a non mushroom?
-        if ((occupant = actor_at(current))
-            && occupant->mons_species() != MONS_TOADSTOOL)
+        if (monster && monster->mons_species() != MONS_TOADSTOOL
+            || player_occupant && you.religion != GOD_FEDHAS
+            || !is_harmless_cloud(cloud_type_at(current)))
         {
             continue;
         }
 
-        if (!occupant)
+        if (!monster)
         {
             const int mushroom = create_monster(
                         mgen_data(MONS_TOADSTOOL,
@@ -4632,7 +4722,12 @@ int spawn_corpse_mushrooms(item_def &corpse,
                 }
 
                 placed_targets++;
-                if (you.see_cell(current))
+                if (current == you.pos())
+                {
+                    mprf("A toadstool grows at your feet.");
+                    current=  env.mons[mushroom].pos();
+                }
+                else if (you.see_cell(current))
                     seen_targets++;
             }
             else
@@ -4747,17 +4842,15 @@ static void _maybe_spawn_mushroom(item_def & corpse, int rot_time)
 //
 // update_corpses
 //
-// Update all of the corpses and food chunks on the floor. (The
-// elapsed time is a double because this is called when we re-
-// enter a level and a *long* time may have elapsed).
+// Update all of the corpses and food chunks on the floor.
 //
 //---------------------------------------------------------------
-void update_corpses(double elapsedTime)
+void update_corpses(long elapsedTime)
 {
-    if (elapsedTime <= 0.0)
+    if (elapsedTime <= 0)
         return;
 
-    const long rot_time = static_cast<long>(elapsedTime / 20.0);
+    const long rot_time = elapsedTime / 20;
 
     for (int c = 0; c < MAX_ITEMS; ++c)
     {
@@ -4794,8 +4887,8 @@ void update_corpses(double elapsedTime)
             it.special -= rot_time;
     }
 
-    int fountain_checks = static_cast<int>(elapsedTime / 1000.0);
-    if (x_chance_in_y(static_cast<int>(elapsedTime) % 1000, 1000))
+    int fountain_checks = elapsedTime / 1000;
+    if (x_chance_in_y(elapsedTime % 1000, 1000))
         fountain_checks += 1;
 
     // Dry fountains may start flowing again.
@@ -4809,5 +4902,56 @@ void update_corpses(double elapsedTime)
                 _maybe_restart_fountain_flow(*ri, fountain_checks);
             }
         }
+    }
+}
+
+static void _recharge_rod( item_def &rod, long aut, bool in_inv )
+{
+    if (!item_is_rod(rod) || rod.plus >= rod.plus2)
+        return;
+
+    long rate = 4 + short(rod.props["rod_enchantment"]);
+
+    rate *= (10 + skill_bump( SK_EVOCATIONS ));
+    rate *= aut;
+    rate = div_rand_round( rate, 100 );
+
+    if (rate > rod.plus2 - rod.plus) // Prevent overflow
+        rate = rod.plus2 - rod.plus;
+
+    // With this, a +0 rod with no skill gets 1 mana per 25.0 turns
+
+    if (rod.plus / ROD_CHARGE_MULT != (rod.plus + rate) / ROD_CHARGE_MULT)
+    {
+        if (item_is_equipped( rod, true ))
+            you.wield_change = true;
+    }
+
+    rod.plus += rate;
+
+    if (in_inv && rod.plus == rod.plus2)
+    {
+        msg::stream << "Your " << rod.name(DESC_QUALNAME) << " has recharged."
+                    << std::endl;
+        if (is_resting())
+            stop_running();
+    }
+
+    return;
+}
+
+void recharge_rods(long aut, bool level_only)
+{
+    if (!level_only)
+    {
+        for (int item = 0; item < ENDOFPACK; ++item)
+        {
+            _recharge_rod( you.inv[item], aut, true );
+        }
+    }
+
+    for (int item = 0; item < MAX_ITEMS; ++item)
+    {
+        _recharge_rod( mitm[item], aut, false );
     }
 }

@@ -7,7 +7,6 @@
 
 #include "coordit.h"
 
-#include "coord.h"
 #include "coord-circle.h"
 #include "player.h"
 
@@ -81,7 +80,7 @@ circle_iterator::circle_iterator(const circle_def &circle_)
 
 circle_iterator::operator bool() const
 {
-    return ((bool)iter);
+    return (iter);
 }
 
 coord_def circle_iterator::operator*() const

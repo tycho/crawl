@@ -8,9 +8,7 @@
 
 #ifdef USE_TILE
 
-#include "tiledef-main.h"
-#include "tiledef-dngn.h"
-#include "tiledef-player.h"
+#include "tiledef_defines.h"
 
 #include "beam.h"
 #include "enum.h"
@@ -49,7 +47,8 @@ int tileidx_monster(const monsters *mon, bool detected = false);
 int tileidx_spell(spell_type spell);
 
 // Player tile related
-int get_gender_from_tile(int parts[]);
+int get_gender_from_tile(const int parts[]);
+bool is_player_tile(const int tile, const int base_tile);
 int tilep_species_to_base_tile(int sp = you.species,
                                int level = you.experience_level);
 void tilep_draconian_init(int sp, int level, int &base, int &head, int &wing);
@@ -60,7 +59,8 @@ void tilep_calc_flags(const int parts[], int flag[]);
 void tilep_part_to_str(int number, char *buf);
 int  tilep_str_to_part(char *str);
 
-void tilep_scan_parts(char *fbuf, dolls_data &doll);
+void tilep_scan_parts(char *fbuf, dolls_data &doll, int species = you.species,
+                      int level = you.experience_level);
 void tilep_print_parts(char *fbuf, const dolls_data &doll);
 
 int tilep_equ_weapon(const item_def &item);
@@ -76,7 +76,7 @@ void tile_place_monster(int gx, int gy, int idx, bool foreground = true,
                         bool detected = false);
 void tile_place_item(int x, int y, int idx);
 void tile_place_item_marker(int x, int y, int idx);
-void tile_place_cloud(int x, int y, int type, int decay);
+void tile_place_cloud(int x, int y, cloud_struct cl);
 void tile_place_ray(const coord_def& gc, bool in_range);
 void tile_draw_rays(bool resetCount);
 void tile_clear_buf();
@@ -124,7 +124,8 @@ void init_player_doll();
 void save_doll_file(FILE *dollf);
 
 int item_unid_type(const item_def &item);
-int tile_known_weapon_brand(const item_def item);
+int tile_known_brand(const item_def item);
+int tile_corpse_brand(const item_def item);
 
 int get_clean_map_idx(int tile_idx);
 
@@ -135,13 +136,15 @@ enum tile_flags
     TILE_FLAG_S_UNDER    = 0x00000800,
     TILE_FLAG_FLYING     = 0x00001000,
     TILE_FLAG_PET        = 0x00002000,
-    TILE_FLAG_NEUTRAL    = 0x00004000,
-    TILE_FLAG_STAB       = 0x00008000,
-    TILE_FLAG_MAY_STAB   = 0x0000C000,
-    TILE_FLAG_NET        = 0x00010000,
-    TILE_FLAG_POISON     = 0x00020000,
-    TILE_FLAG_FLAME      = 0x00040000,
-    TILE_FLAG_ANIM_WEP   = 0x00080000,
+    TILE_FLAG_GD_NEUTRAL = 0x00004000,
+    TILE_FLAG_NEUTRAL    = 0x00008000,
+    TILE_FLAG_STAB       = 0x00010000,
+    TILE_FLAG_MAY_STAB   = 0x00020000,
+    TILE_FLAG_NET        = 0x00040000,
+    TILE_FLAG_POISON     = 0x00080000,
+    TILE_FLAG_ANIM_WEP   = 0x00100000,
+    TILE_FLAG_FLAME      = 0x00200000,
+    TILE_FLAG_BERSERK    = 0x00400000,
 
     // MDAM has 5 possibilities, so uses 3 bits.
     TILE_FLAG_MDAM_MASK  = 0x03800000,
@@ -150,6 +153,14 @@ enum tile_flags
     TILE_FLAG_MDAM_HEAVY = 0x01800000,
     TILE_FLAG_MDAM_SEV   = 0x02000000,
     TILE_FLAG_MDAM_ADEAD = 0x02800000,
+
+    // Demon difficulty has 5 possibilities, so uses 3 bits.
+    TILE_FLAG_DEMON   = 0x34000000,
+    TILE_FLAG_DEMON_5 = 0x04000000,
+    TILE_FLAG_DEMON_4 = 0x10000000,
+    TILE_FLAG_DEMON_3 = 0x14000000,
+    TILE_FLAG_DEMON_2 = 0x20000000,
+    TILE_FLAG_DEMON_1 = 0x24000000,
 
     // Background flags
     TILE_FLAG_RAY        = 0x00000800,
@@ -169,6 +180,7 @@ enum tile_flags
     TILE_FLAG_TUT_CURSOR = 0x00800000,
     TILE_FLAG_RAY_OOR    = 0x01000000,
     TILE_FLAG_OOR        = 0x02000000,
+    TILE_FLAG_WATER      = 0x04000000,
 
     // General
     TILE_FLAG_MASK       = 0x000007FF

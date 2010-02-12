@@ -10,10 +10,10 @@
 #include "externs.h"
 
 struct bolt;
-struct dist;
+class dist;
 struct activity_interrupt_data;
 
-bool go_berserk(bool intentional);
+bool go_berserk(bool intentional, bool potion = false);
 void search_around(bool only_adjacent = false);
 void down_stairs(int old_level,
                  dungeon_feature_type force_stair = DNGN_UNSEEN,
@@ -33,6 +33,7 @@ long remove_oldest_blood_potion( item_def &stack );
 void remove_newest_blood_potion( item_def &stack, int quant = -1 );
 void merge_blood_potion_stacks(item_def &source, item_def &dest, int quant);
 
+bool check_blood_corpses_on_ground();
 bool can_bottle_blood_from_corpse(int mons_type);
 int num_blood_potions_from_corpse(int mons_class, int chunk_type = -1);
 void turn_corpse_into_blood_potions (item_def &item);
@@ -59,8 +60,9 @@ std::string weird_smell();
 
 std::string weird_sound();
 
-bool mons_is_safe(const monsters *mon, bool want_move = false,
-                  bool consider_user_options = true);
+bool mons_can_hurt_player(const monsters *mon, const bool want_move = false);
+bool mons_is_safe(const monsters *mon, const bool want_move = false,
+                  const bool consider_user_options = true);
 
 std::vector<monsters*> get_nearby_monsters(bool want_move = false,
                                            bool just_check = false,

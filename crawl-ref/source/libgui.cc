@@ -16,17 +16,16 @@
 #include "cio.h"
 #include "defines.h"
 #include "env.h"
-#include "itemprop.h"
 #include "externs.h"
 #include "tilereg.h"
 #include "message.h"
-#include "showsymb.h"
 #include "stash.h"
 #include "state.h"
 #include "stuff.h"
 #include "terrain.h"
 #include "tiles.h"
 #include "tilesdl.h"
+#include "tiledef-main.h"
 #include "travel.h"
 #include "viewgeom.h"
 
@@ -67,6 +66,9 @@ void gui_init_view_params(crawl_view_geometry &geom)
 
     geom.termp.x = 1;
     geom.termp.y = 1;
+
+    geom.termsz.x = 80;
+    geom.termsz.y = 24;
 
     geom.viewp.x = 1;
     geom.viewp.y = 1;
@@ -312,19 +314,20 @@ int clrscr()
     return 0;
 }
 
-void message_out(int *which_line, int colour, const char *s, int firstcol)
-{
-    tiles.message_out(which_line, colour, s, firstcol);
-}
-
-void cgotoxy(int x, int y, int region)
+void cgotoxy(int x, int y, GotoRegion region)
 {
     tiles.cgotoxy(x, y, region);
 }
 
-void clear_message_window()
+coord_def cgetpos(GotoRegion region)
 {
-    tiles.clear_message_window();
+    ASSERT(region == get_cursor_region());
+    return (coord_def(wherex(), wherey()));
+}
+
+GotoRegion get_cursor_region()
+{
+    return (tiles.get_cursor_region());
 }
 
 void delay(int ms)

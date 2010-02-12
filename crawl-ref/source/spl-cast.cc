@@ -37,11 +37,14 @@
 #include "message.h"
 #include "mon-cast.h"
 #include "mon-place.h"
+#include "mon-project.h"
 #include "mon-stuff.h"
+#include "mon-util.h"
 #include "mutation.h"
 #include "ouch.h"
 #include "player.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills.h"
 #include "skills2.h"
 #include "spells1.h"
@@ -54,10 +57,11 @@
 #include "state.h"
 #include "stuff.h"
 #include "areas.h"
-#include "transfor.h"
+#include "transform.h"
 #include "tutorial.h"
 #include "view.h"
 #include "shout.h"
+#include "colour.h"
 
 static bool _surge_identify_boosters(spell_type spell)
 {
@@ -130,13 +134,13 @@ static void _surge_power(spell_type spell)
     }
 }
 
-static std::string _spell_base_description(spell_type spell, bool grey = false)
+static std::string _spell_base_description(spell_type spell, bool unavail = false)
 {
     std::ostringstream desc;
 
-    if (grey)
-        desc << "<darkgrey>";
-    desc << std::left;
+    int highlight =  spell_highlight_by_utility(spell, LIGHTGRAY, true);
+
+    desc << "<" << colour_to_str(highlight) << ">" << std::left;
 
     // spell name
     desc << std::setw(30) << spell_title(spell);
@@ -144,26 +148,26 @@ static std::string _spell_base_description(spell_type spell, bool grey = false)
     // spell schools
     desc << spell_schools_string(spell);
 
-    const int so_far = desc.str().length() - (grey ? 10 : 0);
+    const int so_far = desc.str().length() - (name_length_by_colour(highlight)+2);
     if (so_far < 60)
         desc << std::string(60 - so_far, ' ');
 
     // spell fail rate, level
     desc << std::setw(12) << failure_rate_to_string(spell_fail(spell))
          << spell_difficulty(spell);
-    if (grey)
-        desc << "</darkgrey>";
+    desc << "</" << colour_to_str(highlight) <<">";
 
     return desc.str();
 }
 
-static std::string _spell_extra_description(spell_type spell, bool grey = false)
+static std::string _spell_extra_description(spell_type spell, bool unavail = false)
 {
     std::ostringstream desc;
 
-    if (grey)
-        desc << "<darkgrey>";
-    desc << std::left;
+//    int highlight =  unavail ? COL_INAPPLICABLE : spell_highlight_by_utility(spell);
+    int highlight =  spell_highlight_by_utility(spell, LIGHTGRAY, true);
+
+    desc << "<" << colour_to_str(highlight) << ">" << std::left;
 
     // spell name
     desc << std::setw(30) << spell_title(spell);
@@ -176,60 +180,9 @@ static std::string _spell_extra_description(spell_type spell, bool grey = false)
          << std::setw(12) << spell_hunger_string(spell)
          << spell_difficulty(spell);
 
-    if (grey)
-        desc << "</darkgrey>";
+    desc << "</" << colour_to_str(highlight) <<">";
 
     return desc.str();
-}
-
-static bool _spell_no_hostile_in_range(spell_type spell, int minRange)
-{
-    if (minRange < 0)
-        return (false);
-
-    bool bonus = 0;
-    switch (spell)
-    {
-    // These don't target monsters.
-    case SPELL_APPORTATION:
-    case SPELL_PROJECTED_NOISE:
-    case SPELL_CONJURE_FLAME:
-    case SPELL_DIG:
-    case SPELL_PASSWALL:
-
-    // Airstrike has LOS_RANGE and can go through glass walls.
-    case SPELL_AIRSTRIKE:
-
-    // These bounce and may be aimed elsewhere to bounce at monsters
-    // outside range (I guess).
-    case SPELL_SHOCK:
-    case SPELL_LIGHTNING_BOLT:
-        return (false);
-
-    case SPELL_EVAPORATE:
-    case SPELL_MEPHITIC_CLOUD:
-    case SPELL_FIREBALL:
-    case SPELL_FREEZING_CLOUD:
-    case SPELL_POISONOUS_CLOUD:
-        // Increase range by one due to cloud radius.
-        bonus = 1;
-        break;
-    default:
-        break;
-    }
-
-    // The healing spells.
-    if (testbits(get_spell_flags(spell), SPFLAG_HELPFUL))
-        return (false);
-
-    const int range = calc_spell_range(spell);
-    if (range < 0)
-        return (false);
-
-    if (range + bonus < minRange)
-        return (true);
-
-    return (false);
 }
 
 int list_spells(bool toggle_with_I, bool viewing, int minRange,
@@ -284,30 +237,19 @@ int list_spells(bool toggle_with_I, bool viewing, int minRange,
     more_str += "to toggle spell view.";
     spell_menu.set_more(formatted_string(more_str));
 
+    // XXX: This value has been made *completely* redundant
+    // ...except that selector wants to futz with it, below.
     bool grey = false; // Needs to be greyed out?
+
     for (int i = 0; i < 52; ++i)
     {
         const char letter = index_to_letter(i);
         const spell_type spell = get_spell_by_letter(letter);
 
-        // If an equipped artefact prevents teleportation, the following spells
-        // cannot be cast.
-        if ((spell == SPELL_BLINK || spell == SPELL_CONTROLLED_BLINK
-                 || spell == SPELL_TELEPORT_SELF)
-             && scan_artefacts(ARTP_PREVENT_TELEPORTATION, false))
-        {
-            grey = true;
-        }
-        else if (!viewing)
-        {
-            if (spell_mana(spell) > you.magic_points
-                || _spell_no_hostile_in_range(spell, minRange))
-            {
-                grey = true;
-            }
-            else
-                grey = false;
-        }
+//        unavailable = !viewing && spell_no_hostile_in_range(spell, minRange);
+
+        // TODO: identify wth 'selector' is, and what
+        // exactly this bit below does with it
         if (is_valid_spell(spell) && selector
             && !(*selector)(spell, grey))
             continue;
@@ -315,14 +257,13 @@ int list_spells(bool toggle_with_I, bool viewing, int minRange,
         if (spell != SPELL_NO_SPELL)
         {
             ToggleableMenuEntry* me =
-                new ToggleableMenuEntry(_spell_base_description(spell, grey),
-                                        _spell_extra_description(spell, grey),
+                new ToggleableMenuEntry(_spell_base_description(spell),
+                                        _spell_extra_description(spell),
                                         MEL_ITEM, 1, letter);
 
 #ifdef USE_TILE
             me->add_tile(tile_def(tileidx_spell(spell), TEX_GUI));
 #endif
-
             spell_menu.add_entry(me);
         }
     }
@@ -388,63 +329,15 @@ static int _apply_spellcasting_success_boosts(spell_type spell, int chance)
 int spell_fail(spell_type spell)
 {
     int chance = 60;
-    int chance2 = 0, armour = 0;
+    int chance2 = 0;
 
     // Don't cap power for failure rate purposes.
     chance -= 6 * calc_spell_power(spell, false, true, false);
     chance -= (you.intel * 2);
 
-    //chance -= (you.intel - 10) * abs(you.intel - 10);
-    //chance += spell_difficulty(spell) * spell_difficulty(spell) * 3; //spell_difficulty(spell);
-
-    if (you.equip[EQ_BODY_ARMOUR] != -1)
-    {
-
-        int ev_penalty = abs(property( you.inv[you.equip[EQ_BODY_ARMOUR]],
-                                       PARM_EVASION ));
-
-        // The minus 15 is to make the -1 light armours not so bad
-        armour += (20 * ev_penalty) - 15;
-
-        //jmf: armour skill now reduces failure due to armour
-        //bwr: this was far too good, an armour skill of 5 was
-        //     completely negating plate mail.  Plate mail should
-        //     hardly be completely negated, it should still be
-        //     an important consideration for even high level characters.
-        //     Truth is, even a much worse penalty than the above can
-        //     easily be overcome by gaining spell skills... and a lot
-        //     faster than any reasonable rate of bonus here.
-        int lim_str = (you.strength > 30) ? 30 :
-                      (you.strength < 10) ? 10 : you.strength;
-
-        armour -= ((you.skills[SK_ARMOUR] * lim_str) / 15);
-
-        int race_arm = get_equip_race( you.inv[you.equip[EQ_BODY_ARMOUR]] );
-        int racial_type = 0;
-
-        if (player_genus(GENPC_DWARVEN))
-            racial_type = ISFLAG_DWARVEN;
-        else if (player_genus(GENPC_ELVEN))
-            racial_type = ISFLAG_ELVEN;
-        else if (you.species == SP_HILL_ORC)
-            racial_type = ISFLAG_ORCISH;
-
-        // Elven armour gives everyone some benefit to spellcasting,
-        // Dwarven armour hinders everyone.
-        switch (race_arm)
-        {
-        case ISFLAG_ELVEN:   armour -= 20; break;
-        case ISFLAG_DWARVEN: armour += 10; break;
-        default:                           break;
-        }
-
-        // Armour of the same racial type reduces penalty.
-        if (racial_type && race_arm == racial_type)
-            armour -= 10;
-
-        if (armour > 0)
-            chance += armour;
-    }
+    const int armour_shield_penalty = player_armour_shield_spell_penalty();
+    dprf("Armour+Shield spell failure penalty: %d", armour_shield_penalty);
+    chance += std::max(0, armour_shield_penalty);
 
     if (you.weapon() && you.weapon()->base_type == OBJ_WEAPONS)
     {
@@ -452,31 +345,6 @@ int spell_fail(spell_type spell)
 
         if (wpn_penalty > 0)
             chance += wpn_penalty;
-    }
-
-    if (you.shield())
-    {
-        switch (you.shield()->sub_type)
-        {
-        case ARM_BUCKLER:
-            chance += 5;
-            break;
-
-        case ARM_SHIELD:
-            chance += 15;
-            break;
-
-        case ARM_LARGE_SHIELD:
-            // *BCR* Large chars now get a lower penalty for large shields
-            if (player_genus(GENPC_OGRE) || you.species == SP_TROLL
-                || player_genus(GENPC_DRACONIAN))
-            {
-                chance += 20;
-            }
-            else
-                chance += 30;
-            break;
-        }
     }
 
     switch (spell_difficulty(spell))
@@ -648,33 +516,26 @@ void inspect_spells()
     list_spells(true, true);
 }
 
-static int _get_dist_to_nearest_monster()
+void do_cast_spell_cmd(bool force)
 {
-    int minRange = LOS_RADIUS + 1;
-    for (radius_iterator ri(&you.get_los_no_trans(), true); ri; ++ri)
+    if (player_in_bat_form() || you.attribute[ATTR_TRANSFORMATION] == TRAN_PIG)
     {
-        const monsters *mon = monster_at(*ri);
-        if (mon == NULL)
-            continue;
-
-        if (!mon->visible_to(&you)
-            || mons_is_unknown_mimic(mon))
-        {
-            continue;
-        }
-
-        // Plants/fungi don't count.
-        if (mons_class_flag(mon->type, M_NO_EXP_GAIN))
-            continue;
-
-        if (mon->wont_attack())
-            continue;
-
-        int dist = grid_distance(you.pos(), *ri);
-        if (dist < minRange)
-            minRange = dist;
+        canned_msg(MSG_PRESENT_FORM);
+        return;
     }
-    return (minRange);
+
+    // Randart weapons.
+    if (scan_artefacts(ARTP_PREVENT_SPELLCASTING))
+    {
+        mpr("Something interferes with your magic!");
+        flush_input_buffer(FLUSH_ON_FAILURE);
+        return;
+    }
+
+    if (Tutorial.tutorial_left)
+        Tutorial.tut_spell_counter++;
+    if (!cast_a_spell(!force))
+        flush_input_buffer(FLUSH_ON_FAILURE);
 }
 
 // Returns false if spell failed, and true otherwise.
@@ -701,7 +562,7 @@ bool cast_a_spell(bool check_range, spell_type spell)
         return (false);
     }
 
-    const int minRange = _get_dist_to_nearest_monster();
+    const int minRange = get_dist_to_nearest_monster();
 
     if (spell == SPELL_NO_SPELL)
     {
@@ -765,7 +626,7 @@ bool cast_a_spell(bool check_range, spell_type spell)
         return (false);
     }
 
-    if (check_range && _spell_no_hostile_in_range(spell, minRange))
+    if (check_range && spell_no_hostile_in_range(spell, minRange))
     {
         // Abort if there are no hostiles within range, but flash the range
         // markers for about half a second.
@@ -956,6 +817,9 @@ static void _spellcasting_side_effects(spell_type spell, bool idonly = false)
     if (is_chaotic_spell(spell) && !crawl_state.is_god_acting())
         did_god_conduct(DID_CHAOS, 10 + spell_difficulty(spell));
 
+    if (is_corpse_violating_spell(spell) && !crawl_state.is_god_acting())
+        did_god_conduct(DID_CORPSE_VIOLATION, 10 + spell_difficulty(spell));
+
     // Linley says: Condensation Shield needs some disadvantages to keep
     // it from being a no-brainer... this isn't much, but its a start. - bwr
     if (spell_typematch(spell, SPTYP_FIRE))
@@ -1058,7 +922,7 @@ static void _try_monster_cast(spell_type spell, int powc,
     mon->type       = MONS_HUMAN;
     mon->behaviour  = BEH_SEEK;
     mon->attitude   = ATT_FRIENDLY;
-    mon->flags      = (MF_CREATED_FRIENDLY | MF_JUST_SUMMONED | MF_SEEN
+    mon->flags      = (MF_NO_REWARD | MF_JUST_SUMMONED | MF_SEEN
                        | MF_WAS_IN_VIEW | MF_HARD_RESET);
     mon->hit_points = you.hp;
     mon->hit_dice   = you.experience_level;
@@ -1069,7 +933,7 @@ static void _try_monster_cast(spell_type spell, int powc,
         mon->foe = MHITNOT;
     else if (!monster_at(spd.target))
     {
-        if (spd.isMe)
+        if (spd.isMe())
             mon->foe = MHITYOU;
         else
             mon->foe = MHITNOT;
@@ -1139,6 +1003,7 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
 
     dist spd;
     bolt beam;
+    beam.origin_spell = spell;
 
     // [dshaligram] Any action that depends on the spellcasting attempt to have
     // succeeded must be performed after the switch().
@@ -1167,10 +1032,10 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
     int potion = -1;
 
     // XXX: This handles only some of the cases where spells need
-    // targetting.  There are others that do their own that will be
+    // targeting.  There are others that do their own that will be
     // missed by this (and thus will not properly ESC without cost
     // because of it).  Hopefully, those will eventually be fixed. - bwr
-    if ((flags & SPFLAG_TARGETTING_MASK) && spell != SPELL_PORTAL_PROJECTILE)
+    if ((flags & SPFLAG_TARGETING_MASK) && spell != SPELL_PORTAL_PROJECTILE)
     {
         targ_mode_type targ =
               (testbits(flags, SPFLAG_HELPFUL) ? TARG_FRIEND : TARG_HOSTILE);
@@ -1178,7 +1043,7 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
         if (testbits(flags, SPFLAG_NEUTRAL))
             targ = TARG_ANY;
 
-        targetting_type dir  =
+        targeting_type dir  =
             (testbits(flags, SPFLAG_TARG_OBJ) ? DIR_TARGET_OBJECT :
              testbits(flags, SPFLAG_TARGET)   ? DIR_TARGET        :
              testbits(flags, SPFLAG_GRID)     ? DIR_TARGET        :
@@ -1202,25 +1067,29 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
 
         const int range = calc_spell_range(spell, powc, false);
 
+        std::string title = "Casting: <white>";
+        title += spell_title(spell);
+        title += "</white>";
+
         if (!spell_direction(spd, beam, dir, targ, range,
                              needs_path, true, dont_cancel_me, prompt,
+                             title.c_str(),
                              testbits(flags, SPFLAG_NOT_SELF)))
         {
             return (SPRET_ABORT);
         }
 
-        if (spd.isMe && spell == SPELL_MEPHITIC_CLOUD)
+        if (spell == SPELL_MEPHITIC_CLOUD
+            && spd.isMe()
+            && i_feel_safe(false, false, true, 1)
+            && !yesno("Really target yourself?", false, 'n'))
         {
-            if (i_feel_safe(false, false, true, 1)
-                && !yesno("Really target yourself?", false, 'n'))
-            {
                 return (SPRET_ABORT);
-            }
         }
 
         beam.range = calc_spell_range(spell, powc, true);
 
-        if (testbits(flags, SPFLAG_NOT_SELF) && spd.isMe)
+        if (testbits(flags, SPFLAG_NOT_SELF) && spd.isMe())
         {
             if (spell == SPELL_TELEPORT_OTHER || spell == SPELL_POLYMORPH_OTHER
                 || spell == SPELL_BANISHMENT)
@@ -1252,7 +1121,7 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
                           && god == GOD_NO_GOD;
 
     const int  loudness        = spell_noise(spell);
-    const bool sound_at_caster = !(flags & SPFLAG_TARGETTING_MASK);
+    const bool sound_at_caster = !(flags & SPFLAG_TARGETING_MASK);
 
     // Make some noise if it's actually the player casting.
     // NOTE: zappy() sets up noise for beams.
@@ -1338,9 +1207,7 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
         }
     }
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Spell #%d, power=%d", spell, powc);
-#endif
+    dprf("Spell #%d, power=%d", spell, powc);
 
     switch (spell)
     {
@@ -1418,6 +1285,11 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
 
     case SPELL_BOLT_OF_COLD:
         if (!zapping(ZAP_COLD, powc, beam, true))
+            return (SPRET_ABORT);
+        break;
+
+    case SPELL_PRIMAL_WAVE:
+        if (!zapping(ZAP_PRIMAL_WAVE, powc, beam, true))
             return (SPRET_ABORT);
         break;
 
@@ -1511,6 +1383,13 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
         // Should only be available from Staff of Dispater and Sceptre
         // of Asmodeus.
         if (!zapping(ZAP_HELLFIRE, powc, beam, true))
+            return (SPRET_ABORT);
+        break;
+
+    case SPELL_IOOD:
+        if (!player_tracer(ZAP_IOOD, powc, beam))
+            return (SPRET_ABORT);
+        if (!cast_iood(&you, powc, &beam))
             return (SPRET_ABORT);
         break;
 
@@ -1788,10 +1667,7 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
     {
         const int sleep_power =
             stepdown_value(powc * 9 / 10, 5, 35, 45, 50);
-#ifdef DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "Sleep power stepdown: %d -> %d",
-             powc, sleep_power);
-#endif
+        dprf("Sleep power stepdown: %d -> %d", powc, sleep_power);
         if (!zapping(ZAP_HIBERNATION, sleep_power, beam, true))
             return (SPRET_ABORT);
         break;
@@ -1942,46 +1818,6 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
 
     case SPELL_WARP_BRAND:
         if (!brand_weapon(SPWPN_DISTORTION, powc))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_POISON_AMMUNITION:
-        if (!brand_ammo(SPMSL_POISONED))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_FLAME_AMMUNITION:
-        if (!brand_ammo(SPMSL_FLAME))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_FROST_AMMUNITION:
-        if (!brand_ammo(SPMSL_FROST))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_WARP_AMMUNITION:
-        if (!brand_ammo(SPMSL_DISPERSAL))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_SHOCKING_AMMUNITION:
-        if (!brand_ammo(SPMSL_ELECTRIC))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_EXPLODING_AMMUNITION:
-        if (!brand_ammo(SPMSL_EXPLODING))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_REAPING_AMMUNITION:
-        if (!brand_ammo(SPMSL_REAPING))
-            canned_msg(MSG_SPELL_FIZZLES);
-        break;
-
-    case SPELL_RETURNING_AMMUNITION:
-        if (!brand_ammo(SPMSL_RETURNING))
             canned_msg(MSG_SPELL_FIZZLES);
         break;
 
@@ -2218,7 +2054,8 @@ spret_type your_spells(spell_type spell, int powc, bool allow_fail)
         break;
 
     case SPELL_FULSOME_DISTILLATION:
-        cast_fulsome_distillation(powc);
+        if (!cast_fulsome_distillation(powc))
+            return (SPRET_ABORT);
         break;
 
     case SPELL_DEBUGGING_RAY:
@@ -2411,6 +2248,7 @@ int spell_power_bars( spell_type spell )
 
 std::string spell_power_string(spell_type spell)
 {
+#ifndef WIZARD
     const int numbars = spell_power_bars(spell);
     const int capbars = _power_to_barcount(spell_power_cap(spell));
     ASSERT(numbars <= capbars);
@@ -2418,6 +2256,13 @@ std::string spell_power_string(spell_type spell)
         return "N/A";
     else
         return std::string(numbars, '#') + std::string(capbars - numbars, '.');
+#else
+    const int cap = spell_power_cap(spell);
+    if (cap == 0)
+        return "N/A";
+    const int power = std::min(calc_spell_power(spell, true), cap);
+    return make_stringf("%d (%d)", power, cap);
+#endif
 }
 
 int calc_spell_range(spell_type spell, int power, bool real_cast)

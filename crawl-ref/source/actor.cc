@@ -11,7 +11,8 @@
 #include "traps.h"
 
 actor::actor()
-    : los_no_trans(los_def(coord_def(0,0), opacity_no_trans()))
+    : changed_los_center(true),
+      los_no_trans(los_def(coord_def(0,0), opacity_no_trans()))
 {
 }
 
@@ -21,7 +22,7 @@ actor::~actor()
 
 bool actor::has_equipped(equipment_type eq, int sub_type) const
 {
-    const item_def *item = slot_item(eq);
+    const item_def *item = slot_item(eq, false);
     return (item && item->sub_type == sub_type);
 }
 
@@ -103,11 +104,8 @@ bool actor::check_res_magic(int power)
     const int mrchance = (100 + mrs) - power;
     const int mrch2 = random2(100) + random2(101);
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS,
-         "Power: %d, MR: %d, target: %d, roll: %d",
+    dprf("Power: %d, MR: %d, target: %d, roll: %d",
          power, mrs, mrchance, mrch2);
-#endif
 
     return (mrch2 < mrchance);
 }
@@ -115,6 +113,7 @@ bool actor::check_res_magic(int power)
 void actor::set_position(const coord_def &c)
 {
     position = c;
+    changed_los_center = changed_los_center || c != los.get_center();
     los.set_center(c);
     los_no_trans.set_center(c);
 }
@@ -164,9 +163,9 @@ void actor::shield_block_succeeded(actor *foe)
     }
 }
 
-int actor::body_weight() const
+int actor::body_weight(bool base) const
 {
-    switch (body_size(PSIZE_BODY))
+    switch (body_size(PSIZE_BODY, base))
     {
     case SIZE_TINY:
         return (150);
@@ -190,4 +189,29 @@ int actor::body_weight() const
         end(0);
         return (0);
     }
+}
+
+bool actor::check_train_armour(int amount)
+{
+    if (const item_def *armour = slot_item(EQ_BODY_ARMOUR, false))
+    {
+        if (x_chance_in_y(item_mass(*armour), 1000))
+        {
+            this->exercise(SK_ARMOUR, amount);
+            return (true);
+        }
+    }
+    return (false);
+}
+
+bool actor::check_train_dodging(int amount)
+{
+    const item_def *armour = slot_item(EQ_BODY_ARMOUR, false);
+    const int mass = armour? item_mass(*armour) : 0;
+    if (!x_chance_in_y(mass, 800))
+    {
+        this->exercise(SK_DODGING, amount);
+        return (true);
+    }
+    return (false);
 }

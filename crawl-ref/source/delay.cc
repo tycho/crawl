@@ -16,6 +16,7 @@
 #include "attitude-change.h"
 #include "clua.h"
 #include "command.h"
+#include "coord.h"
 #include "coordit.h"
 #include "database.h"
 #include "delay.h"
@@ -25,12 +26,14 @@
 #include "fprop.h"
 #include "exclude.h"
 #include "food.h"
+#include "godpassive.h"
 #include "invent.h"
 #include "items.h"
 #include "itemname.h"
 #include "itemprop.h"
 #include "item_use.h"
 #include "it_use2.h"
+#include "macro.h"
 #include "message.h"
 #include "misc.h"
 #include "mon-behv.h"
@@ -42,13 +45,14 @@
 #include "player.h"
 #include "random.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "spells4.h"
 #include "spl-util.h"
 #include "stash.h"
 #include "state.h"
 #include "stuff.h"
 #include "env.h"
-#include "transfor.h"
+#include "transform.h"
 #include "travel.h"
 #include "tutorial.h"
 #include "view.h"
@@ -173,7 +177,7 @@ static int _recite_to_monsters(coord_def where, int pow, int, actor *)
         case 10:
         case 11:
         case 12:
-            if (!mon->add_ench(mon_enchant(ENCH_NEUTRAL, 0, KC_YOU,
+            if (!mon->add_ench(mon_enchant(ENCH_TEMP_PACIF, 0, KC_YOU,
                                (16 + random2avg(13, 2)) * 10)))
             {
                 return (0);
@@ -203,7 +207,7 @@ static int _recite_to_monsters(coord_def where, int pow, int, actor *)
             {
                 if (holiness == MH_UNDEAD || holiness == MH_DEMONIC)
                 {
-                    if (!mon->add_ench(mon_enchant(ENCH_NEUTRAL, 0, KC_YOU,
+                    if (!mon->add_ench(mon_enchant(ENCH_TEMP_PACIF, 0, KC_YOU,
                                        (16 + random2avg(13, 2)) * 10)))
                     {
                         return (0);
@@ -456,7 +460,7 @@ void stop_delay( bool stop_stair_travel )
 
     case DELAY_INTERRUPTIBLE:
         // Always stoppable by definition...
-        // try using a more specific type anyways. -- bwr
+        // try using a more specific type anyway. -- bwr
         _pop_delay();
         break;
 
@@ -711,7 +715,7 @@ bool already_learning_spell(int spell)
         if (you.delay_queue[i].type != DELAY_MEMORISE)
             continue;
 
-        if (you.delay_queue[i].parm1 == spell)
+        if (spell == -1 || you.delay_queue[i].parm1 == spell)
             return (true);
     }
     return (false);
@@ -738,12 +742,10 @@ int check_recital_audience()
             return (1);
     }
 
-#ifdef DEBUG_DIAGNOSTICS
     if (!found_monsters)
-        mprf(MSGCH_DIAGNOSTICS, "No audience found!");
+        dprf("No audience found!");
     else
-        mprf(MSGCH_DIAGNOSTICS, "No sensible audience found!");
-#endif
+        dprf("No sensible audience found!");
 
    // No use preaching to the choir, nor to common animals.
    if (found_monsters)
@@ -802,10 +804,6 @@ void handle_delay()
                  (delay.type == DELAY_BOTTLE_BLOOD ? "bottling blood from"
                                                    : "butchering"),
                  mitm[delay.parm1].name(DESC_PLAIN).c_str());
-
-            // Also for bottling blood - just in case.
-            if (you.duration[DUR_PRAYER] && god_hates_butchery(you.religion))
-                did_god_conduct(DID_DEDICATED_BUTCHERY, 10);
             break;
 
         case DELAY_MEMORISE:
@@ -1083,6 +1081,9 @@ static void _finish_delay(const delay_queue_item &delay)
 
     case DELAY_ARMOUR_ON:
         armour_wear_effects(delay.parm1);
+        // If butchery (parm2), autopickup chunks.
+        if (Options.chunks_autopickup && delay.parm2)
+            autopickup();
         break;
 
     case DELAY_ARMOUR_OFF:
@@ -1327,7 +1328,7 @@ static void _finish_delay(const delay_queue_item &delay)
             _pop_delay();
             handle_delay();
         }
-        StashTrack.update_stash(); // Stash-track the generated item(s).
+        StashTrack.update_stash(you.pos()); // Stash-track the generbated items.
         break;
     }
 
@@ -1509,6 +1510,7 @@ void armour_wear_effects(const int item_slot)
 
         case SPARM_PONDEROUSNESS:
             mpr("You feel rather ponderous.");
+            che_handle_change(CB_PONDEROUS, 1);
             you.redraw_evasion = true;
             break;
 
@@ -1548,7 +1550,7 @@ void armour_wear_effects(const int item_slot)
             {
                 set_mp(0, false);
                 mpr("You feel spirits watching over you.");
-                if (you.species == SP_DEEP_DWARF) 
+                if (you.species == SP_DEEP_DWARF)
                     mpr("Now linked to your health, your magic stops regenerating.");
            }
             break;
@@ -1560,9 +1562,12 @@ void armour_wear_effects(const int item_slot)
     }
 
     if (is_artefact(arm))
-        use_artefact(arm, NULL, melded);
+    {
+        bool show_msgs = true;
+        use_artefact(arm, &show_msgs, melded);
+    }
 
-    if (item_cursed(arm) && !melded)
+    if (arm.cursed() && !melded)
     {
         mpr("Oops, that feels deathly cold.");
         learned_something_new(TUT_YOU_CURSED);
@@ -1599,7 +1604,7 @@ void armour_wear_effects(const int item_slot)
 
 static command_type _get_running_command()
 {
-    if (kbhit())
+    if (kbhit() || !in_bounds(you.pos() + you.running.pos))
     {
         stop_running();
         return CMD_NO_CMD;
@@ -1644,17 +1649,24 @@ static void _handle_run_delays(const delay_queue_item &delay)
         return;
 
     command_type cmd = CMD_NO_CMD;
-    switch (delay.type)
+
+    bool want_move = delay.type == DELAY_RUN || delay.type == DELAY_TRAVEL;
+    if (!i_feel_safe(true, want_move))
+        stop_running();
+    else
     {
-    case DELAY_REST:
-    case DELAY_RUN:
-        cmd = _get_running_command();
-        break;
-    case DELAY_TRAVEL:
-        cmd = travel();
-        break;
-    default:
-        break;
+        switch (delay.type)
+        {
+        case DELAY_REST:
+        case DELAY_RUN:
+            cmd = _get_running_command();
+            break;
+        case DELAY_TRAVEL:
+            cmd = travel();
+            break;
+        default:
+            break;
+        }
     }
 
     if (cmd != CMD_NO_CMD)
@@ -1739,7 +1751,7 @@ static int _userdef_interrupt_activity( const delay_queue_item &idelay,
     {
         bool stop_run = false;
         if (clua.callfn("ch_stop_run", "M>b",
-                        (const monsters *) at.data, &stop_run))
+                        static_cast<const monsters *>(at.data), &stop_run))
         {
             if (stop_run)
                 return (true);
@@ -1896,7 +1908,7 @@ inline static bool _monster_warning(activity_interrupt_type ai,
                 text += " " + mon->pronoun(PRONOUN_CAP)
                         + " is" + mweap + ".";
             }
-            print_formatted_paragraph(text, MSGCH_WARN);
+            mpr(text, MSGCH_WARN);
             const_cast<monsters*>(mon)->seen_context = "just seen";
         }
 
@@ -1921,7 +1933,8 @@ void autotoggle_autopickup(bool off)
         {
             Options.autopickup_on = -1;
             mprf(MSGCH_WARN,
-                "Deactivating autopickup; reactivate with <w>Ctrl+A</w>.");
+                 "Deactivating autopickup; reactivate with <w>%s</w>.",
+                 command_to_string(CMD_TOGGLE_AUTOPICKUP).c_str());
         }
         if (Tutorial.tutorial_left)
         {

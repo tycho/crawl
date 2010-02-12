@@ -25,6 +25,7 @@
 #include "mon-util.h"
 #include "mon-stuff.h"
 #include "notes.h"
+#include "options.h"
 #include "player.h"
 #include "quiver.h"
 #include "random.h"
@@ -136,12 +137,13 @@ static armour_def Armour_prop[NUM_ARMOURS] =
     { ARM_NAGA_BARDING,         "naga barding",           4, -2,  100,
         true,  EQ_BOOTS,       SIZE_MEDIUM, SIZE_LARGE },
 
-    // Note: shields use ac-value as sh-value, EV pen is used for heavy_shield.
-    { ARM_BUCKLER,              "buckler",                5,  0,   90,
+    // Note: shields use ac-value as sh-value, EV pen is used as the basis
+    // to calculate adjusted shield penalty.
+    { ARM_BUCKLER,              "buckler",                5,  -1,   90,
         true,  EQ_SHIELD,      SIZE_LITTLE, SIZE_MEDIUM },
-    { ARM_SHIELD,               "shield",                 8, -1,  150,
+    { ARM_SHIELD,               "shield",                 8,  -3,  150,
         false, EQ_SHIELD,      SIZE_SMALL,  SIZE_BIG    },
-    { ARM_LARGE_SHIELD,         "large shield",          13, -2,  230,
+    { ARM_LARGE_SHIELD,         "large shield",          13,  -5,  230,
         false, EQ_SHIELD,      SIZE_MEDIUM, SIZE_GIANT  },
 };
 
@@ -251,10 +253,10 @@ static weapon_def Weapon_prop[NUM_WEAPONS] =
     { WPN_BLESSED_SCIMITAR,      "blessed scimitar",      13, -1, 13, 170,  3,
         SK_LONG_BLADES,  HANDS_ONE,    SIZE_MEDIUM, MI_NONE, false,
         DAMV_SLICING, 10 },
-    { WPN_KATANA,                "katana",                13,  2, 13, 160,  3,
+    { WPN_KATANA,                "katana",                14,  3, 12, 160,  3,
         SK_LONG_BLADES,  HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
         DAMV_SLICING, 2 },
-    { WPN_BLESSED_KATANA,        "blessed katana",        14,  1, 13, 160,  3,
+    { WPN_BLESSED_KATANA,        "blessed katana",        15,  2, 12, 160,  3,
         SK_LONG_BLADES,  HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
         DAMV_SLICING, 2 },
     { WPN_DEMON_BLADE,           "demon blade",           13, -1, 15, 200,  4,
@@ -263,10 +265,10 @@ static weapon_def Weapon_prop[NUM_WEAPONS] =
     { WPN_HOLY_EUDEMON_BLADE,    "holy eudemon blade",    14, -2, 14, 200,  4,
         SK_LONG_BLADES,  HANDS_ONE,    SIZE_MEDIUM, MI_NONE, false,
         DAMV_SLICING, 0 },
-    { WPN_DOUBLE_SWORD,          "double sword",          15, -2, 16, 220,  5,
+    { WPN_DOUBLE_SWORD,          "double sword",          16, -1, 15, 220,  5,
         SK_LONG_BLADES,  HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
         DAMV_SLICING, 2 },
-    { WPN_BLESSED_DOUBLE_SWORD,  "blessed double sword",  15, -2, 15, 220,  5,
+    { WPN_BLESSED_DOUBLE_SWORD,  "blessed double sword",  16, -1, 14, 220,  5,
         SK_LONG_BLADES,  HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
         DAMV_SLICING, 2 },
     { WPN_GREAT_SWORD,           "great sword",           16, -3, 17, 250,  6,
@@ -289,7 +291,7 @@ static weapon_def Weapon_prop[NUM_WEAPONS] =
     { WPN_WAR_AXE,           "war axe",            11,  0, 16, 180,  7,
         SK_AXES,         HANDS_ONE,    SIZE_MEDIUM, MI_NONE, false,
         DAMV_CHOPPING, 10 },
-    { WPN_BROAD_AXE,         "broad axe",          14, -2, 17, 230,  8,
+    { WPN_BROAD_AXE,         "broad axe",          14, -2, 16, 230,  8,
         SK_AXES,         HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
         DAMV_CHOPPING, 10 },
     { WPN_BATTLEAXE,         "battleaxe",          17, -4, 18, 250,  8,
@@ -300,21 +302,21 @@ static weapon_def Weapon_prop[NUM_WEAPONS] =
         DAMV_CHOPPING, 2 },
 
     // Polearms
-    { WPN_SPEAR,             "spear",               6,  3, 12,  50,  3,
+    { WPN_SPEAR,             "spear",               7,  4, 11,  50,  3,
         SK_POLEARMS,     HANDS_HALF,   SIZE_SMALL,  MI_NONE, true,
         DAMV_PIERCING, 10 },
-    { WPN_TRIDENT,           "trident",             9,  2, 14, 160,  4,
+    { WPN_TRIDENT,           "trident",            10,  3, 13, 160,  4,
         SK_POLEARMS,     HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
         DAMV_PIERCING, 10 },
-    { WPN_DEMON_TRIDENT,     "demon trident",      13,  0, 14, 160,  4,
-        SK_POLEARMS,     HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
-        DAMV_PIERCING, 2 },
     { WPN_HALBERD,           "halberd",            13, -3, 16, 200,  5,
         SK_POLEARMS,     HANDS_TWO,    SIZE_LARGE,  MI_NONE, false,
         DAMV_CHOPPING | DAM_PIERCE, 10 },
     { WPN_SCYTHE,            "scythe",             14, -4, 20, 220,  7,
         SK_POLEARMS,     HANDS_TWO,    SIZE_LARGE,  MI_NONE, false,
         DAMV_SLICING, 10 },
+    { WPN_DEMON_TRIDENT,     "demon trident",      14,  1, 13, 160,  4,
+        SK_POLEARMS,     HANDS_HALF,   SIZE_MEDIUM, MI_NONE, false,
+        DAMV_PIERCING, 2 },
     { WPN_GLAIVE,            "glaive",             15, -3, 18, 200,  6,
         SK_POLEARMS,     HANDS_TWO,    SIZE_LARGE,  MI_NONE, false,
         DAMV_CHOPPING, 10 },
@@ -337,13 +339,10 @@ static weapon_def Weapon_prop[NUM_WEAPONS] =
     // - slings get a bonus from dex, not str (as tension is meaningless)
     // - str weight is used for speed and applying dex to skill
     { WPN_BLOWGUN,           "blowgun",             0,  2, 10,  20,  0,
-        SK_DARTS,        HANDS_HALF,   SIZE_LITTLE, MI_NEEDLE, false,
+        SK_THROWING,        HANDS_HALF,   SIZE_LITTLE, MI_NEEDLE, false,
         DAMV_NON_MELEE, 0 },
     { WPN_SLING,             "sling",               0,  2, 11,  20,  1,
         SK_SLINGS,       HANDS_ONE,    SIZE_LITTLE, MI_STONE, false,
-        DAMV_NON_MELEE, 10 },
-    { WPN_HAND_CROSSBOW,     "hand crossbow",       3,  4, 15,  70,  5,
-        SK_CROSSBOWS,    HANDS_HALF,   SIZE_SMALL,  MI_DART, false,
         DAMV_NON_MELEE, 10 },
     { WPN_CROSSBOW,          "crossbow",            5,  4, 15, 150,  8,
         SK_CROSSBOWS,    HANDS_TWO,    SIZE_MEDIUM, MI_BOLT, false,
@@ -369,11 +368,11 @@ static int Missile_index[NUM_MISSILES];
 static missile_def Missile_prop[NUM_MISSILES] =
 {
     { MI_NEEDLE,        "needle",        0,    1, false },
-    { MI_STONE,         "stone",         4,    2, true  },
+    { MI_STONE,         "stone",         4,    6, true  },
     { MI_DART,          "dart",          5,    3, true  },
     { MI_ARROW,         "arrow",         7,    5, false },
     { MI_BOLT,          "bolt",          9,    5, false },
-    { MI_LARGE_ROCK,    "large rock",   20,  400, true  },
+    { MI_LARGE_ROCK,    "large rock",   20,  600, true  },
     { MI_SLING_BULLET,  "sling bullet",  6,    4, false },
     { MI_JAVELIN,       "javelin",      10,   80, true  },
     { MI_THROWING_NET,  "throwing net",  0,   30, true  },
@@ -430,7 +429,7 @@ void init_properties()
 {
     // Compare with enum comments, to catch changes.
     COMPILE_CHECK(NUM_ARMOURS  == 37, c1);
-    COMPILE_CHECK(NUM_WEAPONS  == 56, c2);
+    COMPILE_CHECK(NUM_WEAPONS  == 55, c2);
     COMPILE_CHECK(NUM_MISSILES ==  9, c3);
     COMPILE_CHECK(NUM_FOODS    == 22, c4);
 
@@ -457,11 +456,6 @@ void init_properties()
 //
 // Item cursed status functions:
 //
-bool item_cursed( const item_def &item )
-{
-    return (item.flags & ISFLAG_CURSED);
-}
-
 bool item_known_cursed( const item_def &item )
 {
     return ((item.flags & ISFLAG_KNOW_CURSE) && (item.flags & ISFLAG_CURSED));
@@ -497,6 +491,7 @@ void do_curse_item( item_def &item, bool quiet )
 
         // If we get the message, we know the item is cursed now.
         item.flags |= ISFLAG_KNOW_CURSE;
+        item.flags |= ISFLAG_SEEN_CURSED;
     }
 
     item.flags |= ISFLAG_CURSED;
@@ -537,6 +532,7 @@ void do_uncurse_item( item_def &item )
         you.wield_change = true;
     }
     item.flags &= (~ISFLAG_CURSED);
+    item.flags &= (~ISFLAG_SEEN_CURSED);
 }
 
 // Is item stationary (cannot be picked up)?
@@ -567,48 +563,6 @@ bool item_ident( const item_def &item, unsigned long flags )
     return ((item.flags & flags) == flags);
 }
 
-// The Orb of Zot and unique runes are considered critical.
-bool item_is_critical(const item_def &item)
-{
-    if (!item.is_valid())
-        return (false);
-
-    if (item.base_type == OBJ_ORBS)
-        return (true);
-
-    return (item.base_type == OBJ_MISCELLANY
-            && item.sub_type == MISC_RUNE_OF_ZOT
-            && item.plus != RUNE_DEMONIC
-            && item.plus != RUNE_ABYSSAL);
-}
-
-// Is item something that no one would usually bother enchanting?
-bool item_is_mundane(const item_def &item)
-{
-    switch (item.base_type)
-    {
-    case OBJ_WEAPONS:
-        if (item.sub_type == WPN_CLUB
-            || item.sub_type == WPN_GIANT_CLUB
-            || item.sub_type == WPN_GIANT_SPIKED_CLUB
-            || item.sub_type == WPN_KNIFE)
-        {
-            return (true);
-        }
-        break;
-
-    case OBJ_ARMOUR:
-        if (item.sub_type == ARM_ANIMAL_SKIN)
-            return (true);
-        break;
-
-    default:
-        break;
-    }
-
-    return (false);
-}
-
 void set_ident_flags( item_def &item, unsigned long flags )
 {
     preserve_quiver_slots p;
@@ -621,17 +575,38 @@ void set_ident_flags( item_def &item, unsigned long flags )
             shopping_list.cull_identical_items(item);
     }
 
-    if (notes_are_active() && !(item.flags & ISFLAG_NOTED_ID)
-        && get_ident_type(item) != ID_KNOWN_TYPE
-        && fully_identified(item) && is_interesting_item(item))
+    if (fully_identified(item))
     {
-        // Make a note of it.
-        take_note(Note(NOTE_ID_ITEM, 0, 0, item.name(DESC_NOCAP_A).c_str(),
-                       origin_desc(item).c_str()));
+        // Clear "was cursed" inscription once the item is identified.
+        if (Options.autoinscribe_cursed
+            && item.inscription.find("was cursed") != std::string::npos)
+        {
+            item.inscription = replace_all(item.inscription, ", was cursed", "");
+            item.inscription = replace_all(item.inscription, "was cursed, ", "");
+            item.inscription = replace_all(item.inscription, "was cursed", "");
+            trim_string(item.inscription);
+        }
 
-        // Sometimes (e.g. shops) you can ID an item before you get it;
-        // don't note twice in those cases.
-        item.flags |= (ISFLAG_NOTED_ID | ISFLAG_NOTED_GET);
+        if (notes_are_active() && !(item.flags & ISFLAG_NOTED_ID)
+            && get_ident_type(item) != ID_KNOWN_TYPE
+            && is_interesting_item(item))
+        {
+            // Make a note of it.
+            take_note(Note(NOTE_ID_ITEM, 0, 0, item.name(DESC_NOCAP_A).c_str(),
+                           origin_desc(item).c_str()));
+
+            // Sometimes (e.g. shops) you can ID an item before you get it;
+            // don't note twice in those cases.
+            item.flags |= (ISFLAG_NOTED_ID | ISFLAG_NOTED_GET);
+        }
+    }
+
+    if (item.flags & ISFLAG_KNOW_TYPE && !is_artefact(item))
+    {
+        if (item.base_type == OBJ_WEAPONS)
+            you.seen_weapon[item.sub_type] |= 1 << item.special;
+        if (item.base_type == OBJ_ARMOUR)
+            you.seen_armour[item.sub_type] |= 1 << item.special;
     }
 }
 
@@ -790,7 +765,6 @@ void set_equip_race( item_def &item, unsigned long flags )
                     && item.sub_type != WPN_LONG_SWORD)
                 || weapon_skill(item) == SK_POLEARMS
                 || item.sub_type == WPN_BLOWGUN
-                || item.sub_type == WPN_HAND_CROSSBOW
                 || item.sub_type == WPN_BOW
                 || item.sub_type == WPN_LONGBOW)
             {
@@ -823,7 +797,6 @@ void set_equip_race( item_def &item, unsigned long flags )
         {
         case OBJ_WEAPONS:
             if (item.sub_type == WPN_QUICK_BLADE
-                || item.sub_type == WPN_HAND_CROSSBOW
                 || item.sub_type == WPN_LONGBOW)
                 return;
             break;
@@ -946,10 +919,15 @@ int get_ammo_brand( const item_def &item )
 
 special_armour_type get_armour_ego_type( const item_def &item )
 {
-    // Artefact armours have no ego type, must look up powers
-    // separately.
-    if (item.base_type != OBJ_ARMOUR || is_artefact( item ))
+    // Armour ego types are "brands", so we do the randart lookup here.
+    if (item.base_type != OBJ_ARMOUR)
         return (SPARM_NORMAL);
+
+    if (is_artefact( item ))
+    {
+        return (static_cast<special_armour_type>(
+                    artefact_wpn_property( item, ARTP_BRAND )));
+    }
 
     return (static_cast<special_armour_type>(item.special));
 }
@@ -1143,7 +1121,9 @@ bool item_is_rechargeable(const item_def &it, bool hide_charged, bool weapons)
         if (item_ident(it, ISFLAG_KNOW_PLUSES))
         {
             return (it.plus2 < MAX_ROD_CHARGE * ROD_CHARGE_MULT
-                    || it.plus < it.plus2);
+                    || it.plus < it.plus2
+                    || !it.props.exists("rod_enchantment")
+                    || short(it.props["rod_enchantment"]) < MAX_WPN_ENCHANT);
         }
         return (true);
     }
@@ -1205,7 +1185,7 @@ bool is_enchantable_weapon(const item_def &wpn, bool uncurse, bool first)
             || first && wpn.plus >= MAX_WPN_ENCHANT
             || !first && wpn.plus2 >= MAX_WPN_ENCHANT)
         {
-            return (uncurse && item_cursed(wpn));
+            return (uncurse && wpn.cursed());
         }
     }
     // Highly enchanted missiles, which have only one stat, cannot be
@@ -1238,7 +1218,7 @@ bool is_enchantable_armour(const item_def &arm, bool uncurse, bool unknown)
     // Artefacts or highly enchanted armour cannot be enchanted, only
     // uncursed.
     if (is_artefact(arm) || arm.plus >= armour_max_enchant(arm))
-        return (uncurse && item_cursed(arm));
+        return (uncurse && arm.cursed());
 
     return (true);
 }
@@ -1290,7 +1270,6 @@ int weapon_rarity( int w_type )
         return (5);
 
     case WPN_BROAD_AXE:
-    case WPN_HAND_CROSSBOW:
     case WPN_SPIKED_FLAIL:
     case WPN_WHIP:
         return (4);
@@ -1353,6 +1332,8 @@ int get_damage_type(const item_def &item)
 {
     int ret = DAM_BASH;
 
+    if (item_is_rod(item))
+        ret = DAM_BLUDGEON;
     if (item.base_type == OBJ_WEAPONS)
         ret = (Weapon_prop[Weapon_index[item.sub_type]].dam_type & DAM_MASK);
 
@@ -1432,7 +1413,8 @@ hands_reqd_type hands_reqd( const item_def &item, size_type size )
         // Adjust handedness for size only for non-whip melee weapons.
         if (!is_range_weapon(item)
             && item.sub_type != WPN_WHIP
-            && item.sub_type != WPN_DEMON_WHIP)
+            && item.sub_type != WPN_DEMON_WHIP
+            && item.sub_type != WPN_HOLY_SCOURGE)
         {
             fit = cmp_weapon_size(item, size);
 
@@ -1681,6 +1663,8 @@ skill_type weapon_skill( const item_def &item )
 {
     if (item.base_type == OBJ_WEAPONS && !is_range_weapon( item ))
         return (Weapon_prop[ Weapon_index[item.sub_type] ].skill);
+    else if (item_is_rod( item ))
+        return (SK_MACES_FLAILS); // Rods are short and stubby
     else if (item.base_type == OBJ_STAVES)
         return (SK_STAVES);
 
@@ -1708,7 +1692,7 @@ skill_type range_skill( const item_def &item )
     {
         switch (item.sub_type)
         {
-        case MI_DART:    return (SK_DARTS);
+        case MI_DART:    return (SK_THROWING);
         case MI_JAVELIN: return (SK_POLEARMS);
         default:         break;
         }
@@ -1884,7 +1868,8 @@ const char *ammo_name(const item_def &bow)
 bool has_launcher(const item_def &ammo)
 {
     ASSERT(ammo.base_type == OBJ_MISSILES);
-    return (ammo.sub_type != MI_LARGE_ROCK
+    return (ammo.sub_type != MI_DART
+            && ammo.sub_type != MI_LARGE_ROCK
             && ammo.sub_type != MI_JAVELIN
             && ammo.sub_type != MI_THROWING_NET);
 }
@@ -2109,6 +2094,8 @@ int corpse_freshness(const item_def &item)
 //
 int property(const item_def &item, int prop_type)
 {
+    weapon_type weapon_sub;
+
     switch (item.base_type)
     {
     case OBJ_ARMOUR:
@@ -2135,12 +2122,14 @@ int property(const item_def &item, int prop_type)
         break;
 
     case OBJ_STAVES:
+        weapon_sub = item_is_rod(item) ? WPN_CLUB : WPN_QUARTERSTAFF;
+
         if (prop_type == PWPN_DAMAGE)
-            return (Weapon_prop[ Weapon_index[WPN_QUARTERSTAFF] ].dam);
+            return (Weapon_prop[ Weapon_index[weapon_sub] ].dam);
         else if (prop_type == PWPN_HIT)
-            return (Weapon_prop[ Weapon_index[WPN_QUARTERSTAFF] ].hit);
+            return (Weapon_prop[ Weapon_index[weapon_sub] ].hit);
         else if (prop_type == PWPN_SPEED)
-            return (Weapon_prop[ Weapon_index[WPN_QUARTERSTAFF] ].speed);
+            return (Weapon_prop[ Weapon_index[weapon_sub] ].speed);
         break;
 
     default:
@@ -2504,24 +2493,59 @@ bool shield_reflects(const item_def &shield)
     return (get_armour_ego_type(shield) == SPARM_REFLECTION);
 }
 
+void ident_reflector(item_def *item)
+{
+    if (!is_artefact(*item))
+        set_ident_flags(*item, ISFLAG_KNOW_TYPE);
+}
+
 std::string item_base_name(const item_def &item)
 {
-    switch (item.base_type)
+    return item_base_name(item.base_type, item.sub_type);
+}
+
+std::string item_base_name (object_class_type type, int sub_type)
+{
+    switch (type)
     {
     case OBJ_WEAPONS:
-        return Weapon_prop[Weapon_index[item.sub_type]].name;
+        return Weapon_prop[Weapon_index[sub_type]].name;
     case OBJ_MISSILES:
-        return Missile_prop[Missile_index[item.sub_type]].name;
+        return Missile_prop[Missile_index[sub_type]].name;
     case OBJ_ARMOUR:
-        return Armour_prop[Armour_index[item.sub_type]].name;
+        return Armour_prop[Armour_index[sub_type]].name;
     case OBJ_JEWELLERY:
-        return (jewellery_is_amulet(item) ? "amulet" : "ring");
+        return (jewellery_is_amulet(sub_type) ? "amulet" : "ring");
     default:
         return "";
     }
 }
 
+std::string food_type_name (const item_def &item)
+{
+    ASSERT(item.base_type == OBJ_FOOD);
+
+    return food_type_name(item.sub_type);
+}
+
+std::string food_type_name (int sub_type)
+{
+    return (Food_prop[Food_index[sub_type]].name);
+}
+
 const char* weapon_base_name(unsigned char subtype)
 {
     return Weapon_prop[Weapon_index[subtype]].name;
+}
+
+void seen_item(const item_def &item)
+{
+    if (!is_artefact(item))
+    {
+        // Known brands will be set in set_item_flags().
+        if (item.base_type == OBJ_WEAPONS)
+            you.seen_weapon[item.sub_type] |= 1 << SP_UNKNOWN_BRAND;
+        if (item.base_type == OBJ_ARMOUR)
+            you.seen_armour[item.sub_type] |= 1 << SP_UNKNOWN_BRAND;
+    }
 }

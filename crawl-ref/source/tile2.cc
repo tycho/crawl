@@ -12,10 +12,11 @@
 
 #include "branch.h"
 #include "env.h"
-#include "itemprop.h"
 #include "player.h"
 #include "stuff.h"
 #include "tiles.h"
+#include "tiledef-dngn.h"
+#include "tiledef-player.h"
 
 void tile_default_flv(level_area_type lev, branch_type br, tile_flavour &flv)
 {
@@ -35,7 +36,7 @@ void tile_default_flv(level_area_type lev, branch_type br, tile_flavour &flv)
         case 3: flv.wall = TILE_WALL_ZOT_GREEN; break;
         case 4: flv.wall = TILE_WALL_ZOT_CYAN; break;
         case 5: flv.wall = TILE_WALL_ZOT_YELLOW; break;
-        case 6: flv.wall = TILE_WALL_ZOT_GRAY; break;
+        case 6: flv.wall = TILE_WALL_ZOT_WHITE; break;
         }
 
         if (one_chance_in(3))

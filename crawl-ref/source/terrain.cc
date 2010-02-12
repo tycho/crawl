@@ -14,6 +14,7 @@
 
 #include "cloud.h"
 #include "coordit.h"
+#include "dgn-overview.h"
 #include "dgnevent.h"
 #include "directn.h"
 #include "map_knowledge.h"
@@ -21,6 +22,7 @@
 #include "godabil.h"
 #include "itemprop.h"
 #include "items.h"
+#include "libutil.h"
 #include "message.h"
 #include "misc.h"
 #include "mon-place.h"
@@ -28,7 +30,6 @@
 #include "mon-stuff.h"
 #include "mon-util.h"
 #include "ouch.h"
-#include "overmap.h"
 #include "player.h"
 #include "random.h"
 #include "religion.h"
@@ -36,7 +37,7 @@
 #include "stuff.h"
 #include "env.h"
 #include "travel.h"
-#include "transfor.h"
+#include "transform.h"
 #include "traps.h"
 #include "view.h"
 
@@ -321,6 +322,18 @@ bool cell_is_solid(const coord_def &c)
     return (feat_is_solid(grd(c)));
 }
 
+bool feat_has_solid_floor(dungeon_feature_type feat)
+{
+    return (!feat_is_solid(feat) && feat != DNGN_DEEP_WATER &&
+            feat != DNGN_LAVA);
+}
+
+bool feat_is_door(dungeon_feature_type feat)
+{
+    return (feat == DNGN_CLOSED_DOOR || feat == DNGN_DETECTED_SECRET_DOOR
+            || feat == DNGN_OPEN_DOOR);
+}
+
 bool feat_is_closed_door(dungeon_feature_type feat)
 {
     return (feat == DNGN_CLOSED_DOOR || feat == DNGN_DETECTED_SECRET_DOOR);
@@ -368,11 +381,6 @@ bool feat_is_water(dungeon_feature_type feat)
 bool feat_is_watery(dungeon_feature_type feat)
 {
     return (feat_is_water(feat) || feat == DNGN_FOUNTAIN_BLUE);
-}
-
-bool feat_destroys_items(dungeon_feature_type feat)
-{
-    return (feat == DNGN_LAVA || feat == DNGN_DEEP_WATER);
 }
 
 // Returns GOD_NO_GOD if feat is not an altar, otherwise returns the
@@ -489,10 +497,15 @@ void get_door_description(int door_size, const char** adjective, const char** no
 dungeon_feature_type grid_appearance(const coord_def &gc)
 {
     dungeon_feature_type feat = env.grid(gc);
-    if (feat == DNGN_SECRET_DOOR)
-        feat = grid_secret_door_appearance(gc);
-
-    return feat;
+    switch (feat)
+    {
+    case DNGN_SECRET_DOOR:
+        return grid_secret_door_appearance(gc);
+    case DNGN_UNDISCOVERED_TRAP:
+        return DNGN_FLOOR;
+    default:
+        return feat;
+    }
 }
 
 dungeon_feature_type grid_secret_door_appearance(const coord_def &where)
@@ -532,16 +545,34 @@ dungeon_feature_type grid_secret_door_appearance(const coord_def &where)
                                 : ret);
 }
 
-const char *feat_item_destruction_message(dungeon_feature_type feat)
+bool feat_destroys_item(dungeon_feature_type feat, const item_def &item,
+                        bool noisy)
 {
-    return (feat == DNGN_DEEP_WATER ? "You hear a splash." :
-            feat == DNGN_LAVA       ? "You hear a sizzling splash."
-                                    : "You hear a crunching noise.");
+    switch (feat)
+    {
+    case DNGN_SHALLOW_WATER:
+    case DNGN_DEEP_WATER:
+        if (is_rune(item) && item.plus == RUNE_ABYSSAL)
+            return (true);
+
+        if (noisy)
+            mprf(MSGCH_SOUND, "You hear a splash.");
+        return (false);
+
+    case DNGN_LAVA:
+        if (noisy)
+            mprf(MSGCH_SOUND, "You hear a sizzling splash.");
+        return (item.base_type == OBJ_SCROLLS);
+
+    default:
+        return (false);
+    }
 }
 
 static coord_def _dgn_find_nearest_square(
     const coord_def &pos,
-    bool (*acceptable)(const coord_def &),
+    void *thing,
+    bool (*acceptable)(const coord_def &, void *thing),
     bool (*traversable)(const coord_def &) = NULL)
 {
     memset(travel_point_distance, 0, sizeof(travel_distance_grid_t));
@@ -557,7 +588,7 @@ static coord_def _dgn_find_nearest_square(
         {
             const coord_def &p = *i;
 
-            if (p != pos && acceptable(p))
+            if (p != pos && acceptable(p, thing))
                 return (p);
 
             travel_point_distance[p.x][p.y] = 1;
@@ -586,16 +617,17 @@ static coord_def _dgn_find_nearest_square(
     return (unfound);
 }
 
-static bool _item_safe_square(const coord_def &pos)
+static bool _item_safe_square(const coord_def &pos, void *item)
 {
     const dungeon_feature_type feat = grd(pos);
-    return (feat_is_traversable(feat) && !feat_destroys_items(feat));
+    return (feat_is_traversable(feat) &&
+            !feat_destroys_item(feat, *static_cast<item_def *>(item)));
 }
 
 // Moves an item on the floor to the nearest adjacent floor-space.
 static bool _dgn_shift_item(const coord_def &pos, item_def &item)
 {
-    const coord_def np = _dgn_find_nearest_square(pos, _item_safe_square);
+    const coord_def np = _dgn_find_nearest_square(pos, &item, _item_safe_square);
     if (in_bounds(np) && np != pos)
     {
         int index = item.index();
@@ -611,7 +643,7 @@ bool is_critical_feature(dungeon_feature_type feat)
             || feat_altar_god(feat) != GOD_NO_GOD);
 }
 
-static bool _is_feature_shift_target(const coord_def &pos)
+static bool _is_feature_shift_target(const coord_def &pos, void*)
 {
     return (grd(pos) == DNGN_FLOOR && !dungeon_events.has_listeners_at(pos));
 }
@@ -623,7 +655,7 @@ static bool _dgn_shift_feature(const coord_def &pos)
         return (false);
 
     const coord_def dest =
-        _dgn_find_nearest_square(pos, _is_feature_shift_target);
+        _dgn_find_nearest_square(pos, NULL, _is_feature_shift_target);
 
     if (in_bounds(dest) && dest != pos)
     {
@@ -643,27 +675,27 @@ static bool _dgn_shift_feature(const coord_def &pos)
 static void _dgn_check_terrain_items(const coord_def &pos, bool preserve_items)
 {
     const dungeon_feature_type feat = grd(pos);
-    if (feat_is_solid(feat) || feat_destroys_items(feat))
-    {
-        int item = igrd(pos);
-        bool did_destroy = false;
-        while (item != NON_ITEM)
-        {
-            const int curr = item;
-            item = mitm[item].link;
 
-            // Game-critical item.
-            if (preserve_items || item_is_critical(mitm[curr]))
-                _dgn_shift_item(pos, mitm[curr]);
-            else
-            {
-                item_was_destroyed(mitm[curr]);
-                destroy_item(curr);
-                did_destroy = true;
-            }
+    int item = igrd(pos);
+    bool did_destroy = false;
+    while (item != NON_ITEM)
+    {
+        const int curr = item;
+        item = mitm[item].link;
+
+        if (!feat_is_solid(feat) && !feat_destroys_item(feat, mitm[curr]))
+            continue;
+
+        // Game-critical item.
+        if (preserve_items || mitm[curr].is_critical())
+            _dgn_shift_item(pos, mitm[curr]);
+        else
+        {
+            feat_destroys_item(feat, mitm[curr], true);
+            item_was_destroyed(mitm[curr]);
+            destroy_item(curr);
+            did_destroy = true;
         }
-        if (did_destroy && player_can_hear(pos))
-            mprf(MSGCH_SOUND, feat_item_destruction_message(feat));
     }
 }
 
@@ -688,15 +720,19 @@ static void _dgn_check_terrain_blood(const coord_def &pos,
         // Caller has already changed the grid, and old_feat is actually
         // the new feat.
         if (old_feat != DNGN_FLOOR && !feat_is_solid(old_feat))
+        {
             env.pgrid(pos) &= ~(FPROP_BLOODY);
+            env.pgrid(pos) &= ~(FPROP_MOLD);
+        }
     }
     else
     {
         if (feat_is_solid(old_feat) != feat_is_solid(new_feat)
-            || feat_is_water(new_feat) || feat_destroys_items(new_feat)
+            || feat_is_water(new_feat) || new_feat == DNGN_LAVA
             || is_critical_feature(new_feat))
         {
             env.pgrid(pos) &= ~(FPROP_BLOODY);
+            env.pgrid(pos) &= ~(FPROP_MOLD);
         }
     }
 }
@@ -754,6 +790,11 @@ void dungeon_terrain_changed(const coord_def &pos,
         _dgn_check_terrain_player(pos);
 
     set_terrain_changed(pos);
+
+    // Deal with doors being created by changing features.
+#ifdef USE_TILE
+    tile_init_flavour(pos);
+#endif
 }
 
 static void _announce_swap_real(coord_def orig_pos, coord_def dest_pos)
@@ -1075,7 +1116,7 @@ bool fall_into_a_pool( const coord_def& entry, bool allow_shift,
     }
 
     // sanity check
-    if (terrain != DNGN_LAVA && beogh_water_walk())
+    if (terrain != DNGN_LAVA && (beogh_water_walk() || you.can_swim()))
         return (false);
 
     mprf("You fall into the %s!",
@@ -1276,8 +1317,8 @@ const char *dngn_feature_names[] =
 "unseen", "closed_door", "detected_secret_door", "secret_door",
 "wax_wall", "metal_wall", "green_crystal_wall", "rock_wall", "stone_wall",
 "permarock_wall",
-"clear_rock_wall", "clear_stone_wall", "clear_permarock_wall", "trees",
-"open_sea", "orcish_idol", "", "", "", "", "",
+"clear_rock_wall", "clear_stone_wall", "clear_permarock_wall", "open_sea",
+"trees", "orcish_idol", "", "", "", "", "",
 "granite_statue", "statue_reserved_1", "statue_reserved_2",
 "", "", "", "", "", "", "", "",
 "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
@@ -1363,4 +1404,3 @@ const char *dungeon_feature_name(dungeon_feature_type rfeat)
 
     return dngn_feature_names[feat];
 }
-

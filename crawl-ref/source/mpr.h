@@ -49,7 +49,7 @@ enum msg_channel_type
 
 enum msg_colour_type
 {
-    MSGCOL_BLACK        = 0,    // the order of these colours is important
+    MSGCOL_BLACK        = 0,
     MSGCOL_BLUE,
     MSGCOL_GREEN,
     MSGCOL_CYAN,
@@ -61,20 +61,38 @@ enum msg_colour_type
     MSGCOL_LIGHTBLUE,
     MSGCOL_LIGHTGREEN,
     MSGCOL_LIGHTCYAN,
+    MSGCOL_LIGHTRED,
     MSGCOL_LIGHTMAGENTA,
     MSGCOL_YELLOW,
     MSGCOL_WHITE,
     MSGCOL_DEFAULT,             // use default colour
     MSGCOL_ALTERNATE,           // use secondary default colour scheme
     MSGCOL_MUTED,               // don't print messages
-    MSGCOL_PLAIN                // same as plain channel
+    MSGCOL_PLAIN,               // same as plain channel
+    MSGCOL_NONE                 // parsing failure, etc
 };
 
-void mpr(const char *inf, msg_channel_type channel = MSGCH_PLAIN, int param=0);
+msg_colour_type msg_colour(int colour);
+
+void mpr(std::string text, msg_channel_type channel=MSGCH_PLAIN, int param=0,
+         bool nojoin=false);
+
+inline void mprnojoin(std::string text, msg_channel_type channel=MSGCH_PLAIN,
+                      int param=0)
+{
+    mpr(text, channel, param, true);
+}
 
 // 4.1-style mpr, currently named mprf for minimal disruption.
 void mprf( msg_channel_type channel, int param, const char *format, ... );
 void mprf( msg_channel_type channel, const char *format, ... );
 void mprf( const char *format, ... );
+
+// Yay for C89 and lack of variadic #defines...
+#ifdef DEBUG_DIAGNOSTICS
+void dprf( const char *format, ... );
+#else
+static inline void dprf( const char *format, ... ) {}
+#endif
 
 #endif

@@ -5,6 +5,8 @@
 
 #include "delay.h"
 #include "dlua.h"
+#include "initfile.h"
+#include "libutil.h"
 #include "mon-util.h"
 #include "mon-stuff.h"
 
@@ -43,6 +45,11 @@ MDEF(name)
     PLUARET(string, mons->name(DESC_PLAIN, true).c_str());
 }
 
+MDEF(unique)
+{
+    PLUARET(boolean, mons_is_unique(mons->type));
+}
+
 MDEF(base_name)
 {
     PLUARET(string, mons->base_name(DESC_PLAIN, true).c_str());
@@ -63,6 +70,19 @@ MDEF(type_name)
     PLUARET(string, mons_type_name(mons->type, DESC_PLAIN).c_str());
 }
 
+MDEF(entry_name)
+{
+    ASSERT_DLUA;
+
+    const monsterentry *me = get_monster_data(mons->type);
+    if (me)
+        lua_pushstring(ls, me->name);
+    else
+        lua_pushnil(ls);
+
+    return (1);
+}
+
 MDEF(x)
 {
     PLUARET(number, int(mons->pos().x) - int(you.pos().x));
@@ -76,6 +96,57 @@ MDEF(y)
 MDEF(hd)
 {
     PLUARET(number, mons->hit_dice);
+}
+
+MDEF(shapeshifter)
+{
+    ASSERT_DLUA;
+    if (mons->has_ench(ENCH_GLOWING_SHAPESHIFTER))
+        lua_pushstring(ls, "glowing shapeshifter");
+    else if (mons->has_ench(ENCH_SHAPESHIFTER))
+        lua_pushstring(ls, "shapeshifter");
+    else
+        lua_pushnil(ls);
+    return (1);
+}
+
+MDEF(mimic)
+{
+    ASSERT_DLUA;
+    if (mons_genus(mons->type) == MONS_GOLD_MIMIC)
+    {
+        switch (mons->type)
+        {
+        case MONS_GOLD_MIMIC:
+            lua_pushstring(ls, "gold mimic"); break;
+        case MONS_WEAPON_MIMIC:
+            lua_pushstring(ls, "weapon mimic"); break;
+        case MONS_ARMOUR_MIMIC:
+            lua_pushstring(ls, "armour mimic"); break;
+        case MONS_POTION_MIMIC:
+            lua_pushstring(ls, "potion mimic"); break;
+        case MONS_SCROLL_MIMIC:
+            lua_pushstring(ls, "scroll mimic"); break;
+        default:
+            lua_pushstring(ls, "unknown mimic"); break;
+        }
+    }
+    else
+        lua_pushnil(ls);
+
+    return (1);
+}
+
+MDEF(dancing_weapon)
+{
+    ASSERT_DLUA;
+
+    if (mons_genus(mons->type) == MONS_DANCING_WEAPON)
+        lua_pushstring(ls, "dancing weapon");
+    else
+        lua_pushnil(ls);
+
+    return (1);
 }
 
 static const char *_monuse_names[] =
@@ -124,8 +195,8 @@ static int l_mons_do_dismiss(lua_State *ls)
     // dismiss is only callable from dlua, not from managed VMs (i.e.
     // end-user scripts cannot dismiss monsters).
     ASSERT_DLUA;
-    monsters *mons =
-        util_get_userdata<monsters>(ls, lua_upvalueindex(1));
+    monsters *mons = clua_get_lightuserdata<monsters>(ls, lua_upvalueindex(1));
+
     if (mons->alive())
     {
         mons->flags |= MF_HARD_RESET;
@@ -141,12 +212,11 @@ static int l_mons_do_random_teleport(lua_State *ls)
     // We should only be able to teleport monsters from dlua.
     ASSERT_DLUA;
 
-    monsters *mons =
-        util_get_userdata<monsters>(ls, lua_upvalueindex(1));
+    monsters *mons = clua_get_lightuserdata<monsters>(ls, lua_upvalueindex(1));
+
     if (mons->alive())
-    {
         mons->teleport(true);
-    }
+
     return (0);
 }
 
@@ -164,7 +234,7 @@ static int l_mons_do_set_prop(lua_State *ls)
     ASSERT_DLUA;
 
     monsters *mons =
-        util_get_userdata<monsters>(ls, lua_upvalueindex(1));
+        clua_get_lightuserdata<monsters>(ls, lua_upvalueindex(1));
 
     const char *prop_name = luaL_checkstring(ls, 1);
 
@@ -196,6 +266,71 @@ static int l_mons_do_set_prop(lua_State *ls)
 
 MDEFN(set_prop, do_set_prop)
 
+static int l_mons_do_get_prop(lua_State *ls)
+{
+    // We should only be able to set properties from dlua.
+    ASSERT_DLUA;
+
+    monsters *mons =
+        clua_get_lightuserdata<monsters>(ls, lua_upvalueindex(1));
+
+    const char *prop_name = luaL_checkstring(ls, 1);
+
+    if (!mons->props.exists(prop_name))
+    {
+        if (lua_isboolean(ls, 2))
+        {
+            std::string err = make_stringf("Don't have a property called '%s'.", prop_name);
+            luaL_argerror(ls, 2, err.c_str());
+        }
+
+        return (0);
+    }
+
+    CrawlStoreValue prop = mons->props[prop_name];
+    int num_pushed = 1;
+
+    switch (prop.get_type())
+    {
+    case SV_NONE: lua_pushnil(ls); break;
+    case SV_BOOL: lua_pushboolean(ls, prop.get_bool()); break;
+    case SV_BYTE: lua_pushboolean(ls, prop.get_byte()); break;
+    case SV_SHORT: lua_pushnumber(ls, prop.get_short()); break;
+    case SV_LONG: lua_pushnumber(ls, prop.get_long()); break;
+    case SV_FLOAT: lua_pushnumber(ls, prop.get_float()); break;
+    case SV_STR: lua_pushstring(ls, prop.get_string().c_str()); break;
+    case SV_COORD:
+        num_pushed++;
+        lua_pushnumber(ls, prop.get_coord().x);
+        lua_pushnumber(ls, prop.get_coord().y);
+        break;
+    default:
+        // Do nothing for some things.
+        lua_pushnil(ls);
+        break;
+    }
+
+    return (num_pushed);
+}
+
+MDEFN(get_prop, do_get_prop)
+
+static int l_mons_do_has_prop(lua_State *ls)
+{
+    // We should only be able to get properties from dlua.
+    ASSERT_DLUA;
+
+    monsters *mons =
+        clua_get_lightuserdata<monsters>(ls, lua_upvalueindex(1));
+
+    const char *prop_name = luaL_checkstring(ls, 1);
+
+    lua_pushboolean(ls, mons->props.exists(prop_name));
+    return (1);
+}
+
+MDEFN(has_prop, do_has_prop)
+
 MDEF(you_can_see)
 {
     ASSERT_DLUA;
@@ -210,11 +345,16 @@ struct MonsAccessor
 
 static MonsAccessor mons_attrs[] =
 {
-    { "name",      l_mons_name      },
-    { "base_name", l_mons_base_name },
-    { "full_name", l_mons_full_name },
-    { "db_name",   l_mons_db_name   },
-    { "type_name", l_mons_type_name },
+    { "name",           l_mons_name      },
+    { "base_name",      l_mons_base_name },
+    { "full_name",      l_mons_full_name },
+    { "db_name",        l_mons_db_name   },
+    { "type_name",      l_mons_type_name },
+    { "entry_name",     l_mons_entry_name },
+    { "unique"   ,      l_mons_unique },
+    { "shapeshifter",   l_mons_shapeshifter },
+    { "mimic",          l_mons_mimic },
+    { "dancing_weapon", l_mons_dancing_weapon },
 
     { "x"   , l_mons_x    },
     { "y"   , l_mons_y    },
@@ -226,6 +366,8 @@ static MonsAccessor mons_attrs[] =
     { "experience",      l_mons_experience      },
     { "random_teleport", l_mons_random_teleport },
     { "set_prop",        l_mons_set_prop        },
+    { "get_prop",        l_mons_get_prop        },
+    { "has_prop",        l_mons_has_prop        },
     { "you_can_see",     l_mons_you_can_see     }
 };
 
@@ -240,10 +382,8 @@ static int monster_get(lua_State *ls)
         return (0);
 
     for (unsigned i = 0; i < sizeof(mons_attrs) / sizeof(mons_attrs[0]); ++i)
-    {
         if (!strcmp(attr, mons_attrs[i].attribute))
             return (mons_attrs[i].accessor(ls, mw->mons, attr));
-    }
 
     return (0);
 }
@@ -258,11 +398,14 @@ static const char *_monster_behaviour_names[] = {
     "lurk"
 };
 
-static beh_type behaviour_by_name(const std::string &name) {
+static beh_type behaviour_by_name(const std::string &name)
+{
     ASSERT(ARRAYSZ(_monster_behaviour_names) == NUM_BEHAVIOURS);
+
     for (unsigned i = 0; i < ARRAYSZ(_monster_behaviour_names); ++i)
         if (name == _monster_behaviour_names[i])
             return static_cast<beh_type>(i);
+
     return NUM_BEHAVIOURS;
 }
 
@@ -280,12 +423,13 @@ static int monster_set(lua_State *ls)
     if (!attr)
         return (0);
 
-    if (!strcmp(attr, "beh")) {
+    if (!strcmp(attr, "beh"))
+    {
         const beh_type beh =
-            lua_isnumber(ls, 3) ?
-            static_cast<beh_type>(luaL_checkint(ls, 3)) :
-            lua_isstring(ls, 3) ? behaviour_by_name(lua_tostring(ls, 3)) :
-            NUM_BEHAVIOURS;
+            lua_isnumber(ls, 3) ? static_cast<beh_type>(luaL_checkint(ls, 3)) :
+            lua_isstring(ls, 3) ? behaviour_by_name(lua_tostring(ls, 3))
+                                : NUM_BEHAVIOURS;
+
         if (beh != NUM_BEHAVIOURS)
             mw->mons->behaviour = beh;
     }
@@ -293,17 +437,21 @@ static int monster_set(lua_State *ls)
     return (0);
 }
 
-static int mons_behaviour(lua_State *ls) {
+static int mons_behaviour(lua_State *ls)
+{
     if (lua_gettop(ls) < 1)
         return (0);
 
-    if (lua_isnumber(ls, 1)) {
+    if (lua_isnumber(ls, 1))
+    {
         lua_pushvalue(ls, 1);
         return (1);
     }
-    else if (lua_isstring(ls, 1)) {
+    else if (lua_isstring(ls, 1))
+    {
         const beh_type beh = behaviour_by_name(lua_tostring(ls, 1));
-        if (beh != NUM_BEHAVIOURS) {
+        if (beh != NUM_BEHAVIOURS)
+        {
             lua_pushnumber(ls, beh);
             return (1);
         }

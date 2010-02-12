@@ -11,15 +11,23 @@
 #include "coord.h"
 #include "directn.h"
 #include "dungeon.h"
+#include "dgn-shoals.h"
 #include "env.h"
 #include "flood_find.h"
 #include "l_defs.h"
+#include "libutil.h"
 #include "mapmark.h"
 #include "maps.h"
 #include "random.h"
+#include "shout.h"
 #include "spl-util.h"
 #include "state.h"
+#ifdef USE_TILE
+#include "tiledef-dngn.h"
+#endif
 #include "view.h"
+
+const char *VAULT_PLACEMENT_METATABLE = "crawl.vault-placement";
 
 ///////////////////////////////////////////////////////////////////////////
 // Lua dungeon bindings (in the dgn table).
@@ -563,6 +571,11 @@ static int dgn_kprop(lua_State *ls)
     return dgn_map_add_transform(ls, &map_lines::add_fproperty);
 }
 
+static int dgn_fheight(lua_State *ls)
+{
+    return dgn_map_add_transform(ls, &map_lines::add_fheight);
+}
+
 static int dgn_map_size(lua_State *ls)
 {
     MAP(ls, 1, map);
@@ -650,7 +663,7 @@ static int dgn_has_exit_from(lua_State *ls)
     return dgn_map_pathfind(ls, 3, &map_flood_finder::has_exit_from);
 }
 
-static void dlua_push_coord(lua_State *ls, const coord_def &c)
+static void dlua_push_coordinates(lua_State *ls, const coord_def &c)
 {
     lua_pushnumber(ls, c.x);
     lua_pushnumber(ls, c.y);
@@ -662,7 +675,7 @@ static int dgn_gly_point(lua_State *ls)
     coord_def c = map->find_first_glyph(*luaL_checkstring(ls, 2));
     if (c.x != -1 && c.y != -1)
     {
-        dlua_push_coord(ls, c);
+        dlua_push_coordinates(ls, c);
         return (2);
     }
     return (0);
@@ -674,7 +687,7 @@ static int dgn_gly_points(lua_State *ls)
     std::vector<coord_def> cs = map->find_glyph(*luaL_checkstring(ls, 2));
 
     for (int i = 0, size = cs.size(); i < size; ++i)
-        dlua_push_coord(ls, cs[i]);
+        dlua_push_coordinates(ls, cs[i]);
     return (cs.size() * 2);
 }
 
@@ -903,6 +916,57 @@ static int dgn_terrain_changed(lua_State *ls)
     return (0);
 }
 
+static int dgn_fprop_changed(lua_State *ls)
+{
+    feature_property_type prop = FPROP_NONE;
+
+    if (lua_isnumber(ls, 3))
+        prop = static_cast<feature_property_type>(luaL_checkint(ls, 3));
+    else if (lua_isstring(ls, 3))
+        prop = str_to_fprop(lua_tostring(ls, 3));
+
+    coord_def pos = coord_def(luaL_checkint(ls, 1), luaL_checkint(ls, 2));
+
+    if (in_bounds(pos) && prop != FPROP_NONE)
+    {
+        if (testbits(env.pgrid(pos), prop))
+        {
+            env.pgrid(pos) &= ~prop;
+            lua_pushboolean(ls, true);
+        }
+        else if (!testbits(env.pgrid(pos), prop))
+        {
+            env.pgrid(pos) |= prop;
+            lua_pushboolean(ls, true);
+        }
+        else
+            lua_pushboolean(ls, false);
+    }
+    else
+        lua_pushboolean(ls, false);
+
+    return (1);
+}
+
+static int dgn_fprop_at (lua_State *ls)
+{
+    feature_property_type prop = FPROP_NONE;
+
+    if (lua_isnumber(ls, 3))
+        prop = static_cast<feature_property_type>(luaL_checkint(ls, 3));
+    else if (lua_isstring(ls, 3))
+        prop = str_to_fprop(lua_tostring(ls, 3));
+
+    coord_def pos = coord_def(luaL_checkint(ls, 1), luaL_checkint(ls, 2));
+
+    if (in_bounds(pos) && prop != FPROP_NONE)
+        lua_pushboolean(ls, testbits(env.pgrid(pos), prop));
+    else
+        lua_pushboolean(ls, false);
+
+    return (1);
+}
+
 static int lua_dgn_set_lt_callback(lua_State *ls)
 {
     const char *level_type = luaL_checkstring(ls, 1);
@@ -928,6 +992,10 @@ bool _valid_border_feat (dungeon_feature_type feat)
                || feat == DNGN_SHALLOW_WATER || feat == DNGN_FLOOR));
 }
 
+// XXX: Currently, this is hacked so that map_def->border_fill_type is marsalled
+//      when the maps are stored. This relies on the individual map Lua prelude
+//      being executed whenever maps are loaded and verified, which means that
+//      the next time the map is loaded, border_fill_type is already stored.
 static int lua_dgn_set_border_fill_type (lua_State *ls)
 {
     MAP(ls, 1, map);
@@ -1122,7 +1190,7 @@ static int dgn_random_walk(lua_State *ls)
         dist_left -= (dir % 2 == 0) ? 1.0 : SQRT_2;
     }
 
-    dlua_push_coord(ls, pos);
+    dlua_push_coordinates(ls, pos);
 
     return (2);
 }
@@ -1166,14 +1234,16 @@ static int lua_cloud_pow_rolls;
 
 static int make_a_lua_cloud(coord_def where, int garbage, int spread_rate,
                             cloud_type ctype, kill_category whose,
-                            killer_type killer)
+                            killer_type killer, int colour, std::string name,
+                            std::string tile)
 {
     UNUSED( garbage );
 
     const int pow = random_range(lua_cloud_pow_min,
                                  lua_cloud_pow_max,
                                  lua_cloud_pow_rolls);
-    place_cloud( ctype, where, pow, whose, killer, spread_rate );
+    place_cloud( ctype, where, pow, whose, killer, spread_rate, colour, name,
+                 tile );
     return 1;
 }
 
@@ -1192,6 +1262,10 @@ static int dgn_apply_area_cloud(lua_State *ls)
     const kill_category kc = dgn_kill_name_to_category(kname);
 
     const int spread_rate = lua_isnumber(ls, 9) ? luaL_checkint(ls, 9) : -1;
+
+    const int colour    = lua_isstring(ls, 10) ? str_to_colour(luaL_checkstring(ls, 10)) : -1;
+    std::string name = lua_isstring(ls, 11) ? luaL_checkstring(ls, 11) : "";
+    std::string tile = lua_isstring(ls, 12) ? luaL_checkstring(ls, 12) : "";
 
     if (!in_bounds(x, y))
     {
@@ -1258,7 +1332,7 @@ static int dgn_apply_area_cloud(lua_State *ls)
 
     apply_area_cloud(make_a_lua_cloud, coord_def(x, y), 0, size,
                      ctype, kc, cloud_struct::whose_to_killer(kc),
-                     spread_rate);
+                     spread_rate, colour, name, tile);
 
     return (0);
 }
@@ -1274,6 +1348,10 @@ static int dgn_place_cloud(lua_State *ls)
     const kill_category kc = dgn_kill_name_to_category(kname);
 
     const int spread_rate = lua_isnumber(ls, 6) ? luaL_checkint(ls, 6) : -1;
+
+    const int colour    = lua_isstring(ls, 7) ? str_to_colour(luaL_checkstring(ls, 7)) : -1;
+    std::string name = lua_isstring(ls, 8) ? luaL_checkstring(ls, 8) : "";
+    std::string tile = lua_isstring(ls, 9) ? luaL_checkstring(ls, 9) : "";
 
     if (!in_bounds(x, y))
     {
@@ -1308,11 +1386,21 @@ static int dgn_place_cloud(lua_State *ls)
         return (0);
     }
 
-    place_cloud(ctype, coord_def(x, y), cl_range, kc, spread_rate);
+    place_cloud(ctype, coord_def(x, y), cl_range, kc, spread_rate, colour, name, tile);
 
     return (0);
 }
 
+// XXX: Doesn't allow for messages or specifying the noise source.
+LUAFN(dgn_noisy)
+{
+    const int loudness = luaL_checkint(ls, 1);
+    COORDS(pos, 2, 3);
+
+    noisy(loudness, pos);
+
+    return (0);
+}
 
 static int _dgn_is_passable(lua_State *ls)
 {
@@ -1348,10 +1436,8 @@ static bool _lua_map_place_valid(const map_def &map,
                                  const coord_def &c,
                                  const coord_def &size)
 {
-#ifdef DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "lua_map_place_invalid: (%d,%d) (%d,%d)",
+    dprf("lua_map_place_invalid: (%d,%d) (%d,%d)",
          c.x, c.y, size.x, size.y);
-#endif
 
     lua_stack_cleaner clean(_dgn_map_safe_bounds_fn->lua);
 
@@ -1362,8 +1448,8 @@ static bool _lua_map_place_valid(const map_def &map,
 
     // Push map, pos.x, pos.y, size.x, size.y
     clua_push_map(ls, const_cast<map_def*>(&map));
-    clua_push_coord(ls, c);
-    clua_push_coord(ls, size);
+    dlua_push_coordinates(ls, c);
+    dlua_push_coordinates(ls, size);
 
     const int err = lua_pcall(ls, 5, 1, 0);
 
@@ -1507,6 +1593,21 @@ LUAFN(_dgn_in_vault)
     return (1);
 }
 
+LUAFN(_dgn_map_parameters)
+{
+    return clua_stringtable(ls, map_parameters);
+}
+
+int dgn_push_vault_placement(lua_State *ls, const vault_placement &vp)
+{
+    return dlua_push_object_type(ls, VAULT_PLACEMENT_METATABLE, vp);
+}
+
+LUAFN(_dgn_maps_used_here)
+{
+    return clua_gentable(ls, Level_Vaults, dgn_push_vault_placement);
+}
+
 LUAFN(_dgn_find_marker_position_by_prop)
 {
     const char *prop = luaL_checkstring(ls, 1);
@@ -1514,7 +1615,7 @@ LUAFN(_dgn_find_marker_position_by_prop)
                             lua_gettop(ls) >= 2 ? luaL_checkstring(ls, 2) : "");
     const coord_def place = find_marker_position_by_prop(prop, value);
     if (map_bounds(place))
-        clua_push_coord(ls, place);
+        dlua_push_coordinates(ls, place);
     else
     {
         lua_pushnil(ls);
@@ -1582,8 +1683,8 @@ LUAFN(dgn_get_special_room_info)
     }
 
     lua_pushnumber(ls,  lua_special_room_level);
-    dlua_push_coord(ls, lua_special_room_spec.tl);
-    dlua_push_coord(ls, lua_special_room_spec.br);
+    dlua_push_coordinates(ls, lua_special_room_spec.tl);
+    dlua_push_coordinates(ls, lua_special_room_spec.br);
 
     return (5);
 }
@@ -1689,6 +1790,12 @@ LUAFN(dgn_fill_grd_area)
     return (0);
 }
 
+LUAFN(dgn_apply_tide)
+{
+    shoals_apply_tides(0, true);
+    return (0);
+}
+
 const struct luaL_reg dgn_dlib[] =
 {
 { "reset_level", _dgn_reset_level },
@@ -1724,10 +1831,13 @@ const struct luaL_reg dgn_dlib[] =
 { "kmask", dgn_kmask },
 { "mapsize", dgn_map_size },
 { "subvault", dgn_subvault },
+{ "fheight", dgn_fheight },
 
 { "colour_at", dgn_colour_at },
+{ "fprop_at", dgn_fprop_at },
 
 { "terrain_changed", dgn_terrain_changed },
+{ "fprop_changed", dgn_fprop_changed },
 { "points_connected", dgn_points_connected },
 { "any_point_connected", dgn_any_point_connected },
 { "has_exit_from", dgn_has_exit_from },
@@ -1752,6 +1862,7 @@ const struct luaL_reg dgn_dlib[] =
 { "random_walk", dgn_random_walk },
 { "apply_area_cloud", dgn_apply_area_cloud },
 { "place_cloud", dgn_place_cloud },
+{ "noisy", dgn_noisy },
 
 { "is_passable", _dgn_is_passable },
 
@@ -1770,6 +1881,10 @@ const struct luaL_reg dgn_dlib[] =
 { "resolve_map", _dgn_resolve_map },
 { "in_vault", _dgn_in_vault },
 
+{ "map_parameters", _dgn_map_parameters },
+
+{ "maps_used_here", _dgn_maps_used_here },
+
 { "find_marker_position_by_prop", _dgn_find_marker_position_by_prop },
 { "find_marker_positions_by_prop", _dgn_find_marker_positions_by_prop },
 { "find_markers_by_prop", _dgn_find_markers_by_prop },
@@ -1781,5 +1896,99 @@ const struct luaL_reg dgn_dlib[] =
 
 { "fill_grd_area", dgn_fill_grd_area },
 
+{ "apply_tide", dgn_apply_tide },
+
 { NULL, NULL }
 };
+
+#define VP(name) \
+    vault_placement &name =                                             \
+        **clua_get_userdata<vault_placement*>(                          \
+            ls, VAULT_PLACEMENT_METATABLE)
+
+LUAFN(_vp_pos)
+{
+    VP(vp);
+    clua_pushpoint(ls, vp.pos);
+    return 1;
+}
+
+LUAFN(_vp_size)
+{
+    VP(vp);
+    clua_pushpoint(ls, vp.size);
+    return 1;
+}
+
+LUAFN(_vp_orient)
+{
+    VP(vp);
+    PLUARET(number, vp.orient)
+}
+
+LUAFN(_vp_map)
+{
+    VP(vp);
+    clua_push_map(ls, &vp.map);
+    return 1;
+}
+
+LUAFN(_vp_exits)
+{
+    VP(vp);
+    return clua_gentable(ls, vp.exits, clua_pushpoint);
+}
+
+LUAFN(_vp_level_number)
+{
+    VP(vp);
+    PLUARET(number, vp.level_number)
+}
+
+LUAFN(_vp_num_runes)
+{
+    VP(vp);
+    PLUARET(number, vp.num_runes)
+}
+
+LUAFN(_vp_rune_subst)
+{
+    VP(vp);
+    PLUARET(number, vp.rune_subst)
+}
+
+static const luaL_reg dgn_vaultplacement_ops[] =
+{
+    { "pos", _vp_pos },
+    { "size", _vp_size },
+    { "orient", _vp_orient },
+    { "map", _vp_map },
+    { "exits", _vp_exits },
+    { "level_number", _vp_level_number },
+    { "num_runes", _vp_num_runes },
+    { "rune_subst", _vp_rune_subst },
+    { NULL, NULL }
+};
+
+static void _dgn_register_metatables(lua_State *ls)
+{
+    clua_register_metatable(ls,
+                            VAULT_PLACEMENT_METATABLE,
+                            dgn_vaultplacement_ops,
+                            lua_object_gc<vault_placement*>);
+}
+
+void dluaopen_dgn(lua_State *ls)
+{
+    _dgn_register_metatables(ls);
+
+    luaL_openlib(ls, "dgn", dgn_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_build_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_event_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_grid_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_item_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_level_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_mons_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_subvault_dlib, 0);
+    luaL_openlib(ls, "dgn", dgn_tile_dlib, 0);
+}

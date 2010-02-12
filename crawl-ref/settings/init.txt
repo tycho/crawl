@@ -16,7 +16,7 @@
 # use_old_selection_order = true
 # always_confirm_butcher  = true
 # target_unshifted_dirs   = true
-# delay_message_clear     = false
+# clear_messages          = true
 
 # Crawl Init file
 #
@@ -165,8 +165,7 @@ drop_filter = useless_item
 # explore_improved = true
 #
 # explore_stop_pickup_ignore = curare
-auto_exclude = oklob plant,silver statue,orange crystal statue,ice statue
-auto_exclude = curse skull,roxanne
+auto_exclude = oklob plant,statue,curse skull,roxanne
 
 # tc_reachable      = blue
 # tc_dangerous      = cyan
@@ -180,6 +179,8 @@ runrest_ignore_message = pray:
 runrest_ignore_message = You feel.*sick
 runrest_ignore_message = disappears in a puff of smoke
 runrest_ignore_message = engulfed in a cloud of smoke
+runrest_ignore_message = standing in the rain
+runrest_ignore_message = engulfed in white fluffiness
 runrest_ignore_message = safely over a trap
 runrest_ignore_message = You feel.*sick
 runrest_ignore_message = A.*toadstool withers and dies
@@ -233,7 +234,6 @@ stash_filter = ring of hunger, amulet of inaccuracy
 # sort_menus = pickup: true : art, ego, basename, qualname, curse, qty
 sort_menus = inv: true : equipped, freshness, charged
 
-
 ##### 4-j	Messages and Display Enhancements #####
 #
 # hp_warning = 10
@@ -244,19 +244,23 @@ sort_menus = inv: true : equipped, freshness, charged
 
 # status_caption_colour        = yellow
 # classic_hud                  = true
-# mlist_min_height             = 5
+# mlist_min_height             = 4
+# msg_min_height               = 7
 # msg_max_height               = 10
 # mlist_allow_alternate_layout = true
 # messages_at_top              = true
 # mlist_targetting             = true
 # show_gold_turns              = true
 
-# delay_message_clear        = false
+# clear_messages             = true
+# show_more                  = false
+# small_more                 = false
 # show_inventory_weights     = true
 # item_stack_summary_minimum = 5
 # list_rotten                = false
 # show_beam                  = false
 # msg_condense_repeats   = false
+# msg_condense_short     = false
 
 #####          Colours (messages and menus) #####
 #
@@ -313,6 +317,8 @@ menu_colour = notes:white:Reached XP level
 
 # You can also enforce a --more-- prompt for messages
 # force_more_message = You are starting to lose your buoyancy
+force_more_message = You have reached level
+force_more_message = Your scales start
 force_more_message = You fall through a shaft
 
 ##### 4-k	Firing Commands #######################
@@ -332,6 +338,7 @@ autoinscribe = distortion:!w
 # autoinscribe = potion.*mutation:!q
 # autoinscribe = royal jell:=g
 # autoinscribe_artefacts = false
+# autoinscribe_cursed = false
 
 ##### 4-n	Macro related Options #################
 #
@@ -344,7 +351,6 @@ autoinscribe = distortion:!w
 
 # All tiles specific options are in the external file
 include = tiles_options.txt
-
 
 ##### 5-  Dump File #################################################
 #
@@ -403,8 +409,15 @@ note_monsters = orb of fire, ancient lich, Sigmund
 # dos_use_background_intensity = true
 # background = black
 
-
 ##### 6-c   Unix ##################################
 #
 # use_fake_cursor = false
 # use_fake_player_cursor = true
+
+##### 6-d   Alternative keybinding files ##########
+#
+# Alternative vi bindings for Dvorak users.
+# include = dvorak_command_keys.txt
+#
+# Override the vi movement keys with a non-command.
+# include = no_vi_command_keys.txt

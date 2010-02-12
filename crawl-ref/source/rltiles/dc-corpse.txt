@@ -39,8 +39,7 @@ killer_bee CORPSE_KILLER_BEE
 %back dc-misc/blood_red dc-misc/blood_red1 dc-misc/blood_red2 dc-misc/blood_red3 dc-misc/blood_red4
 giant_newt CORPSE_GIANT_NEWT
 giant_gecko CORPSE_GIANT_GECKO
-giant_iguana CORPSE_GIANT_IGUANA
-giant_lizard CORPSE_GIANT_LIZARD
+iguana CORPSE_IGUANA
 gila_monster CORPSE_GILA_MONSTER
 komodo_dragon CORPSE_KOMODO_DRAGON
 
@@ -67,8 +66,14 @@ wolf_spider CORPSE_WOLF_SPIDER
 trapdoor_spider CORPSE_TRAPDOOR_SPIDER
 redback CORPSE_REDBACK
 
+## Turtles and crocodiles ('t')
+%back dc-misc/blood_red dc-misc/blood_red1 dc-misc/blood_red2 dc-misc/blood_red3 dc-misc/blood_red4
+crocodile CORPSE_CROCODILE
+snapping_turtle CORPSE_SNAPPING_TURTLE
+alligator_snapping_turtle CORPSE_ALLIGATOR_SNAPPING_TURTLE
+
 ## Worms ('w')
-%sdir dc-mon/animals
+%back dc-misc/blood_green
 killer_bee_larva CORPSE_ANT_LARVA
 killer_bee_larva CORPSE_KILLER_BEE_LARVA
 worm CORPSE_WORM
@@ -83,6 +88,17 @@ giant_blowfly CORPSE_GIANT_BLOWFLY
 giant_mosquito CORPSE_GIANT_MOSQUITO
 yellow_wasp CORPSE_YELLOW_WASP
 red_wasp CORPSE_RED_WASP
+
+## Aquatics (';')
+%back dc-misc/blood_red
+big_fish CORPSE_BIG_FISH
+giant_goldfish CORPSE_GIANT_GOLDFISH
+electric_eel CORPSE_ELECTRIC_EEL
+#lava_fish CORPSE_LAVA_FISH
+shark CORPSE_SHARK
+kraken_head CORPSE_KRAKEN /*'x'*/
+%back dc-misc/blood_green
+jellyfish CORPSE_JELLYFISH /*'J'*/
 
 ## Beetles ('B')
 giant_beetle CORPSE_GIANT_BEETLE
@@ -107,8 +123,9 @@ small_snake CORPSE_SMALL_SNAKE
 snake CORPSE_SNAKE
 black_mamba CORPSE_BLACK_MAMBA
 water_moccasin CORPSE_WATER_MOCCASIN
-grey_snake CORPSE_GREY_SNAKE
+anaconda CORPSE_ANACONDA
 viper CORPSE_VIPER
+sea_snake CORPSE_SEA_SNAKE
 
 ## Bears ('U')
 bear CORPSE_BEAR
@@ -138,21 +155,20 @@ hobgoblin CORPSE_HOBGOBLIN
 gnoll CORPSE_GNOLL
 
 ## Merfolk ('m')
-merfolk_fighter_water CORPSE_MERFOLK_FIGHTER
+merfolk_plain_water CORPSE_MERFOLK
 mermaid_water CORPSE_MERMAID
 siren_water CORPSE_SIREN
 
 ## Rotting monsters ('n')
 %back dc-misc/blood_green
+%sdir dc-mon/undead
 necrophage CORPSE_NECROPHAGE
 ghoul CORPSE_GHOUL
 
 ## Orcs ('o')
 %back dc-misc/blood_red dc-misc/blood_red1 dc-misc/blood_red2 dc-misc/blood_red3 dc-misc/blood_red4
+%sdir dc-mon
 orc CORPSE_ORC
-
-## Minotaur ('t')
-minotaur CORPSE_MINOTAUR
 
 ## Ugly things ('u')
 %sdir dc-mon/demons
@@ -212,6 +228,7 @@ hippogriff CORPSE_HIPPOGRIFF
 griffon CORPSE_GRIFFON
 manticore CORPSE_MANTICORE
 harpy CORPSE_HARPY
+minotaur CORPSE_MINOTAUR
 
 ## Jellies ('J')
 %back dc-misc/blood_green
@@ -224,7 +241,7 @@ big_kobold CORPSE_BIG_KOBOLD
 
 ## Nagas ('N')
 naga CORPSE_NAGA
-guardian_naga CORPSE_GUARDIAN_NAGA
+guardian_serpent CORPSE_GUARDIAN_SERPENT
 
 ## Ogres ('O')
 ogre CORPSE_OGRE
@@ -237,6 +254,7 @@ iron_troll CORPSE_IRON_TROLL
 deep_troll CORPSE_DEEP_TROLL
 
 ## Human shaped ('@')
+unique/wayne CORPSE_DWARF
 human CORPSE_HUMAN
 %back dc-misc/blood_green
 shapeshifter CORPSE_SHAPESHIFTER

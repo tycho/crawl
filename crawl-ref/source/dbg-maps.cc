@@ -16,6 +16,7 @@
 #include "flood_find.h"
 #include "map_knowledge.h"
 #include "initfile.h"
+#include "libutil.h"
 #include "maps.h"
 #include "message.h"
 #include "place.h"
@@ -136,7 +137,7 @@ static bool mg_do_build_level(int niters)
             return (false);
 
         ++mg_levels_tried;
-        if (!builder(you.your_level, you.level_type))
+        if (!builder(you.absdepth0, you.level_type))
         {
             ++mg_levels_failed;
             continue;
@@ -230,7 +231,7 @@ static bool mg_build_dungeon()
     for (int i = 0, size = places.size(); i < size; ++i)
     {
         const level_id &lid = places[i];
-        you.your_level = absdungeon_depth(lid.branch, lid.depth);
+        you.absdepth0 = absdungeon_depth(lid.branch, lid.depth);
         you.where_are_you = lid.branch;
         you.level_type = lid.level_type;
         if (you.level_type == LEVEL_PORTAL_VAULT)

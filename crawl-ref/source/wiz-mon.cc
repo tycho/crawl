@@ -129,7 +129,7 @@ void wizard_create_spec_monster_name()
     if (mons_is_unique(mspec.mid) && you.unique_creatures[mspec.mid])
         you.unique_creatures[mspec.mid] = false;
 
-    if (dgn_place_monster(mspec, you.your_level, place, true, false) == -1)
+    if (dgn_place_monster(mspec, you.absdepth0, place, true, false) == -1)
     {
         mpr("Unable to place monster.", MSGCH_DIAGNOSTICS);
         return;
@@ -201,20 +201,20 @@ void wizard_create_spec_monster_name()
         }
         ghost.species = static_cast<species_type>(sp_id);
 
-        mpr("Make player ghost which job? ", MSGCH_PROMPT);
+        mpr("Give player ghost which background? ", MSGCH_PROMPT);
         get_input_line( input_str, sizeof( input_str ) );
 
-        int class_id = get_class_by_abbrev(input_str);
+        int job_id = get_job_by_abbrev(input_str);
 
-        if (class_id == -1)
-            class_id = get_class_by_name(input_str);
+        if (job_id == JOB_UNKNOWN)
+            job_id = get_job_by_name(input_str);
 
-        if (class_id == -1)
+        if (job_id == JOB_UNKNOWN)
         {
-            mpr("No such job, making it a Fighter.");
-            class_id = JOB_FIGHTER;
+            mpr("No such background, making it a Fighter.");
+            job_id = JOB_FIGHTER;
         }
-        ghost.job = static_cast<job_type>(class_id);
+        ghost.job = static_cast<job_type>(job_id);
         ghost.xl = 7;
 
         mon.set_ghost(ghost);
@@ -227,6 +227,11 @@ static bool _sort_monster_list(int a, int b)
 {
     const monsters* m1 = &menv[a];
     const monsters* m2 = &menv[b];
+
+    if (m1->alive() != m2->alive())
+        return m1->alive();
+    else if (!m1->alive())
+        return a < b;
 
     if (m1->type == m2->type)
     {
@@ -258,13 +263,21 @@ void debug_list_monsters()
 
     std::sort(mon_nums, mon_nums + MAX_MONSTERS, _sort_monster_list);
 
-    int total_exp = 0, total_adj_exp = 0;
+    long total_exp = 0, total_adj_exp = 0, total_nonuniq_exp = 0;
 
     std::string prev_name = "";
     int         count     = 0;
 
-    for (monster_iterator mi; mi; ++mi)
+    for (int i = 0; i < MAX_MONSTERS; ++i)
     {
+        const int idx = mon_nums[i];
+        if (invalid_monster_index(idx))
+            continue;
+
+        const monsters *mi(&menv[idx]);
+        if (!mi->alive())
+            continue;
+
         std::string name = mi->name(DESC_PLAIN, true);
 
         if (prev_name != name && count > 0)
@@ -282,10 +295,12 @@ void debug_list_monsters()
         count++;
         prev_name = name;
 
-        int exp = exper_value(*mi);
+        int exp = exper_value(mi);
         total_exp += exp;
+        if (!mons_is_unique(mi->type))
+            total_nonuniq_exp += exp;
 
-        if ((mi->flags & (MF_WAS_NEUTRAL | MF_CREATED_FRIENDLY))
+        if ((mi->flags & (MF_WAS_NEUTRAL | MF_NO_REWARD))
             || mi->has_ench(ENCH_ABJ))
         {
             continue;
@@ -307,13 +322,13 @@ void debug_list_monsters()
 
     if (total_adj_exp == total_exp)
     {
-        mprf("%d monsters, %d total exp value",
-             nfound, total_exp);
+        mprf("%d monsters, %ld total exp value (%ld non-uniq)",
+             nfound, total_exp, total_nonuniq_exp);
     }
     else
     {
-        mprf("%d monsters, %d total exp value (%d adjusted)",
-             nfound, total_exp, total_adj_exp);
+        mprf("%d monsters, %ld total exp value (%ld non-uniq, %ld adjusted)",
+             nfound, total_exp, total_nonuniq_exp, total_adj_exp);
     }
 }
 
@@ -394,7 +409,7 @@ void debug_stethoscope(int mon)
     {
         mpr("Which monster?", MSGCH_PROMPT);
 
-        direction(stth);
+        direction(stth, direction_chooser_args());
 
         if (!stth.isValid)
             return;
@@ -454,8 +469,7 @@ void debug_stethoscope(int mon)
     mprf(MSGCH_DIAGNOSTICS,
          "hab=%s beh=%s(%d) foe=%s(%d) mem=%d target=(%d,%d) god=%s",
          ((hab == HT_LAND)                       ? "land" :
-          (hab == HT_AMPHIBIOUS_LAND)            ? "land (amphibious)" :
-          (hab == HT_AMPHIBIOUS_WATER)           ? "water (amphibious)" :
+          (hab == HT_AMPHIBIOUS)                 ? "amphibious" :
           (hab == HT_WATER)                      ? "water" :
           (hab == HT_LAVA)                       ? "lava" :
           (hab == HT_ROCK)                       ? "rock"
@@ -882,8 +896,10 @@ static void _move_player(const coord_def& where)
 static void _move_monster(const coord_def& where, int mid1)
 {
     dist moves;
-    direction(moves, DIR_NONE, TARG_ANY, -1, false, false, true, true,
-              "Move monster to where?");
+    direction_chooser_args args;
+    args.needs_path = false;
+    args.top_prompt = "Move monster to where?";
+    direction(moves, args);
 
     if (!moves.isValid || !in_bounds(moves.target))
         return;

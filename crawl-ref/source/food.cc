@@ -40,11 +40,12 @@
 #include "player.h"
 #include "random.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills2.h"
 #include "spells2.h"
 #include "state.h"
 #include "stuff.h"
-#include "transfor.h"
+#include "transform.h"
 #include "tutorial.h"
 #include "xom.h"
 
@@ -126,12 +127,9 @@ void set_hunger(int new_hunger_level, bool suppress_msg)
 // care of by calling wield_effects().    {gdl}
 void weapon_switch(int targ)
 {
-    if (you.equip[EQ_WEAPON] != -1
-        && !check_old_item_warning(you.inv[you.equip[EQ_WEAPON]],
-                                   OPER_WIELD))
-    {
+    // Give the player an option to abort.
+    if (you.weapon() && !check_old_item_warning(*you.weapon(), OPER_WIELD))
         return;
-    }
 
     if (targ == -1) // Unarmed Combat.
     {
@@ -347,7 +345,7 @@ static bool _prepare_butchery(bool can_butcher, bool removed_gloves,
 }
 
 static bool _butcher_corpse(int corpse_id, bool first_corpse = true,
-                            bool force_butcher = false)
+                            bool bottle_blood = false)
 {
     ASSERT(corpse_id != -1);
 
@@ -360,7 +358,8 @@ static bool _butcher_corpse(int corpse_id, bool first_corpse = true,
     int work_req = std::max(0, 4 - mitm[corpse_id].plus2);
 
     delay_type dtype = DELAY_BUTCHER;
-    if (!force_butcher && !rotten
+    // Sanity checks.
+    if (bottle_blood && !rotten
         && can_bottle_blood_from_corpse(mitm[corpse_id].plus))
     {
         dtype = DELAY_BOTTLE_BLOOD;
@@ -377,24 +376,19 @@ static void _terminate_butchery(bool wpn_switch, bool removed_gloves,
 {
     // Switch weapon back.
     if (wpn_switch && you.equip[EQ_WEAPON] != old_weapon
-        && (!you.weapon() || !item_cursed(*you.weapon())))
+        && (!you.weapon() || !you.weapon()->cursed()))
     {
         start_delay(DELAY_WEAPON_SWAP, 1, old_weapon);
     }
 
     // Put on the removed gloves.
     if (removed_gloves && you.equip[EQ_GLOVES] != old_gloves)
-        start_delay(DELAY_ARMOUR_ON, 1, old_gloves);
+        start_delay(DELAY_ARMOUR_ON, 1, old_gloves, 1);
 }
 
-static bool _have_corpses_in_pack(bool remind)
+int count_corpses_in_pack(bool blood_only)
 {
-    const bool can_bottle = (you.species == SP_VAMPIRE
-                             && you.experience_level > 5);
-
-    int num        = 0;
-    int num_bottle = 0;
-
+    int num = 0;
     for (int i = 0; i < ENDOFPACK; ++i)
     {
         item_def &obj(you.inv[i]);
@@ -407,22 +401,27 @@ static bool _have_corpses_in_pack(bool remind)
             continue;
 
         // Only saprovorous characters care about rotten food.
-        if (food_is_rotten(obj) && (!player_mutation_level(MUT_SAPROVOROUS)))
+        if (food_is_rotten(obj) && (blood_only
+                                    || !player_mutation_level(MUT_SAPROVOROUS)))
         {
             continue;
         }
 
-        num++;
-        if (can_bottle && mons_has_blood(obj.plus))
-            num_bottle++;
+        if (!blood_only || mons_has_blood(obj.plus))
+            num++;
     }
+
+    return num;
+}
+
+static bool _have_corpses_in_pack(bool remind, bool bottle_blood = false)
+{
+    const int num = count_corpses_in_pack(bottle_blood);
 
     if (num == 0)
         return (false);
 
-    std::string verb = (num_bottle ? (num == num_bottle ? "bottle"
-                                                        : "bottle or butcher")
-                                   : "butcher");
+    std::string verb = (bottle_blood ? "bottle" : "butcher");
 
     std::string noun, pronoun;
     if (num == 1)
@@ -450,9 +449,9 @@ static bool _have_corpses_in_pack(bool remind)
     return (true);
 }
 
-bool butchery(int which_corpse)
+bool butchery(int which_corpse, bool bottle_blood)
 {
-    if (igrd(you.pos()) == NON_ITEM)
+    if (you.visible_igrd(you.pos()) == NON_ITEM)
     {
         if (!_have_corpses_in_pack(false))
             mpr("There isn't anything here!");
@@ -479,7 +478,7 @@ bool butchery(int which_corpse)
                              && !player_wearing_slot(EQ_GLOVES);
 
     bool gloved_butcher   = (you.has_claws() && player_wearing_slot(EQ_GLOVES)
-                             && !item_cursed(you.inv[you.equip[EQ_GLOVES]]));
+                             && !you.inv[you.equip[EQ_GLOVES]].cursed());
 
     bool can_butcher      = (teeth_butcher || barehand_butcher
                              || you.weapon() && can_cut_meat(*you.weapon()));
@@ -503,10 +502,16 @@ bool butchery(int which_corpse)
     int num_corpses = 0;
     int corpse_id   = -1;
     bool prechosen  = (which_corpse != -1);
-    for (stack_iterator si(you.pos()); si; ++si)
+    for (stack_iterator si(you.pos(), true); si; ++si)
     {
         if (si->base_type == OBJ_CORPSES && si->sub_type == CORPSE_BODY)
         {
+            if (bottle_blood && (food_is_rotten(*si)
+                                 || !can_bottle_blood_from_corpse(si->plus)))
+            {
+                continue;
+            }
+
             corpse_id = si->index();
             num_corpses++;
 
@@ -518,11 +523,10 @@ bool butchery(int which_corpse)
 
     if (num_corpses == 0)
     {
-        if (!_have_corpses_in_pack(false))
+        if (!_have_corpses_in_pack(false, bottle_blood))
         {
-            mprf("There isn't anything to %sbutcher here.",
-                 (you.species == SP_VAMPIRE
-                     && you.experience_level > 5) ? "bottle or " : "");
+            mprf("There isn't anything to %s here.",
+                 bottle_blood ? "bottle" : "butcher");
         }
         return (false);
     }
@@ -537,11 +541,8 @@ bool butchery(int which_corpse)
     if (!can_butcher)
     {
         // Try to find a butchering implement.
-        if (!gloved_butcher)
-        {
-            if (!_find_butchering_implement(butcher_tool))
-                return (false);
-        }
+        if (!_find_butchering_implement(butcher_tool) && !gloved_butcher)
+            return (false);
 
         if (butcher_tool == -1 && gloved_butcher)
             removed_gloves = true;
@@ -559,33 +560,34 @@ bool butchery(int which_corpse)
         {
             return (false);
         }
-        success = _butcher_corpse(corpse_id, true);
+        success = _butcher_corpse(corpse_id, true, bottle_blood);
         _terminate_butchery(wpn_switch, removed_gloves, old_weapon, old_gloves);
 
         // Remind player of corpses in pack that could be butchered or
         // bottled.
-        _have_corpses_in_pack(true);
+        _have_corpses_in_pack(true, bottle_blood);
         return (success);
     }
 
     // Now pick what you want to butcher. This is only a problem
     // if there are several corpses on the square.
     bool butcher_all   = false;
-    bool bottle_all    = false; // for Vampires
-    bool force_butcher = false;
     bool repeat_prompt = false;
     bool did_weap_swap = false;
     bool first_corpse  = true;
     int keyin;
-    for (stack_iterator si(you.pos()); si; ++si)
+    for (stack_iterator si(you.pos(), true); si; ++si)
     {
         if (si->base_type != OBJ_CORPSES || si->sub_type != CORPSE_BODY)
             continue;
 
-        if (bottle_all && !can_bottle_blood_from_corpse(si->plus))
+        if (bottle_blood && (food_is_rotten(*si)
+                             || !can_bottle_blood_from_corpse(si->plus)))
+        {
             continue;
+        }
 
-        if (butcher_all || bottle_all)
+        if (butcher_all)
             corpse_id = si->index();
         else
         {
@@ -607,17 +609,13 @@ bool butchery(int which_corpse)
             do
             {
                 mprf(MSGCH_PROMPT, "%s %s? (yc/n/a/q/?)",
-                     (!can_bottle_blood_from_corpse(si->plus)) ?
-                         "Butcher" : "Bottle",
+                     bottle_blood ? "Bottle" : "Butcher",
                      corpse_name.c_str());
                 repeat_prompt = false;
 
                 keyin = tolower(getchm(KMC_CONFIRM));
                 switch (keyin)
                 {
-                case 'b':
-                    force_butcher = true;
-                    // intentional fall-through
                 case 'y':
                 case 'c':
                 case 'd':
@@ -635,15 +633,7 @@ bool butchery(int which_corpse)
                     corpse_id = si->index();
 
                     if (keyin == 'a')
-                    {
-                        if (!force_butcher
-                            && can_bottle_blood_from_corpse(si->plus))
-                        {
-                            bottle_all = true;
-                        }
-                        else
-                            butcher_all = true;
-                    }
+                        butcher_all = true;
                     break;
 
                 case ESCAPE:
@@ -669,8 +659,7 @@ bool butchery(int which_corpse)
 
         if (corpse_id != -1)
         {
-            if (_butcher_corpse(corpse_id, first_corpse,
-                force_butcher || butcher_all))
+            if (_butcher_corpse(corpse_id, first_corpse, bottle_blood))
             {
                 success = true;
                 first_corpse = false;
@@ -678,11 +667,10 @@ bool butchery(int which_corpse)
         }
     }
 
-    if (!butcher_all && !bottle_all && corpse_id == -1)
+    if (!butcher_all && corpse_id == -1)
     {
         mprf("There isn't anything else to %s here.",
-             you.species == SP_VAMPIRE && you.experience_level >= 6 ?
-             "bottle" : "butcher");
+             bottle_blood ? "bottle" : "butcher");
     }
     _terminate_butchery(wpn_switch, removed_gloves, old_weapon, old_gloves);
 
@@ -690,7 +678,7 @@ bool butchery(int which_corpse)
     {
         // Remind player of corpses in pack that could be butchered or
         // bottled.
-        _have_corpses_in_pack(true);
+        _have_corpses_in_pack(true, bottle_blood);
     }
 
     return (success);
@@ -790,7 +778,7 @@ bool eat_food(int slot)
 
         if (result != -2) // else skip ahead to inventory
         {
-            if (igrd(you.pos()) != NON_ITEM)
+            if (you.visible_igrd(you.pos()) != NON_ITEM)
             {
                 result = eat_from_floor(true);
                 if (result == 1)
@@ -1186,7 +1174,7 @@ int eat_from_floor(bool skip_chunks)
     bool found_valid = false;
 
     std::vector<item_def *> food_items;
-    for (stack_iterator si(you.pos()); si; ++si )
+    for (stack_iterator si(you.pos(), true); si; ++si )
     {
         if (you.species == SP_VAMPIRE)
         {
@@ -1483,7 +1471,7 @@ int prompt_eat_chunks()
     // First search the stash on the floor, unless levitating.
     if (you.flight_mode() != FL_LEVITATE)
     {
-        for (stack_iterator si(you.pos()); si; ++si)
+        for (stack_iterator si(you.pos(), true); si; ++si)
         {
             if (you.species == SP_VAMPIRE)
             {
@@ -1941,8 +1929,10 @@ static void _eating(unsigned char item_class, int item_type)
             if (item_type == FOOD_MEAT_RATION || item_type == FOOD_BREAD_RATION)
                 duration = 3;
 
-            start_delay( DELAY_EAT, duration, 0, item_type );
-            lessen_hunger( food_value, true );
+            start_delay(DELAY_EAT, duration, 0, item_type);
+            lessen_hunger(food_value, true);
+            if (you.hunger_level() >= HS_FULL)
+                did_god_conduct(DID_GLUTTONY, food_value, true);
         }
         break;
 
@@ -2266,7 +2256,7 @@ void vampire_nutrition_per_turn(const item_def &corpse, int feeding)
                 case CE_MUTAGEN_BAD:
                     food_value /= 2;
                     if (start_feeding)
-                        mpr("This blood tastes *really* weird.");
+                        mpr("This blood tastes *really* weird!");
                     give_bad_mutation();
                     did_god_conduct(DID_DELIBERATE_MUTATING, 10);
                     xom_is_stimulated(random2(200));
@@ -2433,7 +2423,8 @@ bool is_preferred_food(const item_def &food)
     if (food.base_type != OBJ_FOOD)
         return (false);
 
-    if (is_poisonous(food))
+    // Poisoned, mutagenic, etc. food should never be marked as "preferred".
+    if (_is_bad_food(food))
         return (false);
 
     // Honeycombs are tasty for everyone.
@@ -2801,7 +2792,7 @@ static bool _vampire_consume_corpse(int slot, bool invent)
 
     // The draining delay doesn't have a start action, and we only need
     // the continue/finish messages if it takes longer than 1 turn.
-    start_delay(DELAY_FEED_VAMPIRE, duration, (int)invent, slot);
+    start_delay(DELAY_FEED_VAMPIRE, duration, invent, slot);
 
     return (true);
 }

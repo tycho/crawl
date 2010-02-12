@@ -18,6 +18,7 @@
 #include "artefact.h"
 #include "cio.h"
 #include "describe.h"
+#include "dgn-overview.h"
 #include "files.h"
 #include "food.h"
 #include "invent.h"
@@ -28,7 +29,6 @@
 #include "macro.h"
 #include "menu.h"
 #include "notes.h"
-#include "overmap.h"
 #include "place.h"
 #include "player.h"
 #include "spl-book.h"
@@ -124,7 +124,6 @@ static void _list_shop_keys(const std::string &purchasable, bool viewing,
 {
     ASSERT(total_stock > 0);
 
-    char buf[200];
     const int numlines = get_number_of_lines();
     cgotoxy(1, numlines - 1, GOTO_CRT);
 
@@ -159,7 +158,7 @@ static void _list_shop_keys(const std::string &purchasable, bool viewing,
         pkeys = "[" + pkeys + "] Select Item to "
                 + (viewing ? "Examine" : "Buy");
     }
-    snprintf(buf, sizeof buf,
+    formatted_string fs = formatted_string::parse_string(make_stringf(
             "[<w>x</w>/<w>Esc</w>"
 #ifdef USE_TILE
             "/<w>R-Click</w>"
@@ -167,9 +166,8 @@ static void _list_shop_keys(const std::string &purchasable, bool viewing,
             "] exit            [<w>!</w>] %s   %s%s",
             (viewing ? "to select items " : "to examine items"),
             pkeys.c_str(),
-            shop_list.c_str());
+            shop_list.c_str()));
 
-    formatted_string fs = formatted_string::parse_string(buf);
     fs.cprintf("%*s", get_number_of_cols() - fs.length() - 1, "");
     fs.display();
     cgotoxy(1, numlines, GOTO_CRT);
@@ -583,7 +581,7 @@ static bool _in_a_shop( int shopidx, int &num_in_list )
                     bought_something = true;
                 }
             }
-            _shop_more();
+            //_shop_more();
             continue;
         }
         else if (key == '!')
@@ -795,6 +793,9 @@ int artefact_value( const item_def &item )
     else if (prop[ ARTP_COLD ] < 0)
         ret -= 10;
 
+    if (prop[ARTP_PONDEROUS])
+        ret -= 10;
+
     // These normally come alone or in resist/susceptible pairs...
     // we're making items a bit more expensive if they have both positive.
     if (prop[ ARTP_FIRE ] > 0 && prop[ ARTP_COLD ] > 0)
@@ -956,10 +957,6 @@ unsigned int item_value( item_def item, bool ident )
         case WPN_BLESSED_SCIMITAR:
             valued += 50;
 
-        case WPN_HAND_CROSSBOW:
-            valued += 51;
-            break;
-
         case WPN_HALBERD:
             valued += 52;
             break;
@@ -1067,6 +1064,7 @@ unsigned int item_value( item_def item, bool ident )
 
             case SPWPN_VORPAL:
             case SPWPN_PROTECTION:
+            case SPWPN_EVASION:
                 valued *= 20;
                 break;
             }
@@ -1198,11 +1196,16 @@ unsigned int item_value( item_def item, bool ident )
 
             case SPMSL_FLAME:
             case SPMSL_FROST:
-            case SPMSL_ELECTRIC:
                 valued *= 25;
                 break;
 
             case SPMSL_POISONED:
+            case SPMSL_PARALYSIS:
+            case SPMSL_SLOW:
+            case SPMSL_SLEEP:
+            case SPMSL_CONFUSION:
+            case SPMSL_SICKNESS:
+            case SPMSL_RAGE:
                 valued *= 23;
                 break;
             }
@@ -1373,6 +1376,7 @@ unsigned int item_value( item_def item, bool ident )
 
             case SPARM_DARKNESS:
             case SPARM_RESISTANCE:
+            case SPARM_REFLECTION:
                 valued *= 60;
                 break;
 
@@ -1791,12 +1795,12 @@ unsigned int item_value( item_def item, bool ident )
                 break;
             case AMU_THE_GOURMAND:
             case AMU_GUARDIAN_SPIRIT:
+            case AMU_FAITH:
                 valued += 35;
                 break;
             case AMU_CLARITY:
             case AMU_RESIST_CORROSION:
             case AMU_RESIST_MUTATION:
-            case AMU_RESIST_SLOW:
             case AMU_WARDING:
                 valued += 30;
                 break;
@@ -1805,6 +1809,7 @@ unsigned int item_value( item_def item, bool ident )
                 valued += 25;
                 break;
             case AMU_RAGE:
+            case AMU_STASIS:
                 valued += 20;
                 break;
             case AMU_INACCURACY:
@@ -1967,7 +1972,6 @@ static void _delete_shop(int i)
 
 void shop()
 {
-    flush_prev_message();
     int i;
 
     for (i = 0; i < MAX_SHOPS; i++)
@@ -1993,7 +1997,7 @@ void shop()
     const bool bought_something = _in_a_shop(i, num_in_list);
     const std::string shopname = shop_name(env.shop[i].pos);
 
-    // If the shop is now empty, erase it from the overmap.
+    // If the shop is now empty, erase it from the overview.
     if (_shop_get_stock(i).empty())
         _delete_shop(i);
 
@@ -2413,7 +2417,7 @@ bool ShoppingList::items_are_same(const item_def& item_a,
 
 void ShoppingList::move_things(const coord_def &_src, const coord_def &_dst)
 {
-    if (crawl_state.map_stat_gen)
+    if (crawl_state.map_stat_gen || crawl_state.test)
         // Shopping list is unitialized and uneeded.
         return;
 
@@ -2431,7 +2435,7 @@ void ShoppingList::move_things(const coord_def &_src, const coord_def &_dst)
 
 void ShoppingList::forget_pos(const level_pos &pos)
 {
-    if (crawl_state.map_stat_gen)
+    if (!crawl_state.need_save)
         // Shopping list is unitialized and uneeded.
         return;
 
@@ -2526,12 +2530,9 @@ void ShoppingListMenu::draw_title()
         const char *verb = menu_action == ACT_EXECUTE ? "travel" :
                            menu_action == ACT_EXAMINE ? "examine" :
                                                         "delete";
-        char buf[200];
-        snprintf(buf, 200,
-                 "<lightgrey>  [<w>a-z</w>: %s  <w>?</w>/<w>!</w>: change action]",
-                 verb);
-
-        draw_title_suffix(formatted_string::parse_string(buf), false);
+        draw_title_suffix(formatted_string::parse_string(make_stringf(
+            "<lightgrey>  [<w>a-z</w>: %s  <w>?</w>/<w>!</w>: change action]",
+            verb)), false);
     }
 }
 
@@ -2627,7 +2628,7 @@ void ShoppingList::display()
             {
                 std::string prompt =
                    make_stringf("You cannot afford %s; travel there "
-                                "anyways? (y/N)",
+                                "anyway? (y/N)",
                                 describe_thing(*thing, DESC_NOCAP_A).c_str());
                 clrscr();
                 if (!yesno(prompt.c_str(), true, 'n'))
@@ -2638,11 +2639,27 @@ void ShoppingList::display()
             start_translevel_travel(lp);
             break;
         }
-        else if (shopmenu.menu_action == Menu::ACT_EXAMINE && is_item)
+        else if (shopmenu.menu_action == Menu::ACT_EXAMINE)
         {
             clrscr();
-            const item_def &item = get_thing_item(*thing);
-            describe_item( const_cast<item_def&>(item) );
+            if (is_item)
+            {
+                const item_def &item = get_thing_item(*thing);
+                describe_item( const_cast<item_def&>(item) );
+            }
+            else // not an item, so we only stored a description.
+            {
+                // HACK: Assume it's some kind of portal vault.
+                snprintf(info, INFO_SIZE,
+                         "%s with an entry fee of %d gold pieces.",
+                         describe_thing(*thing, DESC_CAP_A).c_str(),
+                         (int) thing_cost(*thing));
+
+                print_description(info);
+
+                if (getch() == 0)
+                    getch();
+            }
         }
         else if (shopmenu.menu_action == Menu::ACT_MISC)
         {

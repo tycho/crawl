@@ -24,6 +24,7 @@
 #include "describe.h"
 #include "env.h"
 #include "food.h"
+#include "godabil.h"
 #include "initfile.h"
 #include "item_use.h"
 #include "itemprop.h"
@@ -38,7 +39,11 @@
 #include "mon-util.h"
 #include "state.h"
 
+#ifdef USE_TILE
 #include "tiles.h"
+#include "tiledef-main.h"
+#include "tiledef-dngn.h"
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Inventory menu shenanigans
@@ -105,7 +110,7 @@ const std::string &InvEntry::get_fullname() const
 
 bool InvEntry::is_item_cursed() const
 {
-    return (item_ident(*item, ISFLAG_KNOW_CURSE) && item_cursed(*item));
+    return (item_ident(*item, ISFLAG_KNOW_CURSE) && item->cursed());
 }
 
 bool InvEntry::is_item_glowing() const
@@ -275,7 +280,7 @@ void InvEntry::add_class_hotkeys(const item_def &i)
     const int type = i.base_type;
     if (type == OBJ_JEWELLERY)
     {
-        add_hotkey(i.sub_type >= AMU_RAGE ? '"' : '=');
+        add_hotkey(i.sub_type >= AMU_FIRST_AMULET ? '"' : '=');
         return;
     }
 
@@ -549,9 +554,19 @@ bool InvEntry::get_tiles(std::vector<tile_def>& tileset) const
             }
         }
     }
-    int brand = tile_known_weapon_brand(*item);
-    if (brand)
-        tileset.push_back(tile_def(brand, TEX_DEFAULT));
+    if (item->base_type == OBJ_WEAPONS || item->base_type == OBJ_MISSILES
+        || item->base_type == OBJ_ARMOUR)
+    {
+        int brand = tile_known_brand(*item);
+        if (brand)
+            tileset.push_back(tile_def(brand, TEX_DEFAULT));
+    }
+    else if (item->base_type == OBJ_CORPSES)
+    {
+        int brand = tile_corpse_brand(*item);
+        if (brand)
+            tileset.push_back(tile_def(brand, TEX_DEFAULT));
+    }
 
     return (true);
 }
@@ -904,7 +919,10 @@ unsigned char get_invent(int invent_type)
         {
             const int invidx = letter_to_index(select);
             if (you.inv[invidx].is_valid())
-                describe_item( you.inv[invidx], true );
+            {
+                if (!describe_item( you.inv[invidx], true ))
+                    break;
+            }
         }
         else
             break;
@@ -914,7 +932,7 @@ unsigned char get_invent(int invent_type)
         redraw_screen();
 
     return select;
-}                               // end get_invent()
+}
 
 std::string item_class_name( int type, bool terse )
 {
@@ -1044,8 +1062,8 @@ static bool _item_class_selected(const item_def &i, int selector)
         return (item_is_evokable(i, true, true));
 
     case OSEL_PONDER_ARM:
-        if (itype != OBJ_ARMOUR || get_armour_slot(i) != EQ_BODY_ARMOUR)
-            return (false);
+        return (is_ponderousifiable(i));
+
     case OSEL_ENCH_ARM:
         return (is_enchantable_armour(i, true, true));
 
@@ -1080,7 +1098,7 @@ static bool _userdef_item_selected(const item_def &i, int selector)
 #if defined(CLUA_BINDINGS)
     const char *luafn = selector == OSEL_WIELD ? "ch_item_wieldable"
                                                : NULL;
-    return (luafn && clua.callbooleanfn(false, luafn, "u", &i));
+    return (luafn && clua.callbooleanfn(false, luafn, "i", &i));
 #else
     return (false);
 #endif
@@ -1227,7 +1245,7 @@ std::vector<SelItem> prompt_invent_items(
         if (need_redraw && !crawl_state.doing_prev_cmd_again)
         {
             redraw_screen();
-            mesclr( true );
+            mesclr();
         }
 
         if (need_prompt)
@@ -1279,7 +1297,7 @@ std::vector<SelItem> prompt_invent_items(
                 if (!crawl_state.doing_prev_cmd_again)
                 {
                     redraw_screen();
-                    mesclr(true);
+                    mesclr();
                 }
 
                 for (unsigned int i = 0; i < items.size(); ++i)
@@ -1477,11 +1495,21 @@ static std::string _operation_verb(operation_types oper)
     }
 }
 
+bool _removing_amulet_of_faith(const item_def &item, operation_types oper)
+{
+    return (oper == OPER_REMOVE
+            && item.base_type == OBJ_JEWELLERY
+            && item.sub_type == AMU_FAITH);
+}
+
 // Returns true if user OK'd it (or no warning), false otherwise.
 bool check_warning_inscriptions( const item_def& item,
                                  operation_types oper )
 {
-    if (item.is_valid() && has_warning_inscription(item, oper) )
+    if (item.is_valid()
+        && (has_warning_inscription(item, oper)
+            || (_removing_amulet_of_faith(item, oper)
+                && you.religion != GOD_NO_GOD)))
     {
         // When it's about destroying an item, don't even ask.
         // If the player really wants to do that, they'll have
@@ -1590,7 +1618,7 @@ int prompt_invent_item( const char *prompt,
         if (need_redraw && !crawl_state.doing_prev_cmd_again)
         {
             redraw_screen();
-            mesclr( true );
+            mesclr();
         }
 
         if (need_prompt)
@@ -1650,7 +1678,7 @@ int prompt_invent_item( const char *prompt,
                 if (!crawl_state.doing_prev_cmd_again)
                 {
                     redraw_screen();
-                    mesclr( true );
+                    mesclr();
                 }
             }
         }

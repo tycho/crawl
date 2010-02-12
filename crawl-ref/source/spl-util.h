@@ -32,7 +32,18 @@ enum spschool_flag_type
 };
 
 struct bolt;
-struct dist;
+class dist;
+
+enum spell_highlight_colours
+{
+    COL_USELESS      = DARKGRAY,  // ability would have no useful effect
+    COL_INAPPLICABLE = DARKGRAY,  // ability cannot be meanifully applied (eg, no targets)
+    COL_USEFUL       = LIGHTBLUE, // the palyers status makes this ability notably more useful
+    COL_EMPOWERED    = LIGHTBLUE, // The ability is made stronger by the player's status (unused)
+    COL_FORBIDDEN    = LIGHTRED,  // The player's god hates this abilty
+    COL_FAVORED      = YELLOW,    // the player's god likes this ability
+    COL_KNOWN        = LIGHTGRAY  // the spell is known (use for spellbook_contents)
+};
 
 bool is_valid_spell(spell_type spell);
 void init_spell_descs(void);
@@ -80,7 +91,8 @@ const char* spelltype_long_name( int which_spelltype );
 typedef int cell_func(coord_def where, int pow, int aux, actor *agent);
 typedef int cloud_func(coord_def where, int pow, int spreadrate,
                        cloud_type type, kill_category whose,
-                       killer_type killer);
+                       killer_type killer, int colour, std::string name,
+                       std::string tile);
 
 int apply_area_visible(cell_func cf, int power,
                        bool pass_through_trans = false, actor *agent = NULL);
@@ -104,19 +116,28 @@ int apply_area_within_radius(cell_func cf,  const coord_def& where,
 void apply_area_cloud(cloud_func func, const coord_def& where,
                       int pow, int number, cloud_type ctype,
                       kill_category kc, killer_type killer,
-                      int spread_rate = -1);
+                      int spread_rate = -1, int colour = -1,
+                      std::string name = "", std::string tile = "");
 
 bool spell_direction( dist &spelld, bolt &pbolt,
-                      targetting_type restrict = DIR_NONE,
+                      targeting_type restrict = DIR_NONE,
                       targ_mode_type mode = TARG_HOSTILE,
                       // pbolt.range if applicable, otherwise LOS_RADIUS
                       int range = 0,
                       bool needs_path = true, bool may_target_monster = true,
-                      bool may_target_self = false, const char *prompt = NULL,
+                      bool may_target_self = false,
+                      const char *target_prefix = NULL,
+                      const char *prompt = NULL,
                       bool cancel_at_self = false );
 
 int spell_type2skill (unsigned int which_spelltype);
 
 spell_type zap_type_to_spell(zap_type zap);
+
+bool spell_is_useless(spell_type spell, bool transient = false);
+bool spell_is_useful(spell_type spell);
+
+int spell_highlight_by_utility(spell_type spell, int default_color = COL_KNOWN, bool transient = false);
+bool spell_no_hostile_in_range(spell_type spell, int minRange);
 
 #endif

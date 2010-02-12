@@ -82,6 +82,7 @@ CC = $(GCC)
 CXX = $(GXX)
 RM = rm -f
 COPY = cp
+COPY_R = cp -r
 STRIP = strip
 WINDRES = windres
 CHMOD = chmod 2>/dev/null
@@ -186,6 +187,17 @@ ifeq (,$(findstring .exe,$(GAME)))
 	DEFINES += -DUSE_TAR
 else
 	DEFINES += -DUSE_ZIP
+endif
+
+ifdef BUILD_ALL
+	BUILD_FREETYPE = YesPlease
+	BUILD_PCRE = YesPlease
+	BUILD_SDL = YesPlease
+	BUILD_SDLIMAGE = YesPlease
+	BUILD_SQLITE = YesPlease
+	BUILD_LUA = YesPlease
+	BUILD_LIBPNG = YesPlease
+	BUILD_ZLIB = YesPlease
 endif
 
 #
@@ -445,28 +457,9 @@ endif
 # Figure out the build settings for this type of build
 #
 
-# All
-# Default target.
-ifneq (,$(findstring all,$(MAKECMDGOALS)))
-	USE_DEPGEN=YesPlease
-endif
-
-# All
-# Default target.
-ifeq (,$(MAKECMDGOALS))
-	USE_DEPGEN=YesPlease
-endif
-
-# $(GAME)
-# Another default target.
-ifneq (,$(findstring $(GAME),$(MAKECMDGOALS)))
-	USE_DEPGEN=YesPlease
-endif
-
 # Debug
 # No optimization, full debugging.
 ifneq (,$(findstring debug,$(MAKECMDGOALS)))
-	USE_DEPGEN=YesPlease
 	FULLDEBUG=YesPlease
 	WIZARD=YesPlease
 	DEBUG=YesPlease
@@ -476,7 +469,6 @@ endif
 # Wizard
 # Optimized, with wizard mode.
 ifneq (,$(findstring wizard,$(MAKECMDGOALS)))
-	USE_DEPGEN=YesPlease
 	WIZARD=YesPlease
 	DEBUG=YesPlease
 endif
@@ -484,7 +476,6 @@ endif
 # Profile
 # Optimized, with full debugging.
 ifneq (,$(findstring profile,$(MAKECMDGOALS)))
-	USE_DEPGEN=YesPlease
 	FULLDEBUG=YesPlease
 	WIZARD=YesPlease
 	DEBUG=YesPlease
@@ -716,19 +707,28 @@ endif
 EXTRA_OBJECTS += version.o
 
 LIBS += $(CONTRIB_LIBS) $(EXTRA_LIBS)
-GAME_DEPENDS := $(DESTTILEFILES) $(OBJECTS) $(EXTRA_OBJECTS) $(CONTRIB_LIBS)
-SRC_PKG_BASE := stone_soup
-SRC_VERSION  := $(shell git describe --tags --long 2>/dev/null || cat util/release_ver)
-PKG_SRC_DIR  := $(SRC_PKG_BASE)-$(SRC_VERSION)
-SRC_PKG_TAR  := $(PKG_SRC_DIR).tar.bz2
-SRC_PKG_ZIP  := $(PKG_SRC_DIR).zip
+
+DOC_BASE        := ../docs
+DOC_TEMPLATES   := $(DOC_BASE)/template
+GENERATED_DOCS  := $(DOC_BASE)/aptitudes.txt
+GENERATED_FILES := art-data.h
+
+GAME_DEPENDS  := $(DESTTILEFILES) $(OBJECTS) $(EXTRA_OBJECTS) $(CONTRIB_LIBS)
+SRC_PKG_BASE  := stone_soup
+SRC_VERSION   := $(shell git describe --tags --long 2>/dev/null || cat util/release_ver)
+PKG_SRC_DIR   := $(SRC_PKG_BASE)-$(SRC_VERSION)
+SRC_PKG_TAR   := $(PKG_SRC_DIR).tar.bz2
+SRC_PKG_ZIP   := $(PKG_SRC_DIR).zip
 
 .PHONY: all test install clean clean-contrib distclean debug profile wizard package-source source
 
-all: $(GAME)
+all: $(GENERATED_FILES) $(GAME) $(GENERATED_DOCS)
 
 test:
 	./$(GAME) -test > /dev/null
+
+
+ifeq (,$(findstring clean,$(MAKECMDGOALS)))
 
 #
 # CFLAGS difference check
@@ -754,21 +754,12 @@ TRACK_CFLAGS = $(subst ','\'',$(CC) $(CXX) $(ALL_CFLAGS))           # (stray ' f
 ##########################################################################
 # Dependencies
 
-DEPS := $(OBJECTS:.o=.d)
+DEPS := $(shell ls $(OBJECTS:.o=.d) 2> /dev/null)
 
-ifeq ($(shell which fastdep 2> /dev/null),)
-DEPEND := $(CXX) -MM $(ALL_CFLAGS)
-else
-DEPEND := fastdep $(DEFINES) $(DEFINES_L) $(INCLUDES) $(INCLUDES_L)
+ifneq ($(DEPS),)
+-include $(DEPS)
 endif
 
-%.d: %.cc .cflags
-	$(QUIET_DEPEND)$(DEPEND) $< > $@
-
-depend: $(DEPS)
-
-ifdef USE_DEPGEN
--include $(DEPS)
 endif
 
 # This information is included in crash reports, and is printed with
@@ -780,6 +771,13 @@ build.h: $(OBJECTS:.o=.cc)
 	$(QUIET_GEN)util/gen_ver.pl $@ $(MERGE_BASE)
 
 version.cc: build.h compflag.h
+
+##########################################################################
+# Documentation
+#
+$(DOC_BASE)/aptitudes.txt: $(DOC_TEMPLATES)/apt-tmpl.txt player.cc skills2.cc \
+						   util/gen-apt.pl
+	$(QUIET_GEN)./util/gen-apt.pl $@ $^
 
 ##########################################################################
 # The level compiler
@@ -820,7 +818,7 @@ endif
 ##########################################################################
 # The actual build targets
 #
-install: $(GAME)
+install: all
 ifeq ($(DESTDIR)$(prefix),)
 	@echo Neither "DESTDIR" nor "prefix" defined -- nowhere to install to, aborting.
 	@exit 1
@@ -830,6 +828,7 @@ endif
 	$(STRIP) -s $(prefix_fp)/$(bin_prefix)/$(GAME)
 	$(CHOWN) $(INSTALL_UGRP) $(prefix_fp)/$(bin_prefix)/$(GAME) || true
 	$(CHMOD) $(MCHMOD) $(prefix_fp)/$(bin_prefix)/$(GAME) || true
+	mkdir -p $(datadir_fp)/dat/des
 	mkdir -p $(datadir_fp)/dat/clua
 	mkdir -p $(datadir_fp)/dat/lua
 	mkdir -p $(datadir_fp)/dat/database
@@ -838,11 +837,11 @@ endif
 	mkdir -p $(datadir_fp)/docs/develop/levels
 	mkdir -p $(datadir_fp)/docs/license
 	mkdir -p $(datadir_fp)/settings
-	$(COPY) dat/*.des $(datadir_fp)/dat/
-	$(COPY) dat/clua/*.lua $(datadir_fp)/dat/clua/
-	$(COPY) dat/lua/*.lua $(datadir_fp)/dat/lua/
-	$(COPY) dat/database/*.txt $(datadir_fp)/dat/database/
-	$(COPY) dat/descript/*.txt $(datadir_fp)/dat/descript/
+	$(COPY_R) dat/des/* $(datadir_fp)/dat/des/
+	$(COPY)   dat/clua/*.lua $(datadir_fp)/dat/clua/
+	$(COPY)   dat/lua/*.lua $(datadir_fp)/dat/lua/
+	$(COPY)   dat/database/*.txt $(datadir_fp)/dat/database/
+	$(COPY)   dat/descript/*.txt $(datadir_fp)/dat/descript/
 	$(COPY) ../docs/*.txt $(datadir_fp)/docs/
 	$(COPY) ../docs/develop/*.txt $(datadir_fp)/docs/develop/
 	$(COPY) ../docs/develop/levels/*.txt $(datadir_fp)/docs/develop/levels/
@@ -874,21 +873,21 @@ clean-contrib:
 
 distclean: clean clean-contrib clean-rltiles
 	$(RM) -r morgue saves
-	$(RM) scores $(GAME) core *.0* *.lab $(DEPENDENCY_MKF)
+	$(RM) scores $(GAME) core $(DEPENDENCY_MKF)
 
 $(GAME): $(GAME_DEPENDS)
 	$(QUIET_LINK)$(CXX) $(LDFLAGS) $(EXTRA_OBJECTS) $(OBJECTS) -o $(GAME) $(LIBS)
 
-debug: $(GAME)
-profile: $(GAME)
-wizard: $(GAME)
+debug: all
+profile: all
+wizard: all
 
 # [ds] Note we don't use the standard CFLAGS here; that's intentional, most
 # flex/bison combos I've tried don't produce code that passes the warnings
 # test.
 
 $(UTIL)%.o: $(UTIL)%.cc .cflags
-	$(QUIET_CXX)$(CXX) $(YACC_CFLAGS) -o $@ -c $<
+	$(QUIET_CXX)$(CXX) $(YACC_CFLAGS) -Wp,-MD,$(UTIL)$*.d -c $< -o $(UTIL)$*.o
 
 ifdef PCH
 %.h.gch: %.h
@@ -899,11 +898,14 @@ endif
 
 $(OBJECTS:%.o=%.cc): $(CC_DEP) $(TILEDEFHDRS) $(CONTRIB_LIBS)
 
+%.d: %.cc .cflags
+	$(QUIET_DEPEND)$(CXX) -MM $(ALL_CFLAGS) $< > $*.d
+
 %.o: %.m .cflags
-	$(QUIET_CXX)$(CC) $(ALL_CFLAGS) -c $< -o $@
+	$(QUIET_CC)$(CC) $(ALL_CFLAGS) -Wp,-MD,$*.d -c $< -o $*.o
 
 %.o: %.cc .cflags
-	$(QUIET_CXX)$(CXX) $(ALL_CFLAGS) -c $< -o $@
+	$(QUIET_CXX)$(CXX) $(ALL_CFLAGS) -Wp,-MD,$*.d -c $< -o $*.o
 
 icon.o: util/crawl.rc util/crawl.ico
 	$(QUIET_WINDRES)$(WINDRES) util/crawl.rc icon.o
@@ -925,7 +927,7 @@ $(foreach t,$(CONTRIB_LIBS),$(if $(wildcard $t),,$(shell rm -f .contrib-libs)))
 
 #############################################################################
 # Build unrandart data
-art-data.h: art-data.txt util/art-data.pl art-func.h
+$(GENERATED_FILES): art-data.txt util/art-data.pl art-func.h
 	util/art-data.pl
 
 #############################################################################
@@ -933,7 +935,7 @@ art-data.h: art-data.txt util/art-data.pl art-func.h
 #
 
 .PHONY: rltile-build
-rltile-build: .contrib-libs
+rltile-build: .contrib-libs $(GENERATED_FILES)
 	+$(MAKE) -C $(RLTILES) -f makefile.unix all
 
 $(TILEDEFSRCS): rltile-build

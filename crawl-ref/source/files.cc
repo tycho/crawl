@@ -21,10 +21,6 @@
 #include <algorithm>
 #include <functional>
 
-#ifdef TARGET_OS_DOS
-#include <file.h>
-#endif
-
 #ifdef UNIX
 #include <fcntl.h>
 #include <unistd.h>
@@ -45,13 +41,13 @@
 #include "clua.h"
 #include "coordit.h"
 #include "debug.h"
+#include "dgn-overview.h"
 #include "directn.h"
 #include "dungeon.h"
 #include "effects.h"
 #include "env.h"
 #include "ghost.h"
 #include "initfile.h"
-#include "itemprop.h"
 #include "items.h"
 #include "jobs.h"
 #include "kills.h"
@@ -67,7 +63,6 @@
 #include "notes.h"
 #include "options.h"
 #include "output.h"
-#include "overmap.h"
 #include "place.h"
 #include "player.h"
 #include "random.h"
@@ -75,7 +70,10 @@
 #include "state.h"
 #include "stuff.h"
 #include "tags.h"
+#ifdef USE_TILE
 #include "tiles.h"
+#include "tiledef-player.h"
+#endif
 #include "terrain.h"
 #include "travel.h"
 #include "tutorial.h"
@@ -133,9 +131,7 @@ static void _redraw_all(void)
 static std::string _uid_as_string()
 {
 #ifdef MULTIUSER
-    char struid[20];
-    snprintf( struid, sizeof struid, "-%d", static_cast<int>(getuid()) );
-    return std::string(struid);
+    return make_stringf("-%d", static_cast<int>(getuid()));
 #else
     return std::string();
 #endif
@@ -266,15 +262,65 @@ std::vector<std::string> get_dir_files(const std::string &dirname)
     return (files);
 }
 
+// Returns a vector of files (including directories if requested) in
+// the given directory, recursively. All filenames returned are
+// relative to the start directory. If an extension is supplied, all
+// filenames (and directory names if include_directories is set)
+// returned must be suffixed with the extension (the extension is not
+// modified in any way, so if you want, say, ".des", you must include
+// the "." as well).
+//
+// If recursion_depth is -1, the recursion is infinite, as far as the
+// directory structure and filesystem allows. If recursion_depth is 0,
+// only files in the start directory are returned.
+std::vector<std::string> get_dir_files_recursive(const std::string &dirname,
+                                                 const std::string &ext,
+                                                 int recursion_depth,
+                                                 bool include_directories)
+{
+    std::vector<std::string> files;
+
+    const std::vector<std::string> thisdirfiles = get_dir_files(dirname);
+    const int next_recur_depth =
+        recursion_depth == -1? -1 : recursion_depth - 1;
+    const bool recur = recursion_depth == -1 || recursion_depth > 0;
+
+    for (int i = 0, size = thisdirfiles.size(); i < size; ++i)
+    {
+        const std::string filename(thisdirfiles[i]);
+        if (dir_exists(catpath(dirname, filename)))
+        {
+            if (include_directories
+                && (ext.empty() || ends_with(filename, ext)))
+            {
+                files.push_back(filename);
+            }
+
+            if (recur)
+            {
+                const std::vector<std::string> subdirfiles =
+                    get_dir_files_recursive(catpath(dirname, filename),
+                                            ext,
+                                            next_recur_depth);
+                // Each filename in a subdirectory has to be prefixed
+                // with the subdirectory name.
+                for (int j = 0, ssize = subdirfiles.size(); j < ssize; ++j)
+                    files.push_back(catpath(filename, subdirfiles[j]));
+            }
+        }
+        else
+        {
+            if (ext.empty() || ends_with(filename, ext))
+                files.push_back(filename);
+        }
+    }
+    return (files);
+}
+
 std::vector<std::string> get_dir_files_ext(const std::string &dir,
                                            const std::string &ext)
 {
-    const std::vector<std::string> allfiles(get_dir_files(dir));
-    std::vector<std::string> filtered;
-    for (int i = 0, size = allfiles.size(); i < size; ++i)
-        if (ends_with(allfiles[i], ext))
-            filtered.push_back(allfiles[i]);
-    return (filtered);
+    return get_dir_files_recursive(dir, ext, 0);
 }
 
 std::string get_parent_directory(const std::string &filename)
@@ -637,7 +683,7 @@ static void _fill_player_doll(player_save_info &p, const std::string &dollfile)
         memset(fbuf, 0, sizeof(fbuf));
         if (fscanf(fdoll, "%s", fbuf) != EOF)
         {
-            tilep_scan_parts(fbuf, equip_doll);
+            tilep_scan_parts(fbuf, equip_doll, p.species, p.experience_level);
             tilep_race_default(p.species,
                                get_gender_from_tile(equip_doll.parts),
                                p.experience_level,
@@ -655,7 +701,7 @@ static void _fill_player_doll(player_save_info &p, const std::string &dollfile)
 
     if (!success) // Use default doll instead.
     {
-        job_type job = get_class_by_name(p.class_name.c_str());
+        job_type job = get_job_by_name(p.class_name.c_str());
         if (job == -1)
             job = JOB_FIGHTER;
 
@@ -686,7 +732,7 @@ std::vector<player_save_info> find_saved_characters()
     {
         std::string filename = allfiles[i];
 
-        std::string::size_type point_pos = filename.find_last_of('.');
+        std::string::size_type point_pos = filename.find_first_of('.');
         std::string basename = filename.substr(0, point_pos);
 
 #ifdef LOAD_UNPACKAGE_CMD
@@ -1052,6 +1098,14 @@ static bool _grab_follower_at(const coord_def &pos)
     if (!testbits(fmenv->flags, MF_TAKING_STAIRS))
         return (false);
 
+    // If a monster that can't use stairs was marked as a follower,
+    // it's because it's an ally and there might be another ally
+    // behind it that might want to push through.
+    // This means we don't actually send it on transit, but we do
+    // return true, so adjacent real followers are handled correctly. (jpeg)
+    if (!mons_can_use_stairs(fmenv))
+        return (true);
+
     level_id dest = level_id::current();
     if (you.char_direction == GDT_GAME_START)
         dest.depth = 1;
@@ -1074,6 +1128,7 @@ static void _grab_followers()
     int non_stair_using_allies = 0;
     monsters *dowan = NULL;
     monsters *duvessa = NULL;
+    monsters *pikel = NULL;
 
     // Handle nearby ghosts.
     for (adjacent_iterator ai(you.pos()); ai; ++ai)
@@ -1082,7 +1137,7 @@ static void _grab_followers()
         if (fmenv == NULL)
             continue;
 
-        if ((fmenv->type == MONS_DUVESSA 
+        if ((fmenv->type == MONS_DUVESSA
             || (fmenv->props.exists("original_name")
                 && fmenv->props["original_name"].get_string() == "Duvessa"))
                && fmenv->alive())
@@ -1107,6 +1162,14 @@ static void _grab_followers()
             if (fmenv->visible_to(&you))
                 mpr("The ghost fades into the shadows.");
             monster_teleport(fmenv, true);
+        }
+
+        // From here, we can't fail, so check to see if we've got Pikel
+        if (fmenv->type == MONS_PIKEL
+            || (fmenv->props.exists("original_name")
+                && fmenv->props["original_name"].get_string() == "Pikel"))
+        {
+            pikel = fmenv;
         }
     }
 
@@ -1141,7 +1204,6 @@ static void _grab_followers()
                  non_stair_using_allies > 1 ? "s" : "",
                  non_stair_using_allies > 1 ? ""  : "s");
         }
-
         memset(travel_point_distance, 0, sizeof(travel_distance_grid_t));
         std::vector<coord_def> places[2];
         int place_set = 0;
@@ -1151,23 +1213,22 @@ static void _grab_followers()
             for (int i = 0, size = places[place_set].size(); i < size; ++i)
             {
                 const coord_def &p = places[place_set][i];
-                coord_def fp;
-                for (fp.x = p.x - 1; fp.x <= p.x + 1; ++fp.x)
-                    for (fp.y = p.y - 1; fp.y <= p.y + 1; ++fp.y)
-                    {
-                        if (!in_bounds(fp) || travel_point_distance[fp.x][fp.y])
-                            continue;
-                        travel_point_distance[fp.x][fp.y] = 1;
-                        if (_grab_follower_at(fp))
-                            places[!place_set].push_back(fp);
-                    }
+                for (adjacent_iterator ai(p); ai; ++ai)
+                {
+                    if (travel_point_distance[ai->x][ai->y])
+                        continue;
+
+                    travel_point_distance[ai->x][ai->y] = 1;
+                    if (_grab_follower_at(*ai))
+                        places[!place_set].push_back(*ai);
+                }
             }
             places[place_set].clear();
             place_set = !place_set;
         }
     }
 
-    // Clear flags on the followers that didn't make it.
+    // Clear flags of monsters that didn't follow.
     for (int i = 0; i < MAX_MONSTERS; ++i)
     {
         monsters *mons = &menv[i];
@@ -1175,6 +1236,9 @@ static void _grab_followers()
             continue;
         mons->flags &= ~MF_TAKING_STAIRS;
     }
+
+    if (pikel && !pikel->alive())
+        pikel_band_neutralise(true);
 }
 
 // Should be called after _grab_followers(), so that items carried by
@@ -1209,7 +1273,7 @@ bool load( dungeon_feature_type stair_taken, load_mode_type load_mode,
 
 #ifdef DEBUG_LEVEL_LOAD
     mprf(MSGCH_DIAGNOSTICS, "Loading... level type: %d, branch: %d, level: %d",
-                            you.level_type, you.where_are_you, you.your_level);
+                            you.level_type, you.where_are_you, you.absdepth0);
 #endif
 
     // Going up/down stairs, going through a portal, or being banished
@@ -1224,7 +1288,7 @@ bool load( dungeon_feature_type stair_taken, load_mode_type load_mode,
 
     bool just_created_level = false;
 
-    std::string cha_fil = make_filename( you.your_name, you.your_level,
+    std::string cha_fil = make_filename( you.your_name, you.absdepth0,
                                          you.where_are_you,
                                          you.level_type,
                                          false );
@@ -1299,7 +1363,7 @@ bool load( dungeon_feature_type stair_taken, load_mode_type load_mode,
             // Knight of Lugonu (who start out there), force a return
             // into the first dungeon level and enable normal monster
             // generation.
-            you.your_level = 0;
+            you.absdepth0 = 0;
             you.char_direction = GDT_DESCENDING;
             Generated_Levels.insert(level_id::current());
         }
@@ -1310,10 +1374,10 @@ bool load( dungeon_feature_type stair_taken, load_mode_type load_mode,
 #endif
 
         _clear_env_map();
-        builder(you.your_level, you.level_type);
+        builder(you.absdepth0, you.level_type);
         just_created_level = true;
 
-        if ((you.your_level > 1 || you.level_type != LEVEL_DUNGEON)
+        if ((you.absdepth0 > 1 || you.level_type != LEVEL_DUNGEON)
             && one_chance_in(3))
         {
             load_ghost(true);
@@ -1428,7 +1492,7 @@ bool load( dungeon_feature_type stair_taken, load_mode_type load_mode,
         viewwindow(false, true);
 
         // update corpses and fountains
-        if (env.elapsed_time != 0.0 && !just_created_level)
+        if (env.elapsed_time && !just_created_level)
             update_level( you.elapsed_time - env.elapsed_time );
 
         // Centaurs have difficulty with stairs
@@ -1441,9 +1505,7 @@ bool load( dungeon_feature_type stair_taken, load_mode_type load_mode,
 
         timeval -= (stepdown_value( check_stealth(), 50, 50, 150, 150 ) / 10);
 
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS, "arrival time: %d", timeval );
-#endif
+        dprf("arrival time: %d", timeval );
 
         if (timeval > 0)
         {
@@ -1454,7 +1516,7 @@ bool load( dungeon_feature_type stair_taken, load_mode_type load_mode,
 
     // Save the created/updated level out to disk:
     if (make_changes)
-        _save_level( you.your_level, you.level_type, you.where_are_you );
+        _save_level( you.absdepth0, you.level_type, you.where_are_you );
 
     setup_environment_effects();
 
@@ -1646,14 +1708,17 @@ static void _save_game_base()
     }
 
     /* tutorial */
-    std::string tutorFile = get_savedir_filename(you.your_name, "", "tut");
-    FILE *tutorf = fopen(tutorFile.c_str(), "wb");
-    if (tutorf)
+    if (Tutorial.tutorial_left)
     {
-        writer outf(tutorf);
-        save_tutorial(outf);
-        fclose(tutorf);
-        DO_CHMOD_PRIVATE(tutorFile.c_str());
+        std::string tutorFile = get_savedir_filename(you.your_name, "", "tut");
+        FILE *tutorf = fopen(tutorFile.c_str(), "wb");
+        if (tutorf)
+        {
+            writer outf(tutorf);
+            save_tutorial(outf);
+            fclose(tutorf);
+            DO_CHMOD_PRIVATE(tutorFile.c_str());
+        }
     }
 
     /* messages */
@@ -1668,8 +1733,8 @@ static void _save_game_base()
     }
 
     /* tile dolls (empty for ASCII)*/
-    std::string dollFile = get_savedir_filename(you.your_name, "", "tdl");
 #ifdef USE_TILE
+    std::string dollFile = get_savedir_filename(you.your_name, "", "tdl");
     // Save the current equipment into a file.
     FILE *dollf = fopen(dollFile.c_str(), "w+");
     if (dollf)
@@ -1677,13 +1742,6 @@ static void _save_game_base()
         save_doll_file(dollf);
         fclose(dollf);
         DO_CHMOD_PRIVATE(dollFile.c_str());
-    }
-#else
-    // Don't overwrite old tile dolls.
-    if (!file_exists(dollFile))
-    {
-        FILE *dollf = fopen(dollFile.c_str(), "wb");
-        fclose(dollf);
     }
 #endif
 
@@ -1704,7 +1762,7 @@ static void _save_game_exit()
 {
     // Must be exiting -- save level & goodbye!
     if (!you.entering_level)
-        _save_level(you.your_level, you.level_type, you.where_are_you);
+        _save_level(you.absdepth0, you.level_type, you.where_are_you);
 
     clrscr();
 
@@ -1727,7 +1785,7 @@ static void _save_game_exit()
               (dirname+basename).c_str(), (dirname+basename).c_str());
 # else
     No save package defined.
-#endif
+# endif
 #endif
 
     if (system( cmd_buff ) != 0)
@@ -1793,7 +1851,7 @@ static std::string _make_ghost_filename()
     }
     else
     {
-        return make_filename("bones", you.your_level, you.where_are_you,
+        return make_filename("bones", you.absdepth0, you.where_are_you,
                              you.level_type, true);
     }
 }
@@ -1802,7 +1860,7 @@ static std::string _make_ghost_filename()
 
 bool load_ghost(bool creating_level)
 {
-    const bool wiz_cmd = crawl_state.prev_cmd == CMD_WIZARD;
+    const bool wiz_cmd = (crawl_state.prev_cmd == CMD_WIZARD);
 
     ASSERT(you.transit_stair == DNGN_UNSEEN || creating_level);
     ASSERT(!you.entering_level || creating_level);
@@ -1836,7 +1894,7 @@ bool load_ghost(bool creating_level)
 
     if (gfile == NULL)
     {
-        if (wiz_cmd)
+        if (wiz_cmd && !creating_level)
             mpr("No ghost files for this level.", MSGCH_PROMPT);
         return (false);                 // no such ghost.
     }
@@ -1933,6 +1991,7 @@ bool load_ghost(bool creating_level)
 
         menv[imn].set_ghost(ghosts[0]);
         menv[imn].ghost_init();
+        menv[imn].bind_spell_flags();
 
         ghosts.erase(ghosts.begin());
 #if BONES_DIAGNOSTICS
@@ -1986,9 +2045,10 @@ void restore_game(void)
 
     // Sanity check - EOF
     if (!feof(charf))
+    {
         end(-1, false, "\nIncomplete read of \"%s\" - aborting.\n",
             charFile.c_str());
-
+    }
     fclose(charf);
 
     std::string stashFile = get_savedir_filename( you.your_name, "", "st" );
@@ -2059,11 +2119,11 @@ static void _restore_level(const level_id &original)
 {
     // Reload the original level.
     you.where_are_you = original.branch;
-    you.your_level = original.dungeon_absdepth();
+    you.absdepth0 = original.dungeon_absdepth();
     you.level_type = original.level_type;
 
     load( DNGN_STONE_STAIRS_DOWN_I, LOAD_VISITOR,
-          you.level_type, you.your_level, you.where_are_you );
+          you.level_type, you.absdepth0, you.where_are_you );
 
     // Rebuild the show grid, which was cleared out before.
     you.update_los();
@@ -2087,7 +2147,7 @@ void level_excursion::go_to(const level_id& next)
 {
     if (level_id::current() != next)
     {
-        _save_level(you.your_level, you.level_type, you.where_are_you);
+        _save_level(you.absdepth0, you.level_type, you.where_are_you);
         _restore_level(next);
 
         LevelInfo &li = travel_cache.get_level_info(next);
@@ -2148,6 +2208,23 @@ bool apply_to_all_dungeons(bool (*applicator)())
     return (success);
 }
 
+bool get_save_version(FILE *file, char &major, char &minor)
+{
+    // Read first two bytes.
+    char buf[2];
+    if (read2(file, buf, 2) != 2)
+    {
+        // Empty file?
+        major = minor = -1;
+        return (false);
+    }
+
+    major = buf[0];
+    minor = buf[1];
+
+    return (true);
+}
+
 static bool _get_and_validate_version(FILE *restoreFile, char &major,
                                       char &minor, std::string* reason)
 {
@@ -2155,18 +2232,11 @@ static bool _get_and_validate_version(FILE *restoreFile, char &major,
     if (reason == 0)
         reason = &dummy;
 
-    // Read first two bytes.
-    char buf[2];
-    if (read2(restoreFile, buf, 2) != 2)
+    if (!get_save_version(restoreFile, major, minor))
     {
-        // Empty file?
-        major = minor = -1;
         *reason = "File is corrupt.";
         return (false);
     }
-
-    major = buf[0];
-    minor = buf[1];
 
     if (major != TAG_MAJOR_VERSION)
     {
@@ -2272,7 +2342,7 @@ void save_ghost( bool force )
 #endif // BONES_DIAGNOSTICS
 
     // No ghosts on levels 1, 2, or the ET.
-    if (!force && (you.your_level < 2
+    if (!force && (you.absdepth0 < 2
                    || you.where_are_you == BRANCH_ECUMENICAL_TEMPLE))
     {
         return;

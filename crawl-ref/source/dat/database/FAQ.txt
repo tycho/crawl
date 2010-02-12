@@ -49,6 +49,60 @@ the item's letter. For pickup, this is only possible when choosing items
 from a menu, i.e. ',,' or 'gg'.
 Stacks that are selected only in part are marked with '#' rather than '+'.
 %%%%
+Q:roguelike difference
+
+What are the biggest differences to other popular roguelike games?
+%%%%
+A:roguelike difference
+
+A: First, you might want to read the philosophy section in the manual ('?N')
+to read about general important principles in Stone Soup's game design.
+
+As for specific differences, the most important are probably the following:
+* Species is *much* more important than the character background (or "class").
+* Bones files only contain ghosts, never the dead character's equipment.
+* You cannot sell items to shops or elsewhere.
+* Resistances can be gained via mutations or items, never through eating.
+* For most gods in Crawl, prayer doesn't have any effect at all. Where it
+  does, it has both benefits and drawbacks. Check '^' to find out more.
+
+Also, our aim is to give Crawl a really smooth interface, so you should really
+read through the command list ('??') some time. The most intriguing "newish"
+commands are probably the following:
+
+* 'o', for automatic exploration of an unknown level
+* 'G', for automatic travel to another level
+* '5', for waiting and searching 100 turns or until something happens
+* '%', to access an overview screen for all your stats and resistances
+* 'X', to access the level map for easier travelling and more subcommands ('X?')
+* 'Ctrl-F', to find and travel to items or features you've seen before
+%%%%
+Q:survival
+
+How can I avoid dying all the time? Can you give me some playing tips?
+%%%%
+A:survival
+
+A: If you've got trouble even reaching the Temple, you might want to try
+out the tutorial for some general playing hints. (To do this, press 'Ctrl-T'
+in the character selection menu.)
+
+Also, there are easy playing combinations and more challenging ones
+(marked in dark grey on the selection screen). If you are new to Crawl,
+sticking to the easier ones is advisable. In general, treat each new
+monster you meet with utmost caution and keep an eye on your hit points
+and magic.
+
+For specific hints dealing with a particular character, you can press '#'
+in-game to create a "character dump" in your morgue folder that you can then
+post on e.g. the rec.games.roguelike.misc group or in the Something Awful
+forum, so other players can comment on your equipment, skills or spell
+selection.
+Please try to trim your dump by removing stuff unnecessary for this task
+(such as the extensive Vanquished list). If you join the ##crawl channel
+of the freenode IRC, you will find helpful souls who will even watch you
+and give hints should you play on one of the public servers.
+%%%%
 Q:downstairs
 
 I can't find any downstairs. Am I missing something?
@@ -61,9 +115,11 @@ looking corridors and along walls near empty terrain, you will eventually
 find one. Note that most levels feature three downstairs as well as three
 upstairs, not counting any escape hatches. If you get stuck, you might
 try another set of stairs from the level above.
+
 Alternatively, if you are in one of the branches, you might also have
 reached its lowest level and have to turn around to explore another one.
-Check the database ('?/b') for the number of levels per branch.
+Check the overview ('Ctrl-O') to see how deep you've delved into a given
+branch, or the database ('?/b') for the number of levels for unseen branches.
 %%%%
 Q:stuck
 
@@ -73,32 +129,54 @@ A:stuck
 
 A: Hopefully not. Search all the walls with '5' in case there's a secret
 door. If you really can't find any, it could be a bug and need fixing, so
-please report it on our SourceForge tracker. In the meantime, you can try
-to escape with digging, disintegration or teleportation.
+please report it on our Mantis tracker: http://crawl.develz.org/mantis/
+
+Be sure to upload your save file! (If you're playing online, you'll need to
+ask the admin to upload your save file, and can continue playing once they
+did so.)
+
+In the meantime, you can try to escape with digging, disintegration or
+teleportation.
 %%%%
-Q:survival
+Q:labyrinth
 
-How can I avoid dying all the time? Can you give me some playing tips?
+I'm in a labyrinth, and I can see a zombie minotaur but no exit. Help!
 %%%%
-A:survival
+A:labyrinth
 
-A: If you've got trouble even reaching the Temple, you might want to try
-out the Tutorial for some general playing hints. (To do this, press
-'Ctrl-T' in the character selection menu.)
-Also, there are easy playing combinations and more challenging ones
-(marked in dark grey on the selection screen). If you are new to Crawl,
-sticking to the easier ones is advisable. In general, treat each new
-monster you meet with utmost caution and keep an eye on your hit points
-and magic.
+A: First, the exit and loot are guarded by a real non-undead minotaur. All
+zombie versions you might meet are *additional* ones that have no relation at
+all to where the exit might be.
 
-For specific hints dealing with a particular character, you can press '#'
-in-game to create a "dump" in your morgue folder that you can then post on
-the rec.games.roguelike.misc group or in the Something Awful forum, so
-other players can comment on your equipment, skills or spell selection.
-Please try to trim your dump by removing stuff unnecessary for this task
-(such as the extensive Vanquished list). If you join the ##crawl channel
-of the freenode IRC, you will find helpful souls who will even watch you
-and give hints should you play on one of the public servers.
+Each labyrinth consists of several layers of different wall types. The map
+border is always made of either metal or undiggable stone. From then, going
+inward, the wall types are first rock, then stone, then metal. To find the
+exit out of the labyrinth, you'll need to get to the centre of the metal area.
+Note that the exit itself might be found within a vault that has non-metal
+walls. Also, there might be secret doors and there might be traps, and of
+course there's a minotaur around, so do step carefully.
+
+And while already on the topic of labyrinths, be warned that teleportation is
+guaranteed to land you away from the exit.
+%%%%
+Q:starving
+
+My characters keep starving. What am I doing wrong?
+%%%%
+A:starving
+
+A: It's possible that you simply spend too much time on cleared levels
+where not enough monsters are generated to dine on. You might also be too
+choosy about what you eat: unless you are herbivorous you will have to
+occasionally eat monster chunks, even those that sometimes make you sick
+(coloured brown in the menu and the prompt). If you worship a god who
+enjoys sacrifices pay attention to your own hunger status instead of offering
+all corpses you come across.
+
+Also, casting (difficult) spells will make you hungry, but high
+Intelligence and Spellcasting will lessen this effect. If you press 'II',
+you can read about the hunger effects of your spells.
+Invocations likewise often have a Food cost.
 %%%%
 Q:cheating
 
@@ -147,93 +225,25 @@ Sif Muna (for spellcasters), Beogh (for orcs) and Xom (for general fun).
 When you reach the Temple for the first time be sure to read all gods'
 descriptions and take your time in deciding which way to go.
 %%%%
-Q:starving
-
-My characters keep starving. What am I doing wrong?
-%%%%
-A:starving
-
-A: It's possible that you simply spend too much time on cleared levels
-where not enough monsters are generated to dine on. You might also be too
-choosy about what you eat: unless you are herbivorous you will have to
-occasionally eat monster chunks, even those that sometimes make you sick
-(coloured brown in the menu and the prompt). If you worship a god who
-enjoys sacrifices pay attention to your own hunger status and wait until
-the end of prayer before chopping a corpse if need be.
-Also, casting (difficult) spells will make you hungry, but high
-Intelligence and Spellcasting will lessen this effect. If you press 'II',
-you can read about the hunger effects of your spells.
-Invocations likewise often have a Food cost.
-%%%%
 Q:ghosts
 
 I keep getting murdered by my own ghosts. Can I deactivate them?
 %%%%
 A:ghosts
 
-A: No, you can't. On the plus side, once a ghost has been loaded onto a
-level, it won't be loaded again - unless you happen to die on that level,
-thus creating a bones file featuring more than one ghost.
+A: There isn't any such option, and we're not planning to add one, either.
+
+For a more constructive answer, once a ghost has been loaded onto a level, it
+won't be loaded again - unless you happen to die on that level, thus creating
+a bones file featuring more than one ghost.
 Keep in mind that you don't absolutely have to fight every monster you meet,
 and with ghosts it's even easier: they cannot leave the level they were
 created on.
 
-Alternatively, you could play a couple of strong species/job combinations
-for the sole purpose of busting those ghosts, for example Berserkers or a
-spellcaster who's learned Dispel Undead.
-%%%%
-Q:abyss
-
-I've somehow ended up in a place called "Abyss". How do I get out of here?
-%%%%
-A:abyss
-
-A: If you are in the Abyss for the first time, chances of getting out are
-slim. Still, here are a few general hints:
-* You need to find a gateway leading out of the Abyss. These are rare!
-* Don't stick around to fight, move as much as possible!
-* The Abyss wraps around, so avoid going straight into one direction.
-* If you have it, use defensive equipment (weapon of protection etc.).
-* Use teleportation to hopefully end up in a completely new part of the Abyss.
-* Teleportation might take much longer to kick in than in the Dungeon.
-* Consider switching your allegiance to Lugonu to get out of there.
-%%%%
-Q:randart
-
-What do the terms "randart", "unrandart" and "egoitem" signify?
-%%%%
-A:randart
-
-A: Apart from the standard items you'll find lying around in the dungeon,
-you might also stumble upon artefacts which come in two varieties:
-
-* randart: a random artefact, usually a weapon or type of armour with
-  random properties such as conferring resistances or abilities
-* unrandart: an artefact that looks like a randart but is really
-  predefined. While a few (formerly known as "fixed artefacts") have
-  special hardcoded effects, for most there's no further difference except
-  that players "in the know" can recognize such an item by its special
-  description and/or colour/tile.
-
-Neither of these types can be enchanted or branded, neither temporarily nor
-permanently. There is another type of special item that pops up a bit more
-frequently:
-
-* egoitem: these are ordinary items with one special property. For example,
-  a short sword of venom, a cap of see invisible or boots of running. These
-  can be affected by enchanting scrolls and also by corrosion and acids.
-  Weapons of this type are branded, and only divine intervention can change
-  the brand.
-%%%%
-Q:oklobs
-
-Oklob plants suck! Are you planning to remove them at last?
-%%%%
-A:oklobs
-
-A: No. We think that Oklob plants provide an interesting challenge.
-Resist the urge to kill them at once. If you absolutely need to bypass them
-use your resources wisely. A hint: They cannot see invisible.
+Alternatively, you could play a couple characters of strong species/background
+combinations for the sole purpose of busting those ghosts, for example
+Berserkers, Paladins of the Shining One, or a spellcaster who's learned
+Dispel Undead.
 %%%%
 Q:instadeath
 
@@ -263,134 +273,61 @@ than before.
 
 Keep in mind that the same also applies to hostile undead of the same kind!
 %%%%
-##############################################
-# Questions about the development process.
-##############################################
-Q:bug
+Q:abyss
 
-The game keeps crashing. / I think I found a bug. What do I do?
+I've somehow ended up in a place called "Abyss". How do I get out of here?
 %%%%
-A:bug
+A:abyss
 
-A: Please submit a bug report on SourceForge, and give as much information
-as you can. (What were you doing at the time? What did you expect to
-happen, what happened instead? etc.) Most importantly, what version are you
-playing? Sometimes a screenshot can be helpful. For crashes or
-monsters/items/levels behaving oddly, we probably need a save file. To be
-on the safe side, attach the entire zipped save of the character in
-question. If there are error messages, please write them down. Short of a
-save file, a guide on how to reproduce the crash (or bug) can be useful;
-you can use wizard mode for this.
+A: If you are in the Abyss for the first time, chances of getting out are
+slim. Still, here are a few general hints:
 
-If you don't log in to SourceForge or leave an email address at least check
-the thread from time to time in case we have some more questions. In any case
-leave a nick so that we can refer to you in some way.
-
-Thanks in advance!
+* You need to find a gateway leading out of the Abyss. These are rare!
+* Don't stick around to fight, move as much as possible!
+* The Abyss wraps around, so avoid going straight into one direction.
+* If you have it, use defensive equipment (weapon of protection etc.).
+* Use teleportation to hopefully end up in a completely new part of the Abyss.
+* Teleportation might take much longer to kick in than in the Dungeon.
+* Consider switching your allegiance to Lugonu to get out of there.
 %%%%
-Q:ideas
+Q:oklobs
 
-I've got millions of ideas! Can I join the team?
+Oklob plants suck! Are you planning to remove them at last?
 %%%%
-A:ideas
+A:oklobs
 
-A: No, you can't. At least not on ideas alone.
+A: No, we don't, because we feel that Oklob plants provide an interesting
+challenge. Resist the urge to kill them at once. If you absolutely need to
+bypass them use your resources wisely.
 
-All of the devteam members submitted a number of code intensive patches
-and/or took over responsibility over an important side project before
-joining. A good way to become indispensable is to help us with patches or
-vaults etc.
-
-Please submit your ideas to the Feature Requests tracker of SourceForge. If
-they catch the interest of at least one coder, chances are they'll make it
-into the game.
-
-Note that your idea has better chances to be accepted if you present the
-ramifications on gameplay. Since we put a lot of emphasis on the interface,
-a good proposal on how to make the game play smoother may go in without much
-ado.
+A hint: They cannot see invisible.
 %%%%
-Q:feature
+Q:randart
 
-Hey! Why did you close my feature request?
+What do the terms "randart", "unrandart" and "egoitem" signify?
 %%%%
-A:feature
+A:randart
 
-A: If you are logged in to SourceForge when submitting your feature
-request, or choose to "Monitor" the resulting thread while logged in, you
-will get an email any time someone replies to (or fiddles with) this
-thread. Once a thread has been closed, you can still access it by searching
-for requests with the "Closed" status.
+A: Apart from the standard items you'll find lying around in the dungeon,
+you might also stumble upon artefacts which come in two varieties:
 
-We always try to give a reason for closing a request, but it usually boils
-down to three reasons:
-* It doesn't fit into the Crawl world as we see it.
-* It violates Crawl's philosophy to avoid grinding and spoiler-heavy stuff.
-* We just don't think it's interesting enough to ever be implemented.
+* randart: a random artefact, usually a weapon or type of armour with
+  random properties such as conferring resistances or abilities
+* unrandart: an artefact that looks like a randart but is really
+  predefined. While a few (formerly known as "fixed artefacts") have
+  special hardcoded effects, for most there's no further difference except
+  that players "in the know" can recognize such an item by its special
+  description and/or colour/tile.
 
-Please don't let this stop you from bringing up more suggestions. Already the
-next one might generate heavy interest and excitement, and end up in the
-game. However, do try to be specific in your suggestions. If you cannot even
-explain the basics of your idea, why should we bother to flesh it out, let
-alone code it?
-%%%%
-Q:patch
+Neither of these types can be enchanted or branded, neither temporarily nor
+permanently. There is another type of special item that pops up a bit more
+frequently:
 
-I've written a patch for a cool new feature! Where should I send it?
-%%%%
-A:patch
-
-A: Please submit it to the Patches tracker on SourceForge. Keep in mind
-that without previous discussions, we may not be able to use the patch, or
-it might need heavy modification. In general, it is safer to first file
-your suggestions under Feature Requests and wait for people to become
-enthusiastic and give feedback before you submit a patch. If you want,
-you can also write a patch that implements an existing FR or fixes a bug.
-
-If you'd like to write a patch but don't know how to go about it,
-patch_guide.txt in the docs/ folder is the file for you.
-
-We really appreciate your help!
-%%%%
-Q:help
-
-I cannot code, but I'd really like to help improve the game. What can I do?
-%%%%
-A:help
-
-A: There are several areas where you can get creative and outside help is
-much appreciated. These are:
-* the maps/vaults (see dat/ folder, docs/develop/levels/introduction.txt)
-* monster speech (see dat/database/, docs/monster_speech.txt)
-* monster/item/spell descriptions (see dat/descript/)
-* tiles (see source/rltiles/, docs/tiles_creation.txt)
-
-Also, if you'd like to write a patch but don't know how to go about it, read
-patch_guide.txt in the docs/ folder.
-
-If you've got some cool addition, you can send it over the mailing list, or
-post it as a SourceForge item. You can also help us by giving feedback on
-the most recent version or trunk (available via SVN, Windows binaries
-downloadable from http://crawl.develz.org/trunk/).
-
-Thanks a lot for your support!
-%%%%
-Q:beta
-
-Is there a way for me to play the new version before it is released?
-%%%%
-A:beta
-
-A: There certainly is! You can play "trunk" (what will eventually become
-the next version) online on http://crawl.develz.org, or you can download
-Windows binaries from the same site. Note that trunk may be buggy, and that
-many changes will invalidate your saved games. If that doesn't bother you,
-go ahead and play!
-
-Be sure to leave some feedback/suggestions/bug reports on the SourceForge
-trackers. When doing so please mention the version (r?????) you're
-currently playing, in case the bug's already been fixed or the feature
-already implemented.
+* egoitem: these are ordinary items with one special property. For example,
+  a short sword of venom, a cap of see invisible, or boots of running.
+  These can be affected by enchanting scrolls and also by corrosion and
+  acids. Weapons of this type are branded, and only divine intervention can
+  change the brand.
 %%%%
 Q:interact
 
@@ -407,32 +344,170 @@ Check docs/ssh_guide.txt for an explanation about how to play online.
 You can also chat in the Crawl channel (irc.freenode.net, ##crawl), or discuss
 in the Something Awful forum or the rec.games.roguelike.misc newsgroup.
 %%%%
+##############################################
+# Questions about the development process.
+##############################################
+Q:beta
+
+Is there a way for me to play the new version before it is released?
+%%%%
+A:beta
+
+A: There certainly is! You can play "trunk" (what will eventually become
+the next version) online on http://crawl.develz.org, or you can download
+Windows binaries from the same site. Note that trunk may be buggy, and that
+many changes will invalidate your saved games. If that doesn't bother you,
+go ahead and play!
+
+Be sure to leave some feedback/suggestions/bug reports on the
+Mantis tracker: http://crawl.develz.org/mantis/, and
+Mantis wiki: http://crawl.develz.org/wiki/doku.php?id=start
+
+When doing so please mention the version (see '?v') you're currently playing,
+in case the bug's already been fixed or the feature already implemented.
+%%%%
+Q:bug
+
+The game keeps crashing. / I think I found a bug. What do I do?
+%%%%
+A:bug
+
+A: Please submit a bug report on Mantis (http://crawl.develz.org/mantis/),
+and give as much information as you can:
+* What were you doing at the time?
+* What did you expect to happen, what happened instead? etc.
+* Most importantly, what version are you playing?
+  (If you're not sure, you can check in-game with '?v'.)
+* Console or tiles?
+
+Sometimes a screenshot can be helpful. For crashes or monsters/items/levels
+behaving oddly, we probably need a save file. To be on the safe side, attach
+the entire zipped save of the character in question. If there are error
+messages, please write them down. Short of a save file, a guide on how to
+reproduce the crash (or bug) can be useful; you can use wizard mode for this.
+
+Thanks in advance!
+%%%%
+Q:ideas
+
+I've got millions of ideas! Can I join the team?
+%%%%
+A:ideas
+
+A: Sorry, but no. At least not on ideas alone.
+
+All of the devteam members submitted a number of code intensive patches
+and/or took over responsibility over an important side project before
+joining. A good way to become indispensable is to help us with patches or
+vaults etc.
+
+Please add your ideas in the appropriate section of the Mantis wiki:
+http://crawl.develz.org/wiki/doku.php?id=start
+
+If they catch the interest of at least one coder, chances are they'll make
+it into the game.
+
+Note that your idea has better chances to be accepted if you present the
+ramifications on gameplay. Since we put a lot of emphasis on the interface,
+a good proposal on how to make the game play smoother may go in without
+much ado.
+%%%%
+Q:feature
+
+Hey! Why did you close my feature request?
+%%%%
+A:feature
+
+A: If you submitted a report on our Mantis tracker, you will get an email
+any time someone replies to (or fiddles with) the thread in question.
+Once a thread has been closed, you can still access it by searching for
+requests with the "Closed" status.
+
+We always try to give a reason for closing a request that has not been
+implemented, but it usually boils down to three reasons:
+* It doesn't fit into the Crawl world as we see it.
+* It violates Crawl's philosophy to avoid grinding and spoiler-heavy stuff.
+* We just don't think it's interesting enough to ever be implemented.
+
+Many requests that are reasonable but not urgent are moved to the wiki,
+where it's easier to keep track of them than in the bug tracker.
+
+Please don't let this stop you from bringing up more suggestions. Already the
+next one might generate heavy interest and excitement, and end up in the
+game. However, do try to be specific in your suggestions. If you cannot even
+explain the basics of your idea, why should we bother to flesh it out, let
+alone code it?
+%%%%
+Q:patch
+
+I've written a patch for a cool new feature! Where should I send it?
+%%%%
+A:patch
+
+A: Please submit it as a new issue on our Mantis tracker:
+http://crawl.develz.org/mantis/
+
+Keep in mind that without previous discussions, we may not be able to use
+the patch, or it might need heavy modification. In general, it is safer to
+first file your suggestions under Feature Requests and wait for people to
+become enthusiastic and give feedback before you submit a patch. If you
+want, you can also write a patch that implements an existing FR or fixes a
+bug.
+
+If you'd like to write a patch but don't know how to go about it,
+patch_guide.txt in the docs/develop/ folder is the file for you.
+
+We really appreciate your help!
+%%%%
+Q:help
+
+I cannot code, but I'd like to help improve the game. What can I do?
+%%%%
+A:help
+
+A: There are several areas where you can get creative and outside help is
+much appreciated. These are:
+* the maps/vaults (see dat/ folder, docs/develop/levels/introduction.txt)
+* monster speech (see dat/database/, docs/develop/monster_speech.txt)
+* monster/item/spell descriptions (see dat/descript/)
+* tiles (see source/rltiles/, docs/develop/tiles_creation.txt)
+
+Also, if you'd like to write a patch but don't know how to go about it, read
+patch_guide.txt in the docs/develop/ folder.
+
+If you've got some cool addition, you can send it over the mailing list, or
+post it as a Mantis item. You can also help us by giving feedback on the most
+recent version or trunk (available via git, Windows binaries downloadable
+from http://crawl.develz.org/trunk/).
+
+Thanks a lot for your support!
+%%%%
 Q:changes
 
 What did you change in the most recent version?
 %%%%
 A:changes
 
-A: The (admittedly highly subjective) highlights of the last major release are
-listed along with the version information under '?v'. For more details, check
-out changelog.txt in the docs/ folder.
+A: The admittedly highly subjective highlights of the most recent major
+release are listed along with the version information under '?v'. For more
+details, check out changelog.txt in the docs/ folder.
 %%%%
 ##############################################
 # Questions about the Tiles version
 ##############################################
 Q:tiles lag
 
-The tiles version is awfully slow on Windows! What can I do to improve that?
+The tiles version is awfully slow on Windows! How can I improve that?
 %%%%
 A:tiles lag
 
-First, we're really sorry about that! Stonesoup 0.5 was tested on several
-systems and the gigantic lag on some Windows systems was completely unexpected.
-
+A: First, we're really sorry about that! Stone Soup 0.5 was tested on several
+systems and the gigantic lag on some Windows systems was completely
+unexpected.
 Crawl 0.5 renders graphics using OpenGL and SDL. For most video cards, this
 should be faster than the 0.4 version. However, the default driver that ships
-with Windows is extremely slow. If you are having performance problems, be sure
-to update your video card driver as a first step.
+with Windows is extremely slow. If you are having performance problems, be
+sure to update your video card driver as a first step.
 
 We're working on a solution for this problem, but in the meantime you can try
 to see whether tweaking some options will improve performance. See
@@ -442,11 +517,11 @@ solved, or you could try the non-graphical console version.
 
 We'd like to apologize for the grief that this has caused some players, but we
 hope that it's understandable that making this change in 0.5 has allowed a lot
-of graphical improvements: Uniques get on-screen names. All monsters get health
-bars. Graphical menus. Full screen mode. Eee PC support.
-None of those things would have been possible in previous tiles versions. On
-top of that, if you have an adequate driver 0.5 can often be faster than 0.4,
-because the GPU can easily do the work that used to take the CPU a lot of time.
+of graphical improvements: Uniques get on-screen names. All monsters get
+health bars. Graphical menus. Full screen mode. Eee PC support. None of those
+things would have been possible in previous tiles versions. On top of that, if
+you have an adequate driver 0.5 can often be faster than 0.4, because the GPU
+can easily do the work that used to take the CPU a lot of time.
 
 At any rate, it'll be fixed.  Just be patient.  :)
 %%%%
@@ -482,11 +557,13 @@ share these files with other players, so they can use your tileset without
 having to compile the game.
 
 If you've created some nice new tiles or variations of existing ones you'd
-like to share you might want to send them over the mailing list or submit
-them as a SourceForge item. It's easiest for us if they are already in
-32x32 png format, preferrably zipped if there are several.
+like to share you might want to send it to one of the Tiles developers or
+submit them as a Mantis item: http://crawl.develz.org/mantis/
 
-See docs/tiles_creation.txt for a slightly more detailed explanation.
+It's easiest for us if they are already in 32x32 png format, and preferrably
+zipped if there are several.
+
+See docs/develop/tiles_creation.txt for a slightly more detailed explanation.
 
 Thanks in advance!
 %%%%

@@ -2,6 +2,7 @@
 #define OPTIONS_H
 
 #include "feature.h"
+#include "pattern.h"
 
 class InitLineInput;
 struct game_options
@@ -58,12 +59,14 @@ public:
     int         view_max_width;
     int         view_max_height;
     int         mlist_min_height;
+    int         msg_min_height;
     int         msg_max_height;
     bool        mlist_allow_alternate_layout;
     bool        messages_at_top;
-    bool        mlist_targetting;
+    bool        mlist_targeting;
     bool        classic_hud;
     bool        msg_condense_repeats;
+    bool        msg_condense_short;
 
     // The view lock variables force centering the viewport around the PC @
     // at all times (the default). If view locking is not enabled, the viewport
@@ -86,10 +89,9 @@ public:
 
     int         autopickup_on;
     int         default_friendly_pickup;
-    bool        show_more_prompt;
 
     bool        show_gold_turns; // Show gold and turns in HUD.
-    bool        show_beam;       // Show targetting beam by default.
+    bool        show_beam;       // Show targeting beam by default.
 
     long        autopickups;     // items to autopickup
     bool        show_inventory_weights; // show weights in inventory listings
@@ -112,7 +114,7 @@ public:
                                    // chunks if no safe ones are present
     bool        easy_eat_contaminated; // like easy_eat_gourmand, but
                                        // always active.
-    bool        default_target;  // start targetting on a real target
+    bool        default_target;  // start targeting on a real target
     bool        autopickup_no_burden;   // don't autopickup if it changes burden
 
     bool        note_all_skill_levels;  // take note for all skill levels (1-27)
@@ -128,9 +130,9 @@ public:
     confirm_prompt_type allow_self_target;      // yes, no, prompt
 
     int         colour[16];      // macro fg colours to other colours
-    int         background;      // select default background colour
-    int         channels[NUM_MESSAGE_CHANNELS];  // msg channel colouring
-    bool        darken_beyond_range; // for whether targetting is out of range
+    int         background_colour; // select default background colour
+    msg_colour_type channels[NUM_MESSAGE_CHANNELS];  // msg channel colouring
+    bool        darken_beyond_range; // for whether targeting is out of range
 
     bool        use_old_selection_order; // use old order of species/classes in
                                          // selection screen
@@ -147,7 +149,9 @@ public:
     int         magic_point_warning;    // percentage mp for danger warning
     char        race;            // preselected race
     char        cls;             // preselected class
-    bool        delay_message_clear;    // avoid clearing messages each turn
+    bool        clear_messages;   // clear messages each turn
+    bool        show_more;        // Show message-full more prompts.
+    bool        small_more;       // Show one-char more prompts.
     unsigned    friend_brand;     // Attribute for branding friendly monsters
     unsigned    neutral_brand;    // Attribute for branding neutral monsters
     bool        no_dark_brand;    // Attribute for branding friendly monsters
@@ -190,6 +194,7 @@ public:
     std::vector<int> note_skill_levels;       // Skill levels to note
 
     bool        autoinscribe_artefacts; // Auto-inscribe identified artefacts.
+    bool        autoinscribe_cursed; // Auto-inscribe previosly cursed items.
 
     bool        pickup_thrown;  // Pickup thrown missiles
     bool        pickup_dropped; // Pickup dropped objects
@@ -329,6 +334,7 @@ public:
     char        tile_player_col;
     char        tile_monster_col;
     char        tile_neutral_col;
+    char        tile_peaceful_col;
     char        tile_friendly_col;
     char        tile_plant_col;
     char        tile_item_col;
@@ -368,6 +374,11 @@ public:
     int         tile_tooltip_ms;
     tag_pref    tile_tag_pref;
     tile_display_type  tile_display;
+
+    bool        tile_show_minihealthbar;
+    bool        tile_show_minimagicbar;
+    bool        tile_show_demon_numbers;
+    bool        tile_better_transparency;
 #endif
 
     typedef std::map<std::string, std::string> opt_map;
@@ -452,4 +463,3 @@ private:
 extern game_options  Options;
 
 #endif
-

@@ -39,6 +39,7 @@
 
 #include "cio.h"
 #include "externs.h"
+#include "libutil.h"
 #include "options.h"
 #include "message.h"
 #include "state.h"
@@ -57,7 +58,7 @@ static macromap *all_maps[] =
 {
     &Keymaps[KMC_DEFAULT],
     &Keymaps[KMC_LEVELMAP],
-    &Keymaps[KMC_TARGETTING],
+    &Keymaps[KMC_TARGETING],
     &Keymaps[KMC_CONFIRM],
 
     &Macros,
@@ -482,13 +483,12 @@ static void macro_buf_add_long( keyseq actions,
 
         while (tmp.size() > 0)
         {
-            keyseq result = keymap[tmp];
-
+            macromap::const_iterator subst = keymap.find(tmp);
             // Found a macro. Add the expansion (action) of the
             // macro into the buffer.
-            if (result.size() > 0)
+            if (subst != keymap.end() && !subst->second.empty())
             {
-                macro_buf_add( result );
+                macro_buf_add(subst->second);
                 break;
             }
 
@@ -532,10 +532,12 @@ static void macro_buf_apply_command_macro( void )
     // find the longest match from the start of the buffer and replace it
     while (tmp.size() > 0)
     {
-        const keyseq &result = Macros[tmp];
+        macromap::const_iterator expansion = Macros.find(tmp);
 
-        if (result.size() > 0)
+        if (expansion != Macros.end() && !expansion->second.empty())
         {
+            const keyseq &result = expansion->second;
+
             // Found macro, remove match from front:
             for (unsigned int i = 0; i < tmp.size(); i++)
             {
@@ -666,7 +668,6 @@ static keyseq _getch_mul( int (*rgetch)() = NULL )
  */
 int getchm( int (*rgetch)() )
 {
-    flush_prev_message();
     return getchm( KMC_DEFAULT, rgetch );
 }
 
@@ -740,7 +741,7 @@ void flush_input_buffer( int reason )
             const int key = Buffer.front();
             Buffer.pop_front();
             if (key == KEY_MACRO_ENABLE_MORE)
-                Options.show_more_prompt = true;
+                crawl_state.show_more_prompt = true;
         }
         macro_keys_left = -1;
     }
@@ -772,7 +773,7 @@ void macro_add_query( void )
     else if (input == 't')
     {
         keymap = true;
-        keymc  = KMC_TARGETTING;
+        keymc  = KMC_TARGETING;
     }
     else if (input == 'c')
     {
@@ -801,20 +802,22 @@ void macro_add_query( void )
     // reference to the appropriate mapping
     macromap &mapref = (keymap ? Keymaps[keymc] : Macros);
 
-    mprf(MSGCH_PROMPT, "Input %s%s trigger key: ",
+    std::string prompt = make_stringf("Input %s%s trigger key: ",
          keymap ? (keymc == KMC_DEFAULT    ? "default " :
                    keymc == KMC_LEVELMAP   ? "level-map " :
-                   keymc == KMC_TARGETTING ? "targetting " :
+                   keymc == KMC_TARGETING  ? "targeting " :
                    keymc == KMC_CONFIRM    ? "confirm " :
                    keymc == KMC_MENU       ? "menu "
                                            : "buggy") : "",
-         (keymap ? "keymap" : "macro") );
+         (keymap ? "keymap" : "macro"));
+
+    msgwin_prompt(prompt);
 
     keyseq key;
     mouse_control mc(MOUSE_MODE_MACRO);
     key = _getch_mul();
 
-    cprintf( "%s" EOL, (vtostr( key )).c_str() ); // echo key to screen
+    msgwin_reply(vtostr(key));
 
     if (mapref[key].size() > 0)
     {
@@ -837,15 +840,8 @@ void macro_add_query( void )
         }
     }
 
-    mpr( "Input Macro Action: ", MSGCH_PROMPT );
-
-    // Using _getch_mul() here isn't very useful...  We'd like the
-    // flexibility to define multicharacter macros without having
-    // to resort to editing files and restarting the game.  -- bwr
-    // keyseq act = _getch_mul();
-
     char    buff[4096];
-    get_input_line(buff, sizeof buff);
+    msgwin_get_line_autohist("Input Macro Action: ", buff, sizeof(buff));
 
     if (Options.macro_meta_entry)
         macro_add( mapref, key, parse_keyseq(buff) );
@@ -932,6 +928,9 @@ bool is_synthetic_key(int key)
     case KEY_MACRO_DISABLE_MORE:
     case KEY_MACRO_MORE_PROTECT:
     case KEY_REPEAT_KEYS:
+#ifdef USE_TILE
+    case CK_MOUSE_CMD:
+#endif
         return (true);
     default:
         return (false);
@@ -1153,10 +1152,8 @@ command_type key_to_command(int key, KeymapContext context)
     if (it == key_map.end())
         return CMD_NO_CMD;
 
-    command_type cmd = static_cast<command_type>(it->second);
-
+    const command_type cmd = static_cast<command_type>(it->second);
     ASSERT(context_for_command(cmd) == context);
-
 
     return cmd;
 }
@@ -1186,7 +1183,7 @@ KeymapContext context_for_command(command_type cmd)
         return KMC_LEVELMAP;
 
     if (cmd >= CMD_MIN_TARGET && cmd <= CMD_MAX_TARGET)
-        return KMC_TARGETTING;
+        return KMC_TARGETING;
 
 #ifdef USE_TILE
     if (cmd >= CMD_MIN_DOLL && cmd <= CMD_MAX_DOLL)
@@ -1235,3 +1232,133 @@ void bind_command_to_key(command_type cmd, int key)
     key_map[key] = cmd;
     cmd_map[cmd] = key;
 }
+
+static std::string _special_keys_to_string(int key)
+{
+    const bool shift = (key >= CK_SHIFT_UP && key <= CK_SHIFT_PGDN);
+    const bool ctrl  = (key >= CK_CTRL_UP && key <= CK_CTRL_PGDN);
+
+    std::string cmd = "";
+
+    if (shift)
+    {
+        key -= (CK_SHIFT_UP - CK_UP);
+        cmd = "Shift-";
+    }
+    else if (ctrl)
+    {
+        key -= (CK_CTRL_UP - CK_UP);
+        cmd = "Ctrl-";
+    }
+
+    switch (key)
+    {
+    case CK_ENTER:  cmd += "Enter"; break;
+    case CK_BKSP:   cmd += "Backspace"; break;
+    case CK_ESCAPE: cmd += "Esc"; break;
+    case CK_DELETE: cmd += "Del"; break;
+    case CK_UP:     cmd += "Up"; break;
+    case CK_DOWN:   cmd += "Down"; break;
+    case CK_LEFT:   cmd += "Left"; break;
+    case CK_RIGHT:  cmd += "Right"; break;
+    case CK_INSERT: cmd += "Ins"; break;
+    case CK_HOME:   cmd += "Home"; break;
+    case CK_END:    cmd += "End"; break;
+    case CK_CLEAR:  cmd += "Clear"; break;
+    case CK_PGUP:   cmd += "PgUp"; break;
+    case CK_PGDN:   cmd += "PgDn"; break;
+    }
+
+    return (cmd);
+}
+
+std::string command_to_string(command_type cmd)
+{
+    const int key = command_to_key(cmd);
+
+    const std::string desc = _special_keys_to_string(key);
+    if (!desc.empty())
+        return (desc);
+
+    if (key >= 32 && key < 256)
+        snprintf(info, INFO_SIZE, "%c", (char) key);
+    else if (key > 1000 && key <= 1009)
+    {
+        const int numpad = (key - 1000);
+        snprintf(info, INFO_SIZE, "Numpad %d", numpad);
+    }
+    else
+    {
+        const int ch = key + 'A' - 1;
+        if (ch >= 'A' && ch <= 'Z')
+            snprintf(info, INFO_SIZE, "Ctrl-%c", (char) ch);
+        else
+            snprintf(info, INFO_SIZE, "%d", key);
+    }
+
+    std::string result = info;
+    return (result);
+}
+
+void insert_commands(std::string &desc, std::vector<command_type> cmds)
+{
+    for (unsigned int i = 0; i < cmds.size(); ++i)
+    {
+        const std::string::size_type found = desc.find("%");
+        if (found == std::string::npos)
+            break;
+
+        std::string command_name = command_to_string(cmds[i]);
+        if (strcmp(command_name.c_str(), "<") == 0)
+            command_name += "<";
+
+        desc.replace(found, 1, command_name);
+    }
+    desc = replace_all(desc, "percent", "%");
+}
+
+void insert_commands(std::string &desc, const int first, ...)
+{
+    std::vector<command_type> cmd_vector;
+    cmd_vector.push_back((command_type) first);
+
+    va_list args;
+    va_start(args, first);
+    int nargs = 10;
+
+    while (nargs-- > 0)
+    {
+        int value = va_arg(args, int);
+        if (!value)
+            break;
+
+        cmd_vector.push_back((command_type) value);
+    }
+    ASSERT(nargs > 0);
+    va_end(args);
+
+    insert_commands(desc, cmd_vector);
+}
+
+#if 0
+// Currently unused, might be useful somewhere.
+static void _list_all_commands(std::string &commands)
+{
+    for (int i = CMD_NO_CMD; i < CMD_MAX_CMD; i++)
+    {
+        const command_type cmd = (command_type) i;
+
+        const std::string command_name = command_to_name(cmd);
+        if (command_name == "CMD_NO_CMD")
+            continue;
+
+        if (context_for_command(cmd) != KMC_DEFAULT)
+            continue;
+
+        snprintf(info, INFO_SIZE, "%s: %s\n",
+                 command_name.c_str(), command_to_string(cmd).c_str());
+        commands += info;
+    }
+    commands += "\n";
+}
+#endif

@@ -163,6 +163,7 @@ public:
 
 extern bool Generating_Level;
 extern std::string dgn_Layout_Type;
+extern std::string dgn_Build_Method;
 
 extern std::set<std::string> Level_Unique_Maps;
 extern std::set<std::string> Level_Unique_Tags;
@@ -174,11 +175,29 @@ void init_level_connectivity();
 void read_level_connectivity(reader &th);
 void write_level_connectivity(writer &th);
 
-bool builder(int level_number, int level_type);
+bool builder(int level_number, int level_type, bool enable_random_maps = true);
+void dgn_veto_level();
 
 void dgn_flush_map_memory();
 
+double dgn_degrees_to_radians(int degrees);
+bool dgn_has_adjacent_feat(coord_def c, dungeon_feature_type feat);
+coord_def dgn_random_point_in_margin(int margin);
+coord_def dgn_random_point_in_bounds(
+    dungeon_feature_type searchfeat,
+    unsigned mapmask = MMT_VAULT,
+    dungeon_feature_type adjacent = DNGN_UNSEEN,
+    bool monster_free = false,
+    int tries = 1500);
+coord_def dgn_random_point_from(const coord_def &c, int radius, int margin = 1);
+coord_def dgn_random_point_visible_from(const coord_def &c,
+                                        int radius,
+                                        int margin = 1,
+                                        int tries = 5);
 coord_def dgn_find_feature_marker(dungeon_feature_type feat);
+
+// Generate 3 stone stairs in both directions.
+void dgn_place_stone_stairs();
 
 // Set floor/wall colour based on the mons_alloc array. Used for
 // Abyss and Pan.
@@ -186,7 +205,9 @@ void dgn_set_colours_from_monsters();
 void dgn_set_grid_colour_at(const coord_def &c, int colour);
 
 bool dgn_place_map(const map_def *map, bool clobber, bool make_no_exits,
-                   const coord_def &pos = coord_def(-1, -1));
+                   const coord_def &pos = coord_def(-1, -1),
+                   int rune_subst = -1);
+
 void level_clear_vault_memory();
 void level_welcome_messages();
 
@@ -205,6 +226,8 @@ int dgn_place_monster(mons_spec &mspec,
                       bool force_pos = false, bool generate_awake = false,
                       bool patrolling = false);
 
+dungeon_feature_type dgn_tree_base_feature_at(coord_def c);
+
 class item_list;
 void dgn_place_multiple_items(item_list &list,
                               const coord_def& where,
@@ -216,7 +239,7 @@ bool unset_level_flags(unsigned long flags, bool silent = false);
 void dgn_set_lt_callback(std::string level_type_name,
                          std::string callback_name);
 
-void dgn_reset_level();
+void dgn_reset_level(bool enable_random_maps = true);
 
 // Returns true if the given square is okay for use by any character,
 // but always false for squares in non-transparent vaults. This
@@ -256,6 +279,23 @@ bool octa_room(spec_room &sr, int oblique_max,
 
 int count_feature_in_box(int x0, int y0, int x1, int y1,
                          dungeon_feature_type feat);
+
+void dgn_replace_area(const coord_def& p1, const coord_def& p2,
+                      dungeon_feature_type replace,
+                      dungeon_feature_type feature,
+                      unsigned mmask = 0, bool needs_update = false);
+void dgn_replace_area(int sx, int sy, int ex, int ey,
+                      dungeon_feature_type replace,
+                      dungeon_feature_type feature,
+                      unsigned mmask = 0, bool needs_update = false);
+
+void dgn_excavate(coord_def dig_at, coord_def dig_dir);
+void dgn_dig_vault_loose(vault_placement &vp);
+coord_def dgn_random_direction();
+
+bool dgn_ensure_vault_placed(bool vault_success,
+                             bool disable_further_vaults);
+
 inline int count_feature_in_box( const coord_def& p1, const coord_def& p2,
                           dungeon_feature_type feat )
 {
@@ -274,5 +314,8 @@ void remember_vault_placement(std::string key, vault_placement &place);
 std::string dump_vault_maps();
 
 bool dgn_square_travel_ok(const coord_def &c);
+
+typedef std::set<dungeon_feature_type> dungeon_feature_set;
+extern dungeon_feature_set dgn_Vault_Excavatable_Feats;
 
 #endif

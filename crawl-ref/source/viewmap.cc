@@ -7,6 +7,8 @@
 
 #include "viewmap.h"
 
+#include <algorithm>
+
 #include "branch.h"
 #include "cio.h"
 #include "colour.h"
@@ -20,8 +22,8 @@
 #include "feature.h"
 #include "files.h"
 #include "format.h"
+#include "libutil.h"
 #include "macro.h"
-#include "mon-util.h"
 #include "options.h"
 #include "place.h"
 #include "player.h"
@@ -32,9 +34,6 @@
 #include "travel.h"
 #include "viewchar.h"
 #include "viewgeom.h"
-
-static bool _travel_colour_override(const coord_def& p);
-static unsigned _get_travel_colour(const coord_def& p);
 
 unsigned get_sightmap_char(dungeon_feature_type feat)
 {
@@ -69,7 +68,7 @@ bool is_feature(int feature, const coord_def& where)
     case 'W':
         return is_waypoint(where);
     case 'I':
-        return is_stash(where.x, where.y);
+        return is_stash(where);
     case '_':
         switch (grid)
         {
@@ -348,38 +347,6 @@ static int _get_number_of_lines_levelmap()
 }
 
 #ifndef USE_TILE
-static std::string _level_description_string()
-{
-    if (you.level_type == LEVEL_PANDEMONIUM)
-        return "- Pandemonium";
-
-    if (you.level_type == LEVEL_ABYSS)
-        return "- The Abyss";
-
-    if (you.level_type == LEVEL_LABYRINTH)
-        return "- a Labyrinth";
-
-    if (you.level_type == LEVEL_PORTAL_VAULT)
-    {
-        if (!you.level_type_name.empty())
-            return "- " + article_a(upcase_first(you.level_type_name));
-        return "- a Portal Chamber";
-    }
-
-    // level_type == LEVEL_DUNGEON
-    char buf[200];
-    const int youbranch = you.where_are_you;
-    if ( branches[youbranch].depth == 1 )
-        snprintf(buf, sizeof buf, "- %s", branches[youbranch].longname);
-    else
-    {
-        const int curr_subdungeon_level = player_branch_depth();
-        snprintf(buf, sizeof buf, "%d of %s", curr_subdungeon_level,
-                 branches[youbranch].longname);
-    }
-    return buf;
-}
-
 static void _draw_level_map(int start_x, int start_y, bool travel_mode,
         bool on_level)
 {
@@ -405,18 +372,16 @@ static void _draw_level_map(int start_x, int start_y, bool travel_mode,
             }
             else
             {
-                buffer2[bufcount2] = env.map_knowledge(c).glyph();
-
-                // Override some feature colours according to travel distance.
-                unsigned col = (travel_mode && _travel_colour_override(c))
-                             ? _get_travel_colour(c)
-                             : get_map_knowledge_col(c);
-                buffer2[bufcount2 + 1] = real_colour(col);
+                buffer2[bufcount2] =
+                    env.map_knowledge(c).glyph(Options.clean_map);
+                buffer2[bufcount2 + 1] =
+                    real_colour(get_map_col(c, travel_mode));
 
                 if (c == you.pos() && !crawl_state.arena_suspended && on_level)
                 {
-                    // [dshaligram] Draw the @ symbol on the level-map. It's no
-                    // longer saved into the env.map_knowledge, so we need to draw it
+                    // [dshaligram] Draw the @ symbol on the
+                    // level-map. It's no longer saved into the
+                    // env.map_knowledge, so we need to draw it
                     // directly.
                     buffer2[bufcount2 + 1] = WHITE;
                     buffer2[bufcount2]     = you.symbol;
@@ -452,10 +417,7 @@ static void _reset_travel_colours(std::vector<coord_def> &features,
     features.clear();
 
     if (on_level)
-    {
-        find_travel_pos((on_level ? you.pos() : coord_def()),
-                NULL, NULL, &features);
-    }
+        find_travel_pos(you.pos(), NULL, NULL, &features);
     else
     {
         travel_pathfind tp;
@@ -467,6 +429,16 @@ static void _reset_travel_colours(std::vector<coord_def> &features,
     arrange_features(features);
 }
 
+// Sort glyphs within a group, for the feature list.
+static bool _comp_glyphs(const glyph& g1, const glyph& g2)
+{
+    return (g1.ch < g2.ch || g1.ch == g2.ch && g1.col < g2.col);
+}
+
+#ifndef USE_TILE
+static glyph _get_feat_glyph(const coord_def& gc);
+#endif
+
 class feature_list
 {
     enum group
@@ -475,22 +447,6 @@ class feature_list
     };
 
     std::vector<glyph> data[NUM_GROUPS];
-
-    glyph get_glyph(const coord_def& gc)
-    {
-        // XXX: it's unclear whether we want to display all features
-        // or just those not obscured by remembered/detected stuff.
-        dungeon_feature_type feat = env.map_knowledge(gc).feat();
-        const bool terrain_seen = is_terrain_seen(gc);
-        const feature_def &fdef = get_feature_def(feat);
-        glyph g;
-        g.ch  = terrain_seen ? fdef.symbol : fdef.magic_symbol;
-        if (_travel_colour_override(gc))
-            g.col = _get_travel_colour(gc);
-        else
-            g.col = get_map_knowledge_col(gc);
-        return (g);
-    }
 
     static group feat_dir(dungeon_feature_type feat)
     {
@@ -518,7 +474,7 @@ class feature_list
         if (feat == DNGN_TRAP_NATURAL)
             return G_DOWN;
         if (feat_is_altar(feat) || feat == DNGN_ENTER_SHOP)
-            return G_OTHER; 
+            return G_OTHER;
         if (get_feature_dchar(feat) == DCHAR_ARCH)
             return G_PORTAL;
         return G_NONE;
@@ -532,7 +488,7 @@ class feature_list
 
         group grp = get_group(gc);
         if (grp != G_NONE)
-            data[grp].push_back(get_glyph(gc));
+            data[grp].push_back(_get_feat_glyph(gc));
 #endif
     }
 
@@ -543,6 +499,8 @@ public:
             data[i].clear();
         for (rectangle_iterator ri(0); ri; ++ri)
             maybe_add(*ri);
+        for (unsigned int i = 0; i < NUM_GROUPS; ++i)
+            std::sort(data[i].begin(), data[i].end(), _comp_glyphs);
     }
 
     formatted_string format() const
@@ -577,9 +535,11 @@ static void _draw_title(const coord_def& cpos, const feature_list& feats)
 
     cgotoxy(1, 1);
     textcolor(WHITE);
+
     cprintf("%-*s",
             get_number_of_cols() - helplen,
-            ("Level " + _level_description_string() + pstr).c_str());
+            (upcase_first(place_name(
+                    get_packed_place(), true, true)) + pstr).c_str());
 
     formatted_string s = feats.format();
     cgotoxy((get_number_of_cols() - s.length()) / 2, 1);
@@ -829,6 +789,9 @@ void show_map( level_pos &spec_place, bool travel_mode, bool allow_esc )
         // Cycle the radius of an exclude.
         case CMD_MAP_EXCLUDE_AREA:
         {
+            if (you.level_type == LEVEL_LABYRINTH)
+                break;
+
             const coord_def p(start_x + curs_x - 1, start_y + curs_y - 1);
             cycle_exclude_radius(p);
 
@@ -896,7 +859,8 @@ void show_map( level_pos &spec_place, bool travel_mode, bool allow_esc )
             break;
 
         case CMD_MAP_PREV_LEVEL:
-        case CMD_MAP_NEXT_LEVEL: {
+        case CMD_MAP_NEXT_LEVEL:
+        {
             level_id next;
 
             next = (cmd == CMD_MAP_PREV_LEVEL)
@@ -912,7 +876,8 @@ void show_map( level_pos &spec_place, bool travel_mode, bool allow_esc )
             break;
         }
 
-        case CMD_MAP_GOTO_LEVEL: {
+        case CMD_MAP_GOTO_LEVEL:
+        {
             std::string name;
             const level_pos pos =
                 prompt_translevel_target(TPF_DEFAULT_OPTIONS, name).p;
@@ -1190,7 +1155,7 @@ bool emphasise(const coord_def& where)
 {
     dungeon_feature_type feat = env.map_knowledge(where).feat();
     return (is_unknown_stair(where)
-            && (you.your_level || feat_stair_direction(feat) == CMD_GO_DOWNSTAIRS)
+            && (you.absdepth0 || feat_stair_direction(feat) == CMD_GO_DOWNSTAIRS)
             && you.where_are_you != BRANCH_VESTIBULE_OF_HELL);
 }
 
@@ -1220,6 +1185,54 @@ static bool _travel_colour_override(const coord_def& p)
     if (you.wizard && testbits(env.pgrid(p), FPROP_HIGHLIGHT))
         return (true);
 #endif
+
+    // [ds] Elaborate dance to get map colouring right if
+    // Options.clean_map is set.
     show_type obj = get_map_knowledge_obj(p);
-    return (obj.cls == SH_FEATURE && obj.feat == DNGN_FLOOR);
+    if (Options.clean_map && obj.is_cleanable_monster())
+        obj.cls = SH_FEATURE;
+    return (obj.cls == SH_FEATURE && (obj.feat == DNGN_FLOOR ||
+                                      obj.feat == DNGN_LAVA ||
+                                      obj.feat == DNGN_DEEP_WATER ||
+                                      obj.feat == DNGN_SHALLOW_WATER));
+}
+
+#ifndef USE_TILE
+// Get glyph for feature list; here because it's so similar
+// to get_map_col.
+static glyph _get_feat_glyph(const coord_def& gc)
+{
+    // XXX: it's unclear whether we want to display all features
+    // or just those not obscured by remembered/detected stuff.
+    dungeon_feature_type feat = env.map_knowledge(gc).feat();
+    const bool terrain_seen = is_terrain_seen(gc);
+    const feature_def &fdef = get_feature_def(feat);
+    glyph g;
+    g.ch  = terrain_seen ? fdef.symbol : fdef.magic_symbol;
+    unsigned col;
+    if (_travel_colour_override(gc))
+        col = _get_travel_colour(gc);
+    else if (emphasise(gc))
+        col = fdef.seen_em_colour;
+    else
+        col = fdef.seen_colour;
+    g.col = real_colour(col);
+    return g;
+}
+#endif
+
+unsigned get_map_col(const coord_def& p, bool travel)
+{
+    if (travel && _travel_colour_override(p))
+        return _get_travel_colour(p);
+
+    const show_type& obj = env.map_knowledge(p).object;
+    if (obj.cls == SH_FEATURE && emphasise(p))
+    {
+        const feature_def& fdef = get_feature_def(obj);
+        if (fdef.seen_em_colour)
+            return fdef.seen_em_colour;
+    }
+
+    return get_map_knowledge_col(p);
 }

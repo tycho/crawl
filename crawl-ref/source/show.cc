@@ -6,7 +6,9 @@
 
 #include "areas.h"
 #include "cloud.h"
+#include "coord.h"
 #include "coordit.h"
+#include "dgn-overview.h"
 #include "env.h"
 #include "exclude.h"
 #include "fprop.h"
@@ -15,7 +17,6 @@
 #include "mon-util.h"
 #include "monster.h"
 #include "options.h"
-#include "overmap.h"
 #include "random.h"
 #include "showsymb.h"
 #include "state.h"
@@ -91,6 +92,15 @@ bool show_type::operator < (const show_type &other) const
     }
 }
 
+// Returns true if this is a monster that can be hidden for clean_map
+// purposes. All non-immobile monsters are hidden when out of LOS with
+// Options.clean_map, or removed from the map when the clear-map
+// command (^C) is used.
+bool show_type::is_cleanable_monster() const
+{
+    return (cls == SH_MONSTER && !mons_class_is_stationary(mons));
+}
+
 void show_def::_set_backup(const coord_def &ep)
 {
     backup(ep) = grid(ep);
@@ -107,6 +117,18 @@ static bool _show_bloodcovered(const coord_def& where)
     return (!is_critical_feature(feat) && !feat_is_trap(feat));
 }
 
+static bool _show_mold(const coord_def & where)
+{
+    if (!is_moldy(where))
+        return (false);
+
+    dungeon_feature_type feat = env.grid(where);
+
+    // Altars, stairs (of any kind) and traps should not be coloured red.
+    return (!is_critical_feature(feat) && !feat_is_trap(feat));
+
+}
+
 static unsigned short _tree_colour(const coord_def& where)
 {
     uint32_t h = where.x;
@@ -114,7 +136,9 @@ static unsigned short _tree_colour(const coord_def& where)
     h += where.y;
     h+=h<<10; h^=h>>6;
     h+=h<<3; h^=h>>11; h+=h<<15;
-    return (h>>30) ? GREEN : LIGHTGREEN;
+    return (h>>30) ? GREEN :
+           (you.where_are_you == BRANCH_SWAMP) ? BROWN
+                   : LIGHTGREEN;
 }
 
 static unsigned short _feat_colour(const coord_def &where,
@@ -151,6 +175,8 @@ static unsigned short _feat_colour(const coord_def &where,
     }
     else if (_show_bloodcovered(where))
         colour = RED;
+    else if (_show_mold(where))
+        colour = you.mold_colour;
     else if (env.grid_colours(where))
         colour = env.grid_colours(where);
     else
@@ -170,7 +196,7 @@ static unsigned short _feat_colour(const coord_def &where,
     if (feat >= DNGN_FLOOR_MIN && feat <= DNGN_FLOOR_MAX
         || feat == DNGN_UNDISCOVERED_TRAP)
     {
-        if (!haloers(where).empty())
+        if (haloed(where))
         {
             if (silenced(where))
                 colour = LIGHTCYAN;
@@ -218,38 +244,44 @@ static show_item_type _item_to_show_code(const item_def &item)
 
 void show_def::_update_item_at(const coord_def &gp, const coord_def &ep)
 {
-    item_def eitem;
+    const item_def *eitem;
     // Check for mimics.
     const monsters* m = monster_at(gp);
     if (m && mons_is_unknown_mimic(m))
-        get_mimic_item(m, eitem);
-    else if (igrd(gp) != NON_ITEM)
-        eitem = mitm[igrd(gp)];
+        eitem = &get_mimic_item(m);
+    else if (you.visible_igrd(gp) != NON_ITEM)
+        eitem = &mitm[you.visible_igrd(gp)];
     else
         return;
 
     unsigned short &ecol  = grid(ep).colour;
 
-    glyph g = get_item_glyph(&eitem);
+    glyph g = get_item_glyph(eitem);
 
     const dungeon_feature_type feat = grd(gp);
+
     if (Options.feature_item_brand && is_critical_feature(feat))
         ecol |= COLFLAG_FEATURE_ITEM;
     else if (Options.trap_item_brand && feat_is_trap(feat))
         ecol |= COLFLAG_TRAP_ITEM;
     else
     {
-        const unsigned short gcol = env.grid_colours(gp);
-        ecol = (feat == DNGN_SHALLOW_WATER) ?
-               (gcol != BLACK ? gcol : CYAN) : g.col;
-        if (eitem.link != NON_ITEM && !crawl_state.arena)
+        ecol = g.col;
+
+        if (feat_is_water(feat))
+            ecol = _feat_colour(gp, feat);
+
+        // monster(mimic)-owned items have link = NON_ITEM+1+midx
+        if (eitem->link > NON_ITEM && you.visible_igrd(gp) != NON_ITEM)
+            ecol |= COLFLAG_ITEM_HEAP;
+        else if (eitem->link < NON_ITEM && !crawl_state.arena)
             ecol |= COLFLAG_ITEM_HEAP;
         grid(ep).cls = SH_ITEM;
-        grid(ep).item = _item_to_show_code(eitem);
+        grid(ep).item = _item_to_show_code(*eitem);
     }
 
 #ifdef USE_TILE
-    int idx = igrd(gp);
+    int idx = you.visible_igrd(gp);
     if (idx != NON_ITEM)
     {
         if (feat_is_stair(feat))
@@ -265,12 +297,14 @@ void show_def::_update_cloud(int cloudno)
     const coord_def e = grid2show(env.cloud[cloudno].pos);
     int which_colour = get_cloud_colour(cloudno);
     _set_backup(e);
-    grid(e).cls = SH_CLOUD;
+    cloud_type cloud = env.cloud[cloudno].type;
+    if (cloud != CLOUD_GLOOM)
+        grid(e).cls = SH_CLOUD;
+
     grid(e).colour = which_colour;
 
 #ifdef USE_TILE
-    tile_place_cloud(e.x, e.y, env.cloud[cloudno].type,
-                     env.cloud[cloudno].decay);
+    tile_place_cloud(e.x, e.y, env.cloud[cloudno]);
 #endif
 }
 
@@ -304,7 +338,12 @@ void show_def::_update_monster(const monsters* mons)
     const coord_def e = grid2show(pos);
 
     if (mons_is_unknown_mimic(mons))
+    {
+#ifdef USE_TILE
+        tile_place_monster(mons->pos().x, mons->pos().y, mons->mindex(), true);
+#endif
         return;
+    }
 
     if (!mons->visible_to(&you))
     {
@@ -356,7 +395,14 @@ void show_def::_update_monster(const monsters* mons)
         _set_backup(e);
 
     grid(e).cls = SH_MONSTER;
-    grid(e).mons = mons->type;
+    if (!crawl_state.arena && you.misled())
+        grid(e).mons = mons->get_mislead_type();
+#ifndef USE_TILE
+    else if (mons->type == MONS_SLIME_CREATURE && mons->number > 1)
+        grid(e).mons = MONS_MERGED_SLIME_CREATURE;
+#endif
+    else
+        grid(e).mons = mons->type;
     grid(e).colour = get_mons_glyph(mons).col;
 
 #ifdef USE_TILE
@@ -370,6 +416,11 @@ void show_def::update_at(const coord_def &gp, const coord_def &ep)
 
     // The sequence is grid, items, clouds, monsters.
     _update_feat_at(gp, ep);
+
+    // If there's items on the boundary (shop inventory),
+    // we don't show them.
+    if (!in_bounds(gp))
+        return;
 
     _update_item_at(gp, ep);
 
@@ -394,7 +445,7 @@ void show_def::init()
         update_at(*ri, grid2show(*ri));
 }
 
-show_type to_knowledge(show_type obj, bool emph)
+show_type to_knowledge(show_type obj)
 {
     if (Options.item_colour && obj.cls == SH_ITEM)
         return (obj);
@@ -405,7 +456,5 @@ show_type to_knowledge(show_type obj, bool emph)
     }
     const feature_def& fdef = get_feature_def(obj);
     obj.colour = fdef.seen_colour;
-    if (emph && fdef.seen_em_colour)
-        obj.colour = fdef.seen_em_colour;
     return (obj);
 }

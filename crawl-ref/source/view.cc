@@ -33,15 +33,14 @@
 #include "coord.h"
 #include "coordit.h"
 #include "database.h"
-#include "debug.h"
 #include "delay.h"
+#include "dgn-overview.h"
 #include "directn.h"
-#include "dungeon.h"
 #include "exclude.h"
 #include "feature.h"
 #include "files.h"
 #include "godabil.h"
-#include "itemprop.h"
+#include "libutil.h"
 #include "macro.h"
 #include "message.h"
 #include "misc.h"
@@ -53,7 +52,6 @@
 #include "options.h"
 #include "notes.h"
 #include "output.h"
-#include "overmap.h"
 #include "player.h"
 #include "random.h"
 #include "stuff.h"
@@ -69,6 +67,10 @@
 #include "travel.h"
 #include "tutorial.h"
 #include "xom.h"
+
+#ifdef USE_TILE
+#include "tiledef-dngn.h"
+#endif
 
 #define DEBUG_PANE_BOUNDS 0
 
@@ -87,13 +89,18 @@ void handle_seen_interrupt(monsters* monster)
     activity_interrupt_data aid(monster);
     if (!monster->seen_context.empty())
         aid.context = monster->seen_context;
-    else if (testbits(monster->flags, MF_WAS_IN_VIEW))
+    // XXX: Hack to make the 'seen' monster spec flag work.
+    else if (testbits(monster->flags, MF_WAS_IN_VIEW)
+        || testbits(monster->flags, MF_SEEN))
+    {
         aid.context = "already seen";
+    }
     else
         aid.context = "newly seen";
 
     if (!mons_is_safe(monster)
-        && !mons_class_flag(monster->type, M_NO_EXP_GAIN))
+        && !mons_class_flag(monster->type, M_NO_EXP_GAIN)
+            || monster->type == MONS_BALLISTOMYCETE && monster->number > 0)
     {
         interrupt_activity(AI_SEE_MONSTER, aid);
     }
@@ -143,6 +150,14 @@ void monster_grid_updates()
         {
             mi->flags &= ~MF_GOING_BERSERK;
             mi->go_berserk(true);
+        }
+
+        // XXX: Hack for triggering Dowan's spell changes.
+        if (mi->props.exists("dowan_upgrade"))
+        {
+            mi->add_ench(ENCH_HASTE);
+            mi->props.erase("dowan_upgrade");
+            simple_monster_message(*mi, " seems to find hidden reserves of power!");
         }
     }
 }
@@ -213,7 +228,7 @@ static const FixedArray<char, GXM, GYM>& _tile_difficulties(bool random)
     static int cache_seed = -1;
 
     int seed = random ? -1 :
-        (static_cast<int>(you.where_are_you) << 8) + you.your_level - 1731813538;
+        (static_cast<int>(you.where_are_you) << 8) + you.absdepth0 - 1731813538;
 
     if (seed == cache_seed && !random)
     {
@@ -627,6 +642,19 @@ void flash_view(int colour)
     viewwindow(false, false);
 }
 
+void flash_view_delay(int colour, long flash_delay)
+{
+    flash_view(colour);
+    // Scale delay to match change in arena_delay.
+    if (crawl_state.arena)
+    {
+        flash_delay *= Options.arena_delay;
+        flash_delay /= 600;
+    }
+
+    delay(flash_delay);
+}
+
 static void _debug_pane_bounds()
 {
 #if DEBUG_PANE_BOUNDS
@@ -682,6 +710,7 @@ static int player_view_update_at(const coord_def &gc)
         cloud_struct &cl   = env.cloud[cloudidx];
         cloud_type   ctype = cl.type;
 
+        bool did_exclude = false;
         if (!is_harmless_cloud(ctype)
             && cl.whose  == KC_OTHER
             && cl.killer == KILL_MISC)
@@ -689,10 +718,12 @@ static int player_view_update_at(const coord_def &gc)
             for (adjacent_iterator ai(gc, false); ai; ++ai)
             {
                 // Optionally add exclude, deferring updates.
-                if (!cell_is_solid(*ai) && !is_exclude_root(*ai))
+                if (!cell_is_solid(*ai))
                 {
+                    bool was_exclusion = is_exclude_root(*ai);
                     set_exclude(*ai, 0, false, false, true);
-                    ret |= UF_ADDED_EXCLUDE;
+                    if (!did_exclude && !was_exclusion)
+                        ret |= UF_ADDED_EXCLUDE;
                 }
             }
         }
@@ -709,7 +740,7 @@ static int player_view_update_at(const coord_def &gc)
         ret |= UF_AFFECT_EXCLUDES;
 
     set_terrain_seen(gc);
-    set_map_knowledge_obj(gc, to_knowledge(env.show(ep), emphasise(gc)));
+    set_map_knowledge_obj(gc, to_knowledge(env.show(ep)));
     set_map_knowledge_detected_mons(gc, false);
     set_map_knowledge_detected_item(gc, false);
 
@@ -722,10 +753,6 @@ static int player_view_update_at(const coord_def &gc)
         env.tile_bk_fg(gc) = env.tile_fg(ep);
     env.tile_bk_bg(gc) = env.tile_bg(ep);
 #endif
-
-    if (Options.clean_map && env.show.get_backup(ep))
-        set_map_knowledge_obj(gc, to_knowledge(env.show.get_backup(ep),
-                                               emphasise(gc)));
 
     return (ret);
 }
@@ -796,7 +823,7 @@ static void draw_outside_los(screen_buffer_t* buffy, const coord_def &gc)
     buffy[0] = get_map_knowledge_char(gc);
     buffy[1] = DARKGREY;
     if (Options.colour_map)
-        buffy[1] = real_colour(get_map_knowledge_col(gc));
+        buffy[1] = real_colour(get_map_col(gc, false));
 #else
     unsigned int bg = env.tile_bk_bg(gc);
     unsigned int fg = env.tile_bk_fg(gc);
@@ -851,7 +878,7 @@ static void draw_los_backup(screen_buffer_t* buffy,
     buffy[1] = DARKGREY;
 
     if (Options.colour_map)
-        buffy[1] = real_colour(get_map_knowledge_col(gc));
+        buffy[1] = real_colour(get_map_col(gc, false));
 #else
     if (env.tile_bk_fg(gc) != 0
         || env.tile_bk_bg(gc) != 0)
@@ -879,10 +906,8 @@ void viewwindow(bool monster_updates, bool show_updates)
 {
     if (you.duration[DUR_TIME_STEP])
         return;
-    flush_prev_message();
 
     screen_buffer_t *buffy(crawl_view.vbuf);
-
 
 #ifdef USE_TILE
     tiles.clear_text_tags(TAG_NAMED_MONSTER);
@@ -890,16 +915,17 @@ void viewwindow(bool monster_updates, bool show_updates)
 #endif
 
     if (show_updates)
+    {
         you.update_los();
 
 #ifdef USE_TILE
-    tile_draw_floor();
-    tile_draw_rays(true);
-    tiles.clear_overlays();
+        tile_draw_floor();
+        tile_draw_rays(true);
+        tiles.clear_overlays();
 #endif
 
-    if (show_updates)
         env.show.init();
+    }
 
     if (monster_updates && !crawl_state.arena)
         monster_grid_updates();
@@ -920,7 +946,7 @@ void viewwindow(bool monster_updates, bool show_updates)
         flash_colour = _viewmap_flash_colour();
 
     const coord_def &tl = crawl_view.viewp;
-    const coord_def br = tl + crawl_view.viewsz - coord_def(1,1);
+    const coord_def br  = tl + crawl_view.viewsz - coord_def(1,1);
     int bufcount = 0;
     for (rectangle_iterator ri(tl, br); ri; ++ri, bufcount += 2)
     {
@@ -963,12 +989,17 @@ void viewwindow(bool monster_updates, bool show_updates)
                 buffy[bufcount + 1] |= TILE_FLAG_OOR;
 #endif
         }
+#ifdef USE_TILE
+        // Grey out grids that cannot be reached due to beholders.
+        else if (you.get_beholder(gc))
+            buffy[bufcount + 1] |= TILE_FLAG_OOR;
+#endif
     }
 
     // Leaving it this way because short flashes can occur in long ones,
     // and this simply works without requiring a stack.
     you.flash_colour = BLACK;
-
+    you.mold_colour = LIGHTCYAN;
 #ifndef USE_TILE
     you.last_view_update = you.num_turns;
     puttext(crawl_view.viewp.x, crawl_view.viewp.y,

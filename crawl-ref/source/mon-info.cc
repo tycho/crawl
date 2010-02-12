@@ -10,6 +10,7 @@
 #include "mon-info.h"
 
 #include "fight.h"
+#include "libutil.h"
 #include "misc.h"
 #include "mon-iter.h"
 #include "mon-util.h"
@@ -33,7 +34,7 @@ monster_info::monster_info(const monsters *m)
     : m_mon(m), m_attitude(ATT_HOSTILE), m_difficulty(0),
       m_brands(0), m_fullname(true)
 {
-    // XXX: this doesn't take into account ENCH_NEUTRAL, but that's probably
+    // XXX: this doesn't take into account ENCH_TEMP_PACIF, but that's probably
     // a bug for mons_attitude, not this.
     // XXX: also, mons_attitude_type should be sorted hostile/neutral/friendly;
     // will break saves a little bit though.
@@ -42,6 +43,8 @@ monster_info::monster_info(const monsters *m)
     int mtype = m->type;
     if (mtype == MONS_RAKSHASA_FAKE)
         mtype = MONS_RAKSHASA;
+    else if (mtype == MONS_MARA_FAKE)
+        mtype = MONS_MARA;
 
     // Currently, difficulty is defined as "average hp".
     m_difficulty = mons_difficulty(mtype);
@@ -63,7 +66,7 @@ monster_info::monster_info(const monsters *m)
 // Needed because gcc 4.3 sort does not like comparison functions that take
 // more than 2 arguments.
 bool monster_info::less_than_wrapper(const monster_info& m1,
-                                          const monster_info& m2)
+                                     const monster_info& m2)
 {
     return monster_info::less_than(m1, m2, true);
 }
@@ -79,12 +82,21 @@ bool monster_info::less_than(const monster_info& m1,
 
     int m1type = m1.m_mon->type;
     int m2type = m2.m_mon->type;
+    if (!crawl_state.arena && you.misled())
+    {
+        m1type = m1.m_mon->get_mislead_type();
+        m2type = m2.m_mon->get_mislead_type();
+    }
 
     // Don't differentiate real rakshasas from fake ones.
     if (m1type == MONS_RAKSHASA_FAKE)
         m1type = MONS_RAKSHASA;
+    else if (m1type == MONS_MARA_FAKE)
+        m1type = MONS_MARA;
     if (m2type == MONS_RAKSHASA_FAKE)
         m2type = MONS_RAKSHASA;
+    else if (m2type == MONS_MARA_FAKE)
+        m2type = MONS_MARA;
 
     // Force plain but different coloured draconians to be treated like the
     // same sub-type.
@@ -140,8 +152,8 @@ bool monster_info::less_than(const monster_info& m1,
         }
     }
 
-    if (m1.m_fullname && m2.m_fullname || m1type == MONS_PLAYER_GHOST)
-        return (m1.m_mon->name(DESC_PLAIN) < m1.m_mon->name(DESC_PLAIN));
+    if (m1.m_fullname && m2.m_fullname || mons_is_pghost(m1type))
+        return (m1.m_mon->name(DESC_PLAIN) < m2.m_mon->name(DESC_PLAIN));
 
 #if 0 // for now, sort brands together.
     // By descending brands, so no brands sorts to the end
@@ -207,11 +219,14 @@ void monster_info::to_string(int count, std::string& desc,
                                   int& desc_color) const
 {
     std::ostringstream out;
+    monster_type type = m_mon->type;
+    if (!crawl_state.arena && you.misled())
+        type = m_mon->get_mislead_type();
 
     if (count == 1)
     {
-        if (mons_is_mimic(m_mon->type))
-            out << mons_type_name(m_mon->type, DESC_PLAIN);
+        if (mons_is_mimic(type))
+            out << mons_type_name(type, DESC_PLAIN);
         else
             out << m_mon->full_name(DESC_PLAIN);
     }
@@ -220,26 +235,33 @@ void monster_info::to_string(int count, std::string& desc,
         // Don't pluralise uniques, ever.  Multiple copies of the same unique
         // are unlikely in the dungeon currently, but quite common in the
         // arena.  This prevens "4 Gra", etc. {due}
-        if (mons_is_unique(m_mon->type))
+        // Unless it's Mara, who summons illusions of himself.
+        if (mons_is_unique(type) && type != MONS_MARA
+            && type != MONS_MARA_FAKE)
         {
             out << count << " "
                 << m_mon->name(DESC_PLAIN);
         }
-        // Don't differentiate between dancing weapons, mimics, (very)
+        // Specialcase mimics, so they don't get described as piles of gold
+        // when that would be inappropriate. (HACK)
+        else if (mons_is_mimic(type))
+        {
+            out << count << " mimics";
+        }
+        // Don't differentiate between dancing weapons, (very)
         // ugly things or draconians of different types.
         else if (m_fullname
-            && m_mon->type != MONS_DANCING_WEAPON
-            && mons_genus(m_mon->type) != MONS_DRACONIAN
-            && m_mon->type != MONS_UGLY_THING
-            && m_mon->type != MONS_VERY_UGLY_THING
-            && !mons_is_mimic(m_mon->type)
-            && m_mon->mname.empty())
+                 && type != MONS_DANCING_WEAPON
+                 && mons_genus(type) != MONS_DRACONIAN
+                 && type != MONS_UGLY_THING
+                 && type != MONS_VERY_UGLY_THING
+                 && m_mon->mname.empty())
         {
             out << count << " "
                 << pluralise(m_mon->name(DESC_PLAIN));
         }
-        else if (m_mon->type >= MONS_DRACONIAN
-                 && m_mon->type <= MONS_PALE_DRACONIAN)
+        else if (type >= MONS_DRACONIAN
+                 && type <= MONS_PALE_DRACONIAN)
         {
             out << count << " "
                 << pluralise(mons_type_name(MONS_DRACONIAN, DESC_PLAIN));
@@ -247,7 +269,7 @@ void monster_info::to_string(int count, std::string& desc,
         else
         {
             out << count << " "
-                << pluralise(mons_type_name(m_mon->type, DESC_PLAIN));
+                << pluralise(mons_type_name(type, DESC_PLAIN));
         }
     }
 
@@ -258,7 +280,9 @@ void monster_info::to_string(int count, std::string& desc,
 
     if (count == 1)
     {
-        if (m_mon->berserk())
+        if (m_mon->frenzied())
+            out << " (frenzied)";
+        else if (m_mon->berserk())
             out << " (berserk)";
         else if (Options.verbose_monster_pane)
             out << _verbose_info(m_mon);
@@ -325,11 +349,12 @@ void get_monster_info(std::vector<monster_info>& mons)
     for (unsigned int i = 0; i < visible.size(); i++)
     {
         if (!mons_class_flag( visible[i]->type, M_NO_EXP_GAIN )
-            || visible[i]->type == MONS_KRAKEN_TENTACLE)
+            || visible[i]->type == MONS_KRAKEN_TENTACLE
+            || visible[i]->type == MONS_BALLISTOMYCETE
+                && visible[i]->number > 0)
         {
             mons.push_back(monster_info(visible[i]));
         }
     }
     std::sort(mons.begin(), mons.end(), monster_info::less_than_wrapper);
 }
-

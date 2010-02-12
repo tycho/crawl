@@ -56,7 +56,7 @@ end
 -- Returns a list of the keys in the given map.
 function util.keys(map)
   local keys = { }
-  for key, _ in pairs(ziggurat_builder_map) do
+  for key, _ in pairs(map) do
     table.insert(keys, key)
   end
   return keys
@@ -65,10 +65,20 @@ end
 -- Returns a list of the values in the given map.
 function util.values(map)
   local values = { }
-  for _, value in pairs(ziggurat_builder_map) do
+  for _, value in pairs(map) do
     table.insert(values, value)
   end
   return values
+end
+
+-- Returns a list of lists built from the given map, each sublist being
+-- in the form { key, value } for each key-value pair in the map.
+function util.pairs(map)
+  local mappairs = { }
+  for key, value in pairs(map) do
+    table.insert(mappairs, { key, value })
+  end
+  return mappairs
 end
 
 -- Creates a string of the elements in list joined by separator.
@@ -86,18 +96,12 @@ function util.set(list)
 end
 
 -- Appends the elements in any number of additional tables to the first table.
-function util.append(table, ...)
-  local res = table
+function util.append(first, ...)
+  local res = first
   local tables = { ... }
-  if #tables == 0 then
-    return res
-  elseif #tables == 1 and #res == 0 then
-    return tables[1]
-  else
-    for _, tab in ipairs(tables) do
-      for _, val in ipairs(tab) do
-        table.insert(res, val)
-      end
+  for _, tab in ipairs(tables) do
+    for _, val in ipairs(tab) do
+      table.insert(res, val)
     end
   end
   return res
@@ -236,6 +240,19 @@ function util.expand_entity(entity, msg)
                      function ()
                        return crawl.grammar(entity, 'a')
                      end)
+end
+
+function util.range(start, stop)
+  local rt
+  for i = start, stop do
+    table.insert(rt, i)
+  end
+  return rt
+end
+
+-- From http://lua-users.org/wiki/CommonFunctions
+function util.trim(s)
+  return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 ----------------------------------------------------------

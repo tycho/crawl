@@ -33,11 +33,13 @@
 #include "mapmark.h"
 #include "message.h"
 #include "mon-place.h"
+#include "mon-util.h"
 #include "mgen_data.h"
 #include "coord.h"
 #include "misc.h"
 #include "player.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills.h"
 #include "skills2.h"
 #include "spells1.h"
@@ -90,12 +92,12 @@ void noisy_equipment()
 
     // Disallow anything with VISUAL in it.
     if (!msg.empty() && msg.find("VISUAL") != std::string::npos)
-        msg = "";
+        msg.clear();
 
     if (!msg.empty())
     {
-        std::string param = "";
-        std::string::size_type pos = msg.find(":");
+        std::string param;
+        const std::string::size_type pos = msg.find(":");
 
         if (pos != std::string::npos)
             param = msg.substr(0, pos);
@@ -113,7 +115,7 @@ void noisy_equipment()
             else if (param == "PLAIN")
                 channel = MSGCH_PLAIN;
             else if (param == "SPELL" || param == "ENCHANT")
-                msg = ""; // disallow these as well, channel stays TALK
+                msg.clear(); // disallow these as well, channel stays TALK
             else if (param != "TALK")
                 match = false;
 
@@ -199,14 +201,18 @@ static bool _reaching_weapon_attack(const item_def& wpn)
 {
     dist beam;
 
-    mpr("Attack whom?", MSGCH_PROMPT);
+    direction_chooser_args args;
+    args.restricts = DIR_TARGET;
+    args.mode = TARG_HOSTILE;
+    args.range = 2;
+    args.top_prompt = "Attack whom?";
 
-    direction(beam, DIR_TARGET, TARG_HOSTILE, 2);
+    direction(beam, args);
 
     if (!beam.isValid)
         return (false);
 
-    if (beam.isMe)
+    if (beam.isMe())
     {
         canned_msg(MSG_UNTHINKING_ACT);
         return (false);
@@ -290,7 +296,7 @@ static bool _reaching_weapon_attack(const item_def& wpn)
     return (true);
 }
 
-static bool evoke_horn_of_geryon()
+static bool _evoke_horn_of_geryon(item_def &item)
 {
     // Note: This assumes that the Vestibule has not been changed.
     bool rc = false;
@@ -326,6 +332,7 @@ static bool evoke_horn_of_geryon()
                         case DNGN_ENTER_TARTARUS:
                             grd[count_x][count_y] = featm->feat;
                             env.markers.remove(marker);
+                            item.plus2++;
                             break;
                         default:
                             break;
@@ -484,11 +491,14 @@ void tome_of_power(int slot)
     msg::stream << "The book opens to a page covered in "
                 << weird_writing() << '.' << std::endl;
 
-    set_ident_flags(you.inv[slot], ISFLAG_KNOW_TYPE);
     you.turn_is_over = true;
+    if (!item_ident(you.inv[slot], ISFLAG_KNOW_TYPE))
+    {
+        set_ident_flags(you.inv[slot], ISFLAG_KNOW_TYPE);
 
-    if (!yesno("Read it?"))
-        return;
+        if (!yesno("Read it?", false, 'n'))
+            return;
+    }
 
     if (player_mutation_level(MUT_BLURRY_VISION) > 0
         && x_chance_in_y(player_mutation_level(MUT_BLURRY_VISION), 4))
@@ -625,7 +635,7 @@ static bool _box_of_beasts(item_def &box)
                       (temp_rand == 6) ? MONS_YAK :
                       (temp_rand == 7) ? MONS_BUTTERFLY :
                       (temp_rand == 8) ? MONS_WATER_MOCCASIN :
-                      (temp_rand == 9) ? MONS_GIANT_LIZARD
+                      (temp_rand == 9) ? MONS_CROCODILE
                                        : MONS_HELL_HOUND);
         }
         while (player_will_anger_monster(beasty));
@@ -757,6 +767,7 @@ bool evoke_item(int slot)
     int pract = 0; // By how much Evocations is practised.
     bool did_work   = false;  // Used for default "nothing happens" message.
     bool unevokable = false;
+    bool ident      = false;
 
     const unrandart_entry *entry = is_unrandom_artefact(item)
         ? get_unrand_entry(item.special) : NULL;
@@ -812,19 +823,7 @@ bool evoke_item(int slot)
                 make_hungry(50, false, true);
                 pract = 1;
                 did_work = true;
-
-                if (!item_type_known(item))
-                {
-                    set_ident_type( OBJ_STAVES, item.sub_type, ID_KNOWN_TYPE );
-                    set_ident_flags( item, ISFLAG_KNOW_TYPE );
-
-                    mprf("You are wielding %s.",
-                         item.name(DESC_NOCAP_A).c_str());
-
-                    more();
-
-                    you.wield_change = true;
-                }
+                ident = true;
             }
         }
         else
@@ -853,7 +852,7 @@ bool evoke_item(int slot)
 
         case MISC_CRYSTAL_BALL_OF_SEEING:
             if (_ball_of_seeing())
-                pract = 1;
+                pract = 1, ident = true;
             break;
 
         case MISC_AIR_ELEMENTAL_FAN:
@@ -863,6 +862,7 @@ bool evoke_item(int slot)
             {
                 cast_summon_elemental(100, GOD_NO_GOD, MONS_AIR_ELEMENTAL, 4);
                 pract = (one_chance_in(5) ? 1 : 0);
+                ident = true;
             }
             break;
 
@@ -873,6 +873,7 @@ bool evoke_item(int slot)
             {
                 cast_summon_elemental(100, GOD_NO_GOD, MONS_FIRE_ELEMENTAL, 4);
                 pract = (one_chance_in(5) ? 1 : 0);
+                ident = true;
             }
             break;
 
@@ -883,11 +884,12 @@ bool evoke_item(int slot)
             {
                 cast_summon_elemental(100, GOD_NO_GOD, MONS_EARTH_ELEMENTAL, 4);
                 pract = (one_chance_in(5) ? 1 : 0);
+                ident = true;
             }
             break;
 
         case MISC_HORN_OF_GERYON:
-            if (evoke_horn_of_geryon())
+            if (_evoke_horn_of_geryon(item))
                 pract = 1;
             break;
 
@@ -898,17 +900,17 @@ bool evoke_item(int slot)
 
         case MISC_CRYSTAL_BALL_OF_ENERGY:
             if (_ball_of_energy())
-                pract = 1;
+                pract = 1, ident = true;
             break;
 
         case MISC_CRYSTAL_BALL_OF_FIXATION:
             if (_ball_of_fixation())
-                pract = 1;
+                pract = 1, ident = true;
             break;
 
         case MISC_DISC_OF_STORMS:
             if (_disc_of_storms())
-                pract = (coinflip() ? 2 : 1);
+                pract = (coinflip() ? 2 : 1), ident = true;
             break;
 
         default:
@@ -927,6 +929,17 @@ bool evoke_item(int slot)
         canned_msg(MSG_NOTHING_HAPPENS);
     else if (pract > 0)
         exercise( SK_EVOCATIONS, pract );
+
+    if (ident && !item_type_known(item))
+    {
+        set_ident_type( item.base_type, item.sub_type, ID_KNOWN_TYPE );
+        set_ident_flags( item, ISFLAG_KNOW_TYPE );
+
+        mprf("You are wielding %s.",
+             item.name(DESC_NOCAP_A).c_str());
+
+        you.wield_change = true;
+    }
 
     if (!unevokable)
         you.turn_is_over = true;

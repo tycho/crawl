@@ -1,6 +1,8 @@
 #ifndef ITEMPROP_ENUM_H
 #define ITEMPROP_ENUM_H
 
+#include "tags.h"
+
 enum armour_type
 {
     ARM_ROBE,                    //    0
@@ -71,6 +73,7 @@ enum boot_type          // used in pluses2
 
 const int SP_FORBID_EGO   = -1;
 const int SP_FORBID_BRAND = -1;
+const int SP_UNKNOWN_BRAND = 31; // seen_weapon/armour is a 32-bit bitfield
 
 enum brand_type // equivalent to (you.inv[].special or mitm[].special) % 30
 {
@@ -95,8 +98,9 @@ enum brand_type // equivalent to (you.inv[].special or mitm[].special) % 30
     SPWPN_REACHING,
     SPWPN_RETURNING,                   //   18
     SPWPN_CHAOS,
+    SPWPN_EVASION,
 
-    MAX_PAN_LORD_BRANDS = SPWPN_CHAOS,
+    MAX_PAN_LORD_BRANDS = SPWPN_EVASION,
 
     SPWPN_CONFUSE,                     //   20
     SPWPN_PENETRATION,
@@ -176,7 +180,6 @@ enum jewellery_type
 
     AMU_FIRST_AMULET = 35,
     AMU_RAGE = AMU_FIRST_AMULET,       //   35
-    AMU_RESIST_SLOW,
     AMU_CLARITY,
     AMU_WARDING,
     AMU_RESIST_CORROSION,
@@ -186,6 +189,8 @@ enum jewellery_type
     AMU_INACCURACY,
     AMU_RESIST_MUTATION,
     AMU_GUARDIAN_SPIRIT,
+    AMU_FAITH,
+    AMU_STASIS,
 
     NUM_JEWELLERY
 };
@@ -343,7 +348,7 @@ enum special_missile_type // to separate from weapons in general {dlb}
     SPMSL_FLAME,
     SPMSL_FROST,
     SPMSL_POISONED,
-    SPMSL_CURARE,
+    SPMSL_CURARE,                      // Needle-only brand
     SPMSL_RETURNING,                   //    5
     SPMSL_CHAOS,
     SPMSL_PENETRATION,
@@ -352,8 +357,16 @@ enum special_missile_type // to separate from weapons in general {dlb}
     SPMSL_EXPLODING,                   //   10
     SPMSL_STEEL,
     SPMSL_SILVER,
-    SPMSL_ELECTRIC,
-    NUM_SPECIAL_MISSILES               //   13
+#if TAG_MAJOR_VERSION == 16
+    SPMSL_ELECTRIC, // removed
+#endif
+    SPMSL_PARALYSIS,                   // paralysis, needle only from here in
+    SPMSL_SLOW,                        // makes slow
+    SPMSL_SLEEP,                       // sleep
+    SPMSL_CONFUSION,                   // confusing
+    SPMSL_SICKNESS,                    // sickness/disease
+    SPMSL_RAGE,                        // berserk rage
+    NUM_SPECIAL_MISSILES               // 20
 };
 
 enum special_ring_type // jewellery mitm[].special values
@@ -396,49 +409,49 @@ enum stave_type
 
 enum weapon_type
 {
-    WPN_CLUB,                          //    0
+    WPN_CLUB,
     WPN_WHIP,
     WPN_HAMMER,
     WPN_MACE,
     WPN_FLAIL,
-    WPN_MORNINGSTAR,                   //    5
+    WPN_MORNINGSTAR,
     WPN_SPIKED_FLAIL,
     WPN_DIRE_FLAIL,
     WPN_EVENINGSTAR,
     WPN_GREAT_MACE,
 
-    WPN_DAGGER,                        //   10
+    WPN_DAGGER,
     WPN_QUICK_BLADE,
     WPN_SHORT_SWORD,
     WPN_SABRE,
 
     WPN_FALCHION,
-    WPN_LONG_SWORD,                    //   15
+    WPN_LONG_SWORD,
     WPN_SCIMITAR,
     WPN_GREAT_SWORD,
 
     WPN_HAND_AXE,
     WPN_WAR_AXE,
-    WPN_BROAD_AXE,                     //   20
+    WPN_BROAD_AXE,
     WPN_BATTLEAXE,
     WPN_EXECUTIONERS_AXE,
 
     WPN_SPEAR,
     WPN_TRIDENT,
-    WPN_HALBERD,                       //   25
+    WPN_HALBERD,
     WPN_GLAIVE,
     WPN_BARDICHE,
 
     WPN_BLOWGUN,
-    WPN_HAND_CROSSBOW,
-    WPN_CROSSBOW,                      //   30
+    WPN_CROSSBOW,
+    // Was hand crossbows, they are gone.
     WPN_BOW,
     WPN_LONGBOW,
     WPN_MAX_RACIAL = WPN_LONGBOW,
 
     WPN_ANKUS,
     WPN_DEMON_WHIP,
-    WPN_GIANT_CLUB,                    //   35
+    WPN_GIANT_CLUB,
     WPN_GIANT_SPIKED_CLUB,
 
     WPN_KNIFE,
@@ -566,4 +579,3 @@ enum zap_count_type
 };
 
 #endif
-

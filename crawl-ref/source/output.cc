@@ -26,7 +26,6 @@
 #include "godabil.h"
 #include "initfile.h"
 #include "itemname.h"
-#include "itemprop.h"
 #include "item_use.h"
 #include "menu.h"
 #include "message.h"
@@ -38,11 +37,10 @@
 #include "ouch.h"
 #include "player.h"
 #include "place.h"
-#include "quiver.h"
 #include "religion.h"
 #include "skills2.h"
 #include "stuff.h"
-#include "transfor.h"
+#include "transform.h"
 #include "travel.h"
 #include "viewchar.h"
 #include "viewgeom.h"
@@ -308,7 +306,7 @@ static void _print_stats_mp(int x, int y)
     for (int i = 11-col; i > 0; i--)
         cprintf(" ");
 
-    if (! Options.classic_hud)
+    if (!Options.classic_hud)
         MP_Bar.draw(19, y, you.magic_points, you.max_magic_points);
 }
 
@@ -497,75 +495,69 @@ static void _print_stats_ev(int x, int y)
 
 static void _print_stats_wp(int y)
 {
-    cgotoxy(1, y, GOTO_STAT);
-    textcolor(Options.status_caption_colour);
-    cprintf("Wp: ");
+    int col;
+    std::string text;
     if (you.weapon())
     {
         const item_def& wpn = *you.weapon();
-        textcolor(wpn.colour);
+        col = wpn.colour;
 
         const std::string prefix = menu_colour_item_prefix(wpn);
         const int prefcol = menu_colour(wpn.name(DESC_INVENTORY), prefix);
         if (prefcol != -1)
-            textcolor(prefcol);
+            col = prefcol;
 
-        cprintf("%s",
-                wpn.name(DESC_INVENTORY, true, false, true)
-                .substr(0, crawl_view.hudsz.x - 4).c_str());
-        textcolor(LIGHTGREY);
+        text = wpn.name(DESC_INVENTORY, true, false, true);
+    }
+    else if (you.attribute[ATTR_TRANSFORMATION] == TRAN_BLADE_HANDS)
+    {
+        col = RED;
+        text = "Blade Hands";
     }
     else
     {
-        if (you.attribute[ATTR_TRANSFORMATION] == TRAN_BLADE_HANDS)
-        {
-            textcolor(RED);
-            cprintf("Blade Hands");
-            textcolor(LIGHTGREY);
-        }
-        else
-        {
-            textcolor(LIGHTGREY);
-            cprintf("Nothing wielded");
-        }
+        col = LIGHTGREY;
+        text = "Nothing wielded";
     }
-    clear_to_end_of_line();
+    cgotoxy(1, y, GOTO_STAT);
+    textcolor(Options.status_caption_colour);
+    cprintf("Wp: ");
+    textcolor(col);
+    int w = crawl_view.hudsz.x - 4;
+    cprintf("%-*s", w, text.substr(0, w).c_str());
+    textcolor(LIGHTGREY);
 }
 
 static void _print_stats_qv(int y)
 {
-    cgotoxy(1, y, GOTO_STAT);
-    textcolor(Options.status_caption_colour);
-    cprintf("Qv: ");
+    int col;
+    std::string text;
 
     int q = you.m_quiver->get_fire_item();
-
     ASSERT(q >= -1 && q < ENDOFPACK);
     if (q != -1)
     {
         const item_def& quiver = you.inv[q];
-        textcolor(quiver.colour);
-
+        col = quiver.colour;
         const std::string prefix = menu_colour_item_prefix(quiver);
         const int prefcol =
             menu_colour(quiver.name(DESC_INVENTORY), prefix);
-
         if (prefcol != -1)
-            textcolor(prefcol);
-
-        cprintf("%s",
-                quiver.name(DESC_INVENTORY, true)
-                .substr(0, crawl_view.hudsz.x - 4)
-                .c_str());
+            col = prefcol;
+        text = quiver.name(DESC_INVENTORY, true);
     }
     else
     {
-        textcolor(LIGHTGREY);
-        cprintf("Nothing quivered");
+        col = LIGHTGREY;
+        text = "Nothing quivered";
     }
-
+    cgotoxy(1, y, GOTO_STAT);
+    textcolor(Options.status_caption_colour);
+    cprintf("Qv: ");
+    textcolor(col);
+    int w = crawl_view.hudsz.x - 4;
+    cprintf("%-*s", w, text.substr(0, w).c_str());
     textcolor(LIGHTGREY);
-    clear_to_end_of_line();
 }
 
 struct status_light
@@ -681,7 +673,15 @@ static void _get_status_lights(std::vector<status_light>& out)
     if (you.duration[DUR_INVIS])
     {
         int color = _dur_colour( BLUE, dur_expiring(DUR_INVIS) );
+        if (you.backlit())
+            color = DARKGREY;
         out.push_back(status_light(color, "Invis"));
+    }
+
+    if (you.duration[DUR_CONTROL_TELEPORT])
+    {
+        int color = _dur_colour( MAGENTA, dur_expiring(DUR_CONTROL_TELEPORT) );
+        out.push_back(status_light(color, "cTele"));
     }
 
     if (you.duration[DUR_SILENCE])
@@ -735,6 +735,9 @@ static void _get_status_lights(std::vector<status_light>& out)
 
     if (you.duration[DUR_LIQUID_FLAMES])
         out.push_back(status_light(RED, "Fire"));
+
+    if (you.duration[DUR_MISLED])
+        out.push_back(status_light(LIGHTMAGENTA, "Misled"));
 
     if (you.duration[DUR_POISONING])
     {
@@ -848,10 +851,9 @@ static bool _need_stats_printed()
 
 static short _get_exp_pool_colour(int pool)
 {
-    int cutoff = you.exp_pool_cutoff();
-    if (pool < cutoff*3/4)
+    if (pool < MAX_EXP_POOL/2)
         return (HUD_VALUE_COLOUR);
-    else if (pool < cutoff)
+    else if (pool < MAX_EXP_POOL*3/4)
         return (YELLOW);
     else
         return (RED);
@@ -859,6 +861,7 @@ static short _get_exp_pool_colour(int pool)
 
 void print_stats(void)
 {
+    cursor_control coff(false);
     textcolor(LIGHTGREY);
 
     // Displayed evasion is now tied to dex.
@@ -984,7 +987,6 @@ static std::string _level_description_string_hud()
     return short_name;
 }
 
-// For some odd reason, only redrawn on level change.
 void print_stats_level()
 {
     int ypos = 8;
@@ -996,15 +998,15 @@ void print_stats_level()
 
     textcolor(HUD_VALUE_COLOUR);
 #if DEBUG_DIAGNOSTICS
-    cprintf( "(%d) ", you.your_level + 1 );
+    cprintf( "(%d) ", you.absdepth0 + 1 );
 #endif
     cprintf("%s", _level_description_string_hud().c_str());
     clear_to_end_of_line();
 }
 
-void redraw_skill(const std::string &your_name, const std::string &class_name)
+void redraw_skill(const std::string &your_name, const std::string &job_name)
 {
-    std::string title = your_name + " the " + class_name;
+    std::string title = your_name + " the " + job_name;
 
     unsigned int in_len = title.length();
     const unsigned int WIDTH = crawl_view.hudsz.x;
@@ -1022,7 +1024,7 @@ void redraw_skill(const std::string &your_name, const std::string &class_name)
                 trimmed_name.substr(0, name_len - (in_len - WIDTH) - 1);
         }
 
-        title = trimmed_name + ", " + class_name;
+        title = trimmed_name + ", " + job_name;
     }
 
     // Line 1: Foo the Bar    *WIZARD*
@@ -1241,7 +1243,7 @@ static void _print_next_monster_desc(const std::vector<monster_info>& mons,
     {
         int printed = 0;
 
-        // for targetting
+        // for targeting
         if (idx >= 0)
         {
             textcolor(WHITE);
@@ -1387,7 +1389,7 @@ int update_monster_pane()
         if (i_print >= skip_lines && i_mons < (int) mons.size())
         {
              _print_next_monster_desc(mons, i_mons, full_info,
-                        crawl_state.mlist_targetting ? i_print : -1);
+                        crawl_state.mlist_targeting ? i_print : -1);
         }
         else
             cprintf("%s", blank.c_str());
@@ -1581,8 +1583,8 @@ static std::string _overview_screen_title()
     char title[50];
     snprintf(title, sizeof title, " the %s ", player_title().c_str());
 
-    char race_class[50];
-    snprintf(race_class, sizeof race_class,
+    char species_job[50];
+    snprintf(species_job, sizeof species_job,
              "(%s %s)",
              species_name(you.species, you.experience_level).c_str(),
              you.class_name);
@@ -1598,17 +1600,17 @@ static std::string _overview_screen_title()
     }
 
     int linelength = you.your_name.length() + strlen(title)
-                     + strlen(race_class) + strlen(time_turns);
+                     + strlen(species_job) + strlen(time_turns);
     for (int count = 0; linelength >= get_number_of_cols() && count < 2;
          count++)
     {
         switch (count)
         {
           case 0:
-              snprintf(race_class, sizeof race_class,
+              snprintf(species_job, sizeof species_job,
                        "(%s%s)",
                        get_species_abbrev(you.species),
-                       get_class_abbrev(you.char_class) );
+                       get_job_abbrev(you.char_class) );
               break;
           case 1:
               strcpy(title, "");
@@ -1617,14 +1619,14 @@ static std::string _overview_screen_title()
               break;
         }
         linelength = you.your_name.length() + strlen(title)
-                     + strlen(race_class) + strlen(time_turns);
+                     + strlen(species_job) + strlen(time_turns);
     }
 
     std::string text;
     text = "<yellow>";
     text += you.your_name;
     text += title;
-    text += race_class;
+    text += species_job;
     text += std::string(get_number_of_cols() - linelength - 1, ' ');
     text += time_turns;
     text += "</yellow>\n";
@@ -1837,7 +1839,6 @@ static std::vector<formatted_string> _get_overview_resistances(
                        || you.religion == GOD_ZIN && you.piety >= 150);
     const int rrott = (you.res_rotting()
                        || you.religion == GOD_ZIN && you.piety >= 150);
-    const int rslow = wearing_amulet(AMU_RESIST_SLOW, calc_unid);
 
     snprintf(buf, sizeof buf,
              "%sRes.Fire  : %s\n"
@@ -1848,8 +1849,7 @@ static std::vector<formatted_string> _get_overview_resistances(
              "%sSpirit.Shd: %s\n"
              "%sSust.Abil.: %s\n"
              "%sRes.Mut.  : %s\n"
-             "%sRes.Rott. : %s\n"
-             "%sRes.Slow  : %s\n",
+             "%sRes.Rott. : %s\n",
              _determine_colour_string(rfire, 3), itosym3(rfire),
              _determine_colour_string(rcold, 3), itosym3(rcold),
              _determine_colour_string(rlife, 3), itosym3(rlife),
@@ -1858,8 +1858,7 @@ static std::vector<formatted_string> _get_overview_resistances(
              _determine_colour_string(rspir, 1), itosym1(rspir),
              _determine_colour_string(rsust, 1), itosym1(rsust),
              _determine_colour_string(rmuta, 1), itosym1(rmuta),
-             _determine_colour_string(rrott, 1), itosym1(rrott),
-             _determine_colour_string(rslow, 1), itosym1(rslow));
+             _determine_colour_string(rrott, 1), itosym1(rrott));
     cols.add_formatted(0, buf, false);
 
     int saplevel = player_mutation_level(MUT_SAPROVOROUS);
@@ -2033,6 +2032,37 @@ std::string _get_expiration_string(duration_type dur, const char* msg)
     return (help);
 }
 
+std::string stealth_desc(int stealth)
+{
+    std::string prefix =
+         (stealth <  10) ? "extremely un" :
+         (stealth <  30) ? "very un" :
+         (stealth <  60) ? "un" :
+         (stealth <  90) ? "fairly " :
+         (stealth < 120) ? "" :
+         (stealth < 160) ? "quite " :
+         (stealth < 220) ? "very " :
+         (stealth < 300) ? "extremely " :
+         (stealth < 400) ? "extraordinarily " :
+         (stealth < 520) ? "incredibly "
+                         : "uncannily ";
+    return (prefix + "stealthy");
+}
+
+std::string magic_res_adjective(int mr)
+{
+    return ((mr <  10) ? "not" :
+            (mr <  30) ? "slightly" :
+            (mr <  60) ? "somewhat" :
+            (mr <  90) ? "quite" :
+            (mr < 120) ? "very" :
+            (mr < 150) ? "extremely" :
+            (mr < 190) ? "extraordinarily" :
+            (mr < 240) ? "incredibly" :
+            (mr < 300) ? "uncannily"
+                       : "almost entirely");
+}
+
 // Creates rows of short descriptions for current
 // status, mutations and abilities.
 std::string _status_mut_abilities()
@@ -2142,7 +2172,13 @@ std::string _status_mut_abilities()
         status.push_back(_get_expiration_string(DUR_SILENCE, "silence"));
 
     if (you.duration[DUR_INVIS])
-        status.push_back(_get_expiration_string(DUR_INVIS, "invisible"));
+    {
+        std::string status_mes = "invisible";
+        if (you.backlit())
+            status_mes = "invisible (but backlit and visible)";
+
+        status.push_back(_get_expiration_string(DUR_INVIS, status_mes.c_str()));
+    }
 
     if (you.confused())
         status.push_back("confused");
@@ -2154,7 +2190,7 @@ std::string _status_mut_abilities()
         status.push_back("mighty");
 
     if (you.duration[DUR_BRILLIANCE])
-        status.push_back("brilliance");
+        status.push_back("brilliant");
 
     if (you.duration[DUR_AGILITY])
         status.push_back("agile");
@@ -2280,35 +2316,11 @@ std::string _status_mut_abilities()
     if (you.attribute[ATTR_HELD])
         status.push_back("held");
 
-    const int mr = you.res_magic();
-    snprintf(info, INFO_SIZE, "%s resistant to magic",
-             (mr <  10) ? "not" :
-             (mr <  30) ? "slightly" :
-             (mr <  60) ? "somewhat" :
-             (mr <  90) ? "quite" :
-             (mr < 120) ? "very" :
-             (mr < 140) ? "extremely"
-                        : "incredibly");
-
-    status.push_back(info);
+    status.push_back(magic_res_adjective(you.res_magic())
+                     + " resistant to hostile enchantments");
 
     // character evaluates their ability to sneak around:
-    const int ustealth = check_stealth();
-
-    snprintf( info, INFO_SIZE, "%sstealthy",
-         (ustealth <  10) ? "extremely un" :
-         (ustealth <  30) ? "very un" :
-         (ustealth <  60) ? "un" :
-         (ustealth <  90) ? "fairly " :
-         (ustealth < 120) ? "" :
-         (ustealth < 160) ? "quite " :
-         (ustealth < 220) ? "very " :
-         (ustealth < 300) ? "extremely " :
-         (ustealth < 400) ? "extraordinarily " :
-         (ustealth < 520) ? "incredibly "
-                          : "uncannily ");
-
-    status.push_back(info);
+    status.push_back(stealth_desc(check_stealth()));
 
     text += comma_separated_line(status.begin(), status.end(), ", ", ", ");
 

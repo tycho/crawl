@@ -276,12 +276,14 @@ public:
 
 protected:
     void pack_background(unsigned int bg, int x, int y);
-    void pack_mcache(mcache_entry *entry, int x, int y);
-    void pack_player(int x, int y);
+    void pack_mcache(mcache_entry *entry, int x, int y, bool submerged);
+    void pack_player(int x, int y, bool submerged);
     void pack_foreground(unsigned int bg, unsigned int fg, int x, int y);
-    void pack_doll(const dolls_data &doll, int x, int y);
+    void pack_doll(const dolls_data &doll, int x, int y, bool submerged, bool ghost);
     void pack_cursor(cursor_type type, unsigned int tile);
     void pack_buffers();
+
+    void draw_minibars();
 
     int get_buffer_index(const coord_def &gc);
     void to_screen_coords(const coord_def &gc, coord_def& pc) const;
@@ -293,7 +295,8 @@ protected:
     std::vector<TextTag> m_tags[TAG_MAX];
 
     TileBuffer m_buf_dngn;
-    TileBuffer m_buf_doll;
+    SubmergedTileBuffer m_buf_doll;
+    SubmergedTileBuffer m_buf_main_trans;
     TileBuffer m_buf_main;
 
     struct tile_overlay
@@ -432,7 +435,7 @@ public:
 class TitleRegion : public ControlRegion
 {
 public:
-    TitleRegion(int width, int height);
+    TitleRegion(int width, int height, FTFont* font);
 
     virtual void render();
     virtual void clear() {};
@@ -440,11 +443,14 @@ public:
 
     virtual int handle_mouse(MouseEvent &event) { return 0; }
 
+    void update_message(std::string message);
+
 protected:
     virtual void on_resize() {}
 
     GenericTexture m_img;
     VertBuffer<PTVert> m_buf;
+    FontBuffer m_font_buf;
 };
 
 enum tile_doll_mode
@@ -489,8 +495,8 @@ protected:
 
     ShapeBuffer m_shape_buf;
     FontBuffer m_font_buf;
-    TileBuffer m_tile_buf;
-    TileBuffer m_cur_buf;
+    SubmergedTileBuffer m_tile_buf;
+    SubmergedTileBuffer m_cur_buf;
 };
 
 #endif

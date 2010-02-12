@@ -9,6 +9,7 @@
 #include "externs.h"
 
 #include "branch.h"
+#include "libutil.h"
 #include "place.h"
 #include "player.h"
 #include "travel.h"
@@ -54,7 +55,7 @@ unsigned short get_packed_place( branch_type branch, int subdepth,
 unsigned short get_packed_place()
 {
     return get_packed_place(you.where_are_you,
-                            subdungeon_depth(you.where_are_you, you.your_level),
+                            subdungeon_depth(you.where_are_you, you.absdepth0),
                             you.level_type);
 }
 
@@ -83,16 +84,22 @@ std::string place_name( unsigned short place, bool long_name,
         case LEVEL_LABYRINTH:
             return ( long_name ? "a Labyrinth" : "Lab" );
         case LEVEL_PORTAL_VAULT:
-            // XXX: Using level_type_name here is strictly evil, but
-            // packed places lack the information needed for pretty-printing
-            // place names for portal vaults, so we must use this out-of-band
-            // information.
+            // XXX: This was originally in misc.cc:new_level. It really makes
+            // no sense for it to be there, as there are instances where portal
+            // vaults can use origin elsewhere (death messages, etc), and Note
+            // ::describe calls this anyway. (due)
             if (branch == you.level_type
-                && !you.level_type_name.empty())
+                && !you.level_type_origin.empty())
             {
-                return long_name
-                    ? article_a(you.level_type_name)
-                    : upcase_first(you.level_type_name_abbrev);
+                std::string desc;
+
+                size_t space = you.level_type_origin.find(" ");
+                if (space == std::string::npos)
+                    desc += you.level_type_origin;
+                else
+                    desc += you.level_type_origin.substr(space + 1);
+
+                return long_name ? desc : upcase_first(you.level_type_name_abbrev);
             }
             else
             {
@@ -108,21 +115,18 @@ std::string place_name( unsigned short place, bool long_name,
 
     if (include_number && branches[branch].depth != 1)
     {
-        char buf[200];
         if (long_name)
         {
             // decapitalise 'the'
             if ( result.find("The") == 0 )
                 result[0] = 't';
-            snprintf( buf, sizeof buf, "Level %d of %s",
-                      lev, result.c_str() );
+            result = make_stringf("Level %d of %s",
+                      lev, result.c_str());
         }
         else if (lev)
-            snprintf( buf, sizeof buf, "%s:%d", result.c_str(), lev );
+            result = make_stringf("%s:%d", result.c_str(), lev);
         else
-            snprintf( buf, sizeof buf, "%s:$", result.c_str() );
-
-        result = buf;
+            result = make_stringf("%s:$", result.c_str());
     }
     return result;
 }
@@ -175,7 +179,7 @@ int subdungeon_depth(branch_type branch, int depth)
 
 int player_branch_depth()
 {
-    return subdungeon_depth(you.where_are_you, you.your_level);
+    return subdungeon_depth(you.where_are_you, you.absdepth0);
 }
 
 // Returns true if exits from this type of level involve going upstairs.

@@ -50,10 +50,14 @@ struct game_state
                             // suspended.
 
     bool test;              // Set if we want to run self-tests and exit.
+    bool script;            // Set if we want to run a Lua script and exit.
     bool build_db;          // Set if we want to rebuild the db and exit.
     std::vector<std::string> tests_selected; // Tests to be run.
+    std::vector<std::string> script_args;    // Arguments to scripts.
 
     bool unicode_ok;        // Is unicode support available?
+
+    bool show_more_prompt;  // Set to false to disable --more-- prompts.
 
     std::string (*glyph2strfn)(unsigned glyph);
     int  (*multibyte_strlen)(const std::string &s);
@@ -81,10 +85,10 @@ struct game_state
     bool level_annotation_shown;
 
 #ifndef USE_TILE
-    // Are we currently targetting using the mlist?
+    // Are we currently targeting using the mlist?
     // This is global because the monster pane uses this when
     // drawing.
-    bool mlist_targetting;
+    bool mlist_targeting;
 #endif
 
     // Range beyond which view should be darkend, -1 == disabled.
@@ -145,6 +149,7 @@ public:
     void      mon_gone(monsters* mon);
 
     void dump();
+    bool player_is_dead();
 
     friend class mon_acting;
 };

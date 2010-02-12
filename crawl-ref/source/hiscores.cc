@@ -423,7 +423,7 @@ static const char *kill_method_names[] =
     "mon", "pois", "cloud", "beam", "lava", "water",
     "stupidity", "weakness", "clumsiness", "trap", "leaving", "winning",
     "quitting", "draining", "starvation", "freezing", "burning",
-    "wild_magic", "xom", "rotting", "targetting", "spore",
+    "wild_magic", "xom", "rotting", "targeting", "spore",
     "tso_smiting", "petrification", "something",
     "falling_down_stairs", "acid", "curare",
     "beogh_smiting", "divine_wrath", "bounce", "reflect", "self_aimed",
@@ -588,7 +588,7 @@ void scorefile_entry::init_with_fields()
     name    = fields->str_field("name");
     uid     = fields->int_field("uid");
     race    = str_to_species(fields->str_field("race"));
-    cls     = get_class_by_name(fields->str_field("cls").c_str());
+    cls     = get_job_by_name(fields->str_field("cls").c_str());
     lvl     = fields->int_field("xl");
 
     best_skill     = str_to_skill(fields->str_field("sk"));
@@ -645,9 +645,9 @@ void scorefile_entry::set_base_xlog_fields() const
     fields->add_field("uid",  "%d", uid);
     fields->add_field("race", "%s",
                       species_name(race, lvl).c_str());
-    fields->add_field("cls",  "%s", get_class_name(cls));
+    fields->add_field("cls",  "%s", get_job_name(cls));
     fields->add_field("char", "%s%s",
-                      get_species_abbrev(race), get_class_abbrev(cls));
+                      get_species_abbrev(race), get_job_abbrev(cls));
     fields->add_field("xl",    "%d", lvl);
     fields->add_field("sk",    "%s", skill_name(best_skill));
     fields->add_field("sklev", "%d", best_skill_lvl);
@@ -777,6 +777,13 @@ void scorefile_entry::init_death_cause(int dam, int dsrc,
     death_type   = dtype;
     damage       = dam;
 
+    // Save this here. We don't want to completely remove the status, as that
+    // would look odd in the "screenshot", but having DUR_MISLED as a non-zero
+    // value at his point in time will generate such odities as "killed by a
+    // golden eye, wielding an orcish crossbo [19 damage]", etc. {due}
+    int misled = you.duration[DUR_MISLED];
+    you.duration[DUR_MISLED] = 0;
+
     // Set the default aux data value...
     // If aux is passed in (ie for a trap), we'll default to that.
     if (aux == NULL)
@@ -887,6 +894,9 @@ void scorefile_entry::init_death_cause(int dam, int dsrc,
         if (auxkilldata.empty())
             auxkilldata = "unknown source";
     }
+
+    // And restore it here.
+    you.duration[DUR_MISLED] = misled;
 }
 
 void scorefile_entry::reset()
@@ -1084,8 +1094,10 @@ void scorefile_entry::init()
     best_skill_lvl = you.skills[ best_skill ];
 
     // Note all skills at level 27.
-    for (int sk = 0; sk < NUM_SKILLS; ++sk) {
-        if (you.skills[sk] == 27) {
+    for (int sk = 0; sk < NUM_SKILLS; ++sk)
+    {
+        if (you.skills[sk] == 27)
+        {
             if (!maxed_skills.empty())
                 maxed_skills += ",";
             maxed_skills += skill_name(sk);
@@ -1128,11 +1140,7 @@ void scorefile_entry::init()
     gold_found = you.attribute[ATTR_GOLD_FOUND];
     gold_spent = you.attribute[ATTR_PURCHASES];
 
-#ifdef WIZARD
     wiz_mode = (you.wizard ? 1 : 0);
-#else
-    wiz_mode = 0;
-#endif
 }
 
 std::string scorefile_entry::hiscore_line(death_desc_verbosity verbosity) const
@@ -1194,7 +1202,13 @@ std::string scorefile_entry::death_source_desc() const
 {
     if (death_type != KILLED_BY_MONSTER && death_type != KILLED_BY_BEAM
         && death_type != KILLED_BY_DISINT)
+    {
         return ("");
+    }
+
+    // XXX: Deals specially with Mara's clones.
+    if (death_source == MONS_MARA_FAKE)
+        return ("an illusion of Mara");
 
     // XXX no longer handles mons_num correctly! FIXME
     return (!death_source_name.empty() ?
@@ -1300,7 +1314,7 @@ std::string scorefile_entry::single_cdesc() const
     if (race_class_name.empty())
     {
         char_desc = make_stringf("%s%s", get_species_abbrev( race ),
-                                         get_class_abbrev( cls ) );
+                                         get_job_abbrev( cls ) );
     }
     else
         char_desc = race_class_name;
@@ -1340,7 +1354,7 @@ scorefile_entry::character_description(death_desc_verbosity verbosity) const
         snprintf( buf, HIGHSCORE_SIZE, "%8ld %s the %s %s (level %d",
                   points, name.c_str(),
                   species_name(static_cast<species_type>(race), lvl).c_str(),
-                  get_class_name(cls), lvl );
+                  get_job_name(cls), lvl );
         desc = buf;
     }
 
@@ -1367,7 +1381,7 @@ scorefile_entry::character_description(death_desc_verbosity verbosity) const
         snprintf( scratch, INFO_SIZE, "Began as a%s %s %s",
                   is_vowel(srace[0]) ? "n" : "",
                   srace.c_str(),
-                  get_class_name(cls) );
+                  get_job_name(cls) );
         desc += scratch;
 
         if (birth_time > 0)
@@ -1426,10 +1440,9 @@ std::string scorefile_entry::death_place(death_desc_verbosity verbosity) const
 
     if (verbosity == DDV_ONELINE || verbosity == DDV_TERSE)
     {
-        snprintf( scratch, sizeof scratch, " (%s)",
-                  place_name(get_packed_place(branch, dlvl, level_type),
-                             false, true).c_str());
-        return (scratch);
+        return (make_stringf(" (%s)",
+                             place_name(get_packed_place(branch, dlvl, level_type),
+                             false, true).c_str()));
     }
 
     if (verbose && death_type != KILLED_BY_QUITTING)
@@ -1699,8 +1712,8 @@ std::string scorefile_entry::death_description(death_desc_verbosity verbosity)
         desc += terse? "rotting" : "Rotted away";
         break;
 
-    case KILLED_BY_TARGETTING:
-        desc += terse? "shot self" : "Killed themselves with bad targetting";
+    case KILLED_BY_TARGETING:
+        desc += terse? "shot self" : "Killed themselves with bad targeting";
         needs_damage = true;
         break;
 
@@ -1743,7 +1756,7 @@ std::string scorefile_entry::death_description(death_desc_verbosity verbosity)
 
     case KILLED_BY_SELF_AIMED:
         if (terse)
-            desc += "suicidal targetting";
+            desc += "suicidal targeting";
         else
         {
             desc += "Shot themselves with a ";
@@ -2118,10 +2131,9 @@ void xlog_fields::add_field(const std::string &key,
                             const char *format,
                             ...)
 {
-    char buf[500];
     va_list args;
     va_start(args, format);
-    vsnprintf(buf, sizeof buf, format, args);
+    std::string buf = vmake_stringf(format, args);
     va_end(args);
 
     fields.push_back( std::pair<std::string, std::string>( key, buf ) );

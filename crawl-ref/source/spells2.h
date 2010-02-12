@@ -10,22 +10,21 @@
 #include "enum.h"
 #include "itemprop-enum.h"
 
-struct dist;
+class dist;
 
 bool brand_weapon(brand_type which_brand, int power);
-bool brand_ammo(special_missile_type which_brand);
 bool burn_freeze(int pow, beam_type flavour, monsters *monster);
 
 void corpse_rot();
 
 
-struct dist;
+class dist;
 bool vampiric_drain(int pow, const dist &vmove);
 int detect_creatures(int pow, bool telepathic = false);
 int detect_items(int pow);
 int detect_traps(int pow);
-void cast_refrigeration(int pow);
-void cast_toxic_radiance(void);
+void cast_refrigeration(int pow, bool non_player = false);
+void cast_toxic_radiance(bool non_player = false);
 void drain_life(int pow);
 
 bool restore_stat(unsigned char which_stat, unsigned char stat_gain,
@@ -34,7 +33,10 @@ bool restore_stat(unsigned char which_stat, unsigned char stat_gain,
 bool summon_animals(int pow);
 bool cast_summon_butterflies(int pow, god_type god = GOD_NO_GOD);
 bool cast_summon_small_mammals(int pow, god_type god = GOD_NO_GOD);
+
+bool item_is_snakable(const item_def& item);
 bool cast_sticks_to_snakes(int pow, god_type god = GOD_NO_GOD);
+
 bool cast_summon_scorpions(int pow, god_type god = GOD_NO_GOD);
 bool cast_summon_swarm(int pow, god_type god = GOD_NO_GOD);
 bool cast_call_canine_familiar(int pow, god_type god = GOD_NO_GOD);

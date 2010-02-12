@@ -1,14 +1,15 @@
-/* A Bison parser, made by GNU Bison 2.3.  */
+
+/* A Bison parser, made by GNU Bison 2.4.1.  */
 
 /* Skeleton interface for Bison's Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989, 1990, 2000, 2001, 2002, 2003, 2004, 2005, 2006
+      Copyright (C) 1984, 1989, 1990, 2000, 2001, 2002, 2003, 2004, 2005, 2006
    Free Software Foundation, Inc.
 
-   This program is free software; you can redistribute it and/or modify
+   This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
-   any later version.
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -16,9 +17,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* As a special exception, you may create a larger work that contains
    part or all of the Bison parser skeleton and distribute that work
@@ -32,6 +31,7 @@
 
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
+
 
 /* Tokens.  */
 #ifndef YYTOKENTYPE
@@ -72,17 +72,19 @@
      LROCKTILE = 288,
      FTILE = 289,
      RTILE = 290,
-     SUBVAULT = 291,
-     COMMA = 292,
-     COLON = 293,
-     PERC = 294,
-     INTEGER = 295,
-     CHARACTER = 296,
-     STRING = 297,
-     MAP_LINE = 298,
-     MONSTER_NAME = 299,
-     ITEM_INFO = 300,
-     LUA_LINE = 301
+     TILE = 291,
+     SUBVAULT = 292,
+     FHEIGHT = 293,
+     COMMA = 294,
+     COLON = 295,
+     PERC = 296,
+     INTEGER = 297,
+     CHARACTER = 298,
+     STRING = 299,
+     MAP_LINE = 300,
+     MONSTER_NAME = 301,
+     ITEM_INFO = 302,
+     LUA_LINE = 303
    };
 #endif
 /* Tokens.  */
@@ -119,35 +121,42 @@
 #define LROCKTILE 288
 #define FTILE 289
 #define RTILE 290
-#define SUBVAULT 291
-#define COMMA 292
-#define COLON 293
-#define PERC 294
-#define INTEGER 295
-#define CHARACTER 296
-#define STRING 297
-#define MAP_LINE 298
-#define MONSTER_NAME 299
-#define ITEM_INFO 300
-#define LUA_LINE 301
+#define TILE 291
+#define SUBVAULT 292
+#define FHEIGHT 293
+#define COMMA 294
+#define COLON 295
+#define PERC 296
+#define INTEGER 297
+#define CHARACTER 298
+#define STRING 299
+#define MAP_LINE 300
+#define MONSTER_NAME 301
+#define ITEM_INFO 302
+#define LUA_LINE 303
 
 
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 45 "levcomp.ypp"
 {
+
+/* Line 1676 of yacc.c  */
+#line 45 "levcomp.ypp"
+
     int i;
     const char *text;
     raw_range range;
-}
-/* Line 1529 of yacc.c.  */
-#line 147 "levcomp.tab.h"
-	YYSTYPE;
+
+
+
+/* Line 1676 of yacc.c  */
+#line 156 "levcomp.tab.h"
+} YYSTYPE;
+# define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
-# define YYSTYPE_IS_TRIVIAL 1
 #endif
 
 extern YYSTYPE yylval;

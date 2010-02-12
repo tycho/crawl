@@ -459,6 +459,15 @@ function TriggerableFunction:read(marker, th)
   return self
 end
 
+function function_at_spot(func, data, repeated, props)
+  local tf = TriggerableFunction:new 
+      { func = func, data = data, repeated = repeated, props = props }
+
+  tf:add_triggerer( DgnTriggerer:new { type   = "player_move" } )
+
+  return tf
+end
+
 --------------------------
 
 -- A simple class to give out messages.  Should be split out into own
@@ -484,6 +493,7 @@ function TriggerableMessage:new(pars)
   tm.msg      = pars.msg
   tm.channel  = pars.channel
   tm.repeated = pars.repeated
+  tm.props    = pars.props
 
   return tm
 end
@@ -516,9 +526,9 @@ function TriggerableMessage:read(marker, th)
   return self
 end
 
-function message_at_spot(msg, channel, repeated)
+function message_at_spot(msg, channel, repeated, props)
   local tm = TriggerableMessage:new 
-      { msg = msg, channel = channel, repeated = repeated }
+      { msg = msg, channel = channel, repeated = repeated, props = props }
 
   tm:add_triggerer( DgnTriggerer:new { type   = "player_move" } )
 
@@ -575,6 +585,10 @@ end
 -- * wall_hit: Wait for the wall to be "hit", either with a weapon (Ctrl+Dir),
 --      with a MMISSILE spell (magic dart, crystal spear), or with a ranged
 --      missile (stones, etc).
+--
+-- * door_opened, door_closed: Called whenever doors are opened and closed by
+--      the player, or whenever they are closed by monsters (monsters do not
+--      open doors).
 
 DgnTriggerer = { CLASS = "DgnTriggerer" }
 DgnTriggerer.__index = DgnTriggerer
@@ -653,7 +667,7 @@ function DgnTriggerer:activate(triggerable, marker, x, y)
       elseif #items > 1 then
         error("Too many vault items for " .. self.type)
       end
-      self.target = item.name(items[1])
+      self.target = items[1].name()
     end
   end
 
@@ -698,7 +712,8 @@ function DgnTriggerer:monster_dies(triggerable, marker, ev)
     error("DgnTriggerer:monster_dies() didn't get a valid monster index")
   end
 
-  if self.target == "any" or mons.full_name == self.target then
+  if self.target == "any" or mons.full_name == self.target or
+      (mons.has_prop(self.target) and mons.get_prop(self.target) == self.target) then
     triggerable:do_trigger(self, marker, ev)
   end
 end
@@ -721,7 +736,7 @@ function DgnTriggerer:item_moved(triggerable, marker, ev)
     error("DgnTriggerer:item_moved() didn't get a valid item index")
   end
 
-  if item.name(it) == self.target then
+  if it.name() == self.target then
     if self.marker_mover then
       -- We only exist to move the triggerable if the item moves
       triggerable:move(marker, ev:dest())
@@ -739,7 +754,7 @@ function DgnTriggerer:item_pickup(triggerable, marker, ev)
     error("DgnTriggerer:item_pickup() didn't get a valid item index")
   end
 
-  if item.name(it) == self.target then
+  if it.name() == self.target then
     triggerable:do_trigger(self, marker, ev)
   end
 end
@@ -753,6 +768,14 @@ function DgnTriggerer:player_los(triggerable, marker, ev)
 end
 
 function DgnTriggerer:wall_hit(triggerable, marker, ev)
+  triggerable:do_trigger(self, marker, ev)
+end
+
+function DgnTriggerer:door_opened(triggerable, marker, ev)
+  triggerable:do_trigger(self, marker, ev)
+end
+
+function DgnTriggerer:door_closed(triggerable, marker, ev)
   triggerable:do_trigger(self, marker, ev)
 end
 

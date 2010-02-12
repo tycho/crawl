@@ -34,6 +34,7 @@
 #include "misc.h"
 #include "mon-iter.h"
 #include "mon-place.h"
+#include "mon-util.h"
 #include "mgen_data.h"
 #include "coord.h"
 #include "mon-stuff.h"
@@ -42,6 +43,7 @@
 #include "ouch.h"
 #include "player.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills2.h"
 #include "spells1.h"
 #include "spells2.h"
@@ -53,7 +55,7 @@
 #include "state.h"
 #include "stuff.h"
 #include "terrain.h"
-#include "transfor.h"
+#include "transform.h"
 #include "traps.h"
 #include "view.h"
 #include "xom.h"
@@ -1660,21 +1662,10 @@ static bool _damaging_card(card_type card, int power, deck_rarity_type rarity)
         ztype = (coinflip() ? ZAP_FIREBALL : firezaps[power_level]);
         break;
 
-    case CARD_FROST:
-        ztype = frostzaps[power_level];
-        break;
-
-    case CARD_HAMMER:
-        ztype = hammerzaps[power_level];
-        break;
-
-    case CARD_VENOM:
-        ztype = venomzaps[power_level];
-        break;
-
-    case CARD_SPARK:
-        ztype = sparkzaps[power_level];
-        break;
+    case CARD_FROST:  ztype = frostzaps[power_level];  break;
+    case CARD_HAMMER: ztype = hammerzaps[power_level]; break;
+    case CARD_VENOM:  ztype = venomzaps[power_level];  break;
+    case CARD_SPARK:  ztype = sparkzaps[power_level];  break;
 
     case CARD_PAIN:
         if (power_level == 2)
@@ -1691,13 +1682,14 @@ static bool _damaging_card(card_type card, int power, deck_rarity_type rarity)
         break;
     }
 
-    snprintf(info, INFO_SIZE, "You have drawn %s.  Aim where? ",
-             card_name(card));
+    std::string prompt = "You have drawn ";
+    prompt += card_name(card);
+    prompt += ".";
 
     bolt beam;
     beam.range = LOS_RADIUS;
     if (spell_direction(target, beam, DIR_NONE, TARG_HOSTILE,
-                        LOS_RADIUS, true, true, false, info)
+                        LOS_RADIUS, true, true, false, NULL, prompt.c_str())
         && player_tracer(ZAP_DEBUGGING_RAY, power/4, beam))
     {
         zapping(ztype, random2(power/4), beam);
@@ -1868,7 +1860,7 @@ static void _blade_card(int power, deck_rarity_type rarity)
 
         if (!brand_weapon(RANDOM_ELEMENT(brands), random2(power/4)))
         {
-            if (you.equip[EQ_WEAPON] == -1)
+            if (!you.weapon())
                 mprf("Your %s twitch.", your_hand(true).c_str());
             else
                 mpr("Your weapon vibrates for a moment.");
@@ -2082,11 +2074,9 @@ static void _experience_card(int power, deck_rarity_type rarity)
         mpr("You feel knowledgeable.");
 
     // Put some free XP into pool; power_level 2 means fill pool
-    if (power_level >= 2)
-        you.exp_available = you.exp_pool_cutoff();
-    else
-        you.exp_available += power * 50;
-    you.step_down_exp_pool();
+    you.exp_available += power * 50;
+    if (power_level >= 2 || you.exp_available > FULL_EXP_POOL)
+        you.exp_available = FULL_EXP_POOL;
 
     level_change();
 }
@@ -2837,7 +2827,7 @@ bool card_effect(card_type which_card, deck_rarity_type rarity,
 
     if (tell_card)
     {
-        // These card types will usually give this message in the targetting
+        // These card types will usually give this message in the targeting
         // prompt, and the cases where they don't are handled specially.
         if (which_card != CARD_VITRIOL && which_card != CARD_FLAME
             && which_card != CARD_FROST && which_card != CARD_HAMMER
@@ -2958,7 +2948,7 @@ bool card_effect(card_type which_card, deck_rarity_type rarity,
         break;
 
     case CARD_SWINE:
-        if (!transform(random2(power), TRAN_PIG, true))
+        if (!transform(1 + power/2 + random2(power/2), TRAN_PIG, true))
         {
             mpr("You feel like a pig.");
             break;
@@ -3134,7 +3124,7 @@ static bool _shuffle_all_decks_on_level()
 #ifdef DEBUG_DIAGNOSTICS
             mprf(MSGCH_DIAGNOSTICS, "Shuffling: %s on level %d, branch %d",
                  item.name(DESC_PLAIN).c_str(),
-                 static_cast<int>(you.your_level),
+                 static_cast<int>(you.absdepth0),
                  static_cast<int>(you.where_are_you));
 #endif
             _unmark_and_shuffle_deck(item);

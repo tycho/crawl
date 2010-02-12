@@ -3,6 +3,7 @@
 #include "colour.h"
 
 #include "env.h"
+#include "libutil.h"
 #include "options.h"
 #include "player.h"
 #include "random.h"
@@ -387,7 +388,7 @@ int str_to_colour( const std::string &str, int default_colour,
         const char *s = str.c_str();
         char *es = NULL;
         const int ci = static_cast<int>(strtol(s, &es, 10));
-        if (s != (const char *) es && es && ci >= 0 && ci < 16)
+        if (s != es && es && ci >= 0 && ci < 16)
             ret = ci;
     }
 
@@ -520,4 +521,11 @@ unsigned real_colour(unsigned raw_colour)
 #endif
 
     return (raw_colour);
+}
+
+int name_length_by_colour(int col)
+{
+    const unsigned short nlen[] = {5, 4, 5, 4, 3, 7, 5, 9, 8, 9, 10, 9, 8, 12, 6, 5};
+
+    return nlen[col];
 }

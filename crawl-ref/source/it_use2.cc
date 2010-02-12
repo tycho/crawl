@@ -18,6 +18,7 @@
 #include "effects.h"
 #include "env.h"
 #include "food.h"
+#include "godpassive.h"
 #include "item_use.h"
 #include "itemname.h"
 #include "itemprop.h"
@@ -25,15 +26,15 @@
 #include "misc.h"
 #include "mutation.h"
 #include "player.h"
-#include "quiver.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "skills2.h"
 #include "spells2.h"
 #include "spl-mis.h"
 #include "spl-util.h"
 #include "stuff.h"
 #include "terrain.h"
-#include "transfor.h"
+#include "transform.h"
 #include "tutorial.h"
 #include "xom.h"
 
@@ -61,7 +62,6 @@ bool potion_effect(potion_type pot_eff, int pow, bool drank_it, bool was_known)
     switch (pot_eff)
     {
     case POT_HEALING:
-
         inc_hp((5 + random2(7)) / factor, false);
         mpr("You feel better.");
 
@@ -76,6 +76,7 @@ bool potion_effect(potion_type pot_eff, int pow, bool drank_it, bool was_known)
         you.rotting = 0;
         you.disease = 0;
         you.duration[DUR_CONF] = 0;
+        you.duration[DUR_MISLED] = 0;
         break;
 
     case POT_HEAL_WOUNDS:
@@ -137,8 +138,8 @@ bool potion_effect(potion_type pot_eff, int pow, bool drank_it, bool was_known)
         break;
 
     case POT_SPEED:
-        haste_player((40 + random2(pow)) / factor);
-        did_god_conduct(DID_HASTY, 10, was_known);
+        if (haste_player((40 + random2(pow)) / factor))
+            did_god_conduct(DID_HASTY, 10, was_known);
         break;
 
     case POT_MIGHT:
@@ -288,7 +289,7 @@ bool potion_effect(potion_type pot_eff, int pow, bool drank_it, bool was_known)
         if (you.haloed())
         {
             // You can't turn invisible while haloed, but identify the
-            // effect anyways.
+            // effect anyway.
             mpr("You briefly turn translucent.");
 
             // And also cancel backlight (for whatever good that will
@@ -408,7 +409,7 @@ bool potion_effect(potion_type pot_eff, int pow, bool drank_it, bool was_known)
         }
         else
         {
-            if (go_berserk(was_known))
+            if (go_berserk(was_known, true))
                 xom_is_stimulated(64);
         }
         break;
@@ -522,6 +523,12 @@ bool unwield_item(bool showMsgs)
                 you.redraw_armour_class = true;
                 break;
 
+            case SPWPN_EVASION:
+                if (showMsgs)
+                    mpr("You feel like more of a target.");
+                you.redraw_evasion = true;
+                break;
+
             case SPWPN_VAMPIRICISM:
                 if (showMsgs)
                 {
@@ -627,6 +634,7 @@ void unwear_armour(int slot)
 
     case SPARM_PONDEROUSNESS:
         mpr("That put a bit of spring back into your step.");
+        che_handle_change(CB_PONDEROUS, -1);
         break;
 
     case SPARM_LEVITATION:
@@ -718,14 +726,16 @@ void unuse_artefact(const item_def &item, bool *show_msgs)
         }
     }
 
-    if (proprt[ARTP_MAGICAL_POWER])
+    if (proprt[ARTP_PONDEROUS])
     {
-        you.redraw_magic_points = true;
-        if (!known[ARTP_MAGICAL_POWER])
-        {
-            mprf("You feel your mana capacity %s.",
-                 proprt[ARTP_MAGICAL_POWER] > 0 ? "decrease" : "increase");
-        }
+        mpr("That put a bit of spring back into your step.");
+        che_handle_change(CB_PONDEROUS, -1);
+    }
+
+    if (proprt[ARTP_MAGICAL_POWER] && !known[ARTP_MAGICAL_POWER])
+    {
+        mprf("You feel your mana capacity %s.",
+              proprt[ARTP_MAGICAL_POWER] > 0 ? "decrease" : "increase");
     }
 
     // Modify ability scores; always output messages.
@@ -748,6 +758,9 @@ void unuse_artefact(const item_def &item, bool *show_msgs)
 
     if (proprt[ARTP_INVISIBLE] != 0 && you.duration[DUR_INVIS] > 1)
         you.duration[DUR_INVIS] = 1;
+
+    if (proprt[ARTP_MAGICAL_POWER])
+        calc_mp();
 
     if (is_unrandom_artefact(item))
     {

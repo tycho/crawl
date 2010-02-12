@@ -18,7 +18,6 @@
 #endif
 
 #include "externs.h"
-#include "options.h"
 
 #include "abl-show.h"
 #include "cio.h"
@@ -38,7 +37,7 @@
 #include "religion.h"
 #include "random.h"
 #include "skills2.h"
-#include "transfor.h"
+#include "transform.h"
 #include "tutorial.h"
 #include "view.h"
 #include "xom.h"
@@ -1491,7 +1490,7 @@ formatted_string describe_mutations()
 
         if (you.experience_level >= 6)
         {
-            result += "You can bottle blood from corpses with 'c'." EOL;
+            result += "You can bottle blood from corpses." EOL;
             have_any = true;
         }
         break;
@@ -1612,7 +1611,7 @@ static void _display_vampire_attributes()
        {EOL "<w>Resistances</w>" EOL
         "Poison resistance    ", "           ", "        ", "          ", " +       ", " +       ", " +    "},
 
-       {"Cold resistance      ", "           ", "        ", "          ", " +       ", " +       ", " ++   "},
+       {"Cold resistance      ", "           ", "        ", "          ", " +       ", " ++      ", " ++   "},
 
        {"Negative resistance  ", "           ", "        ", " +        ", " ++      ", " +++     ", " +++  "},
 
@@ -2624,7 +2623,7 @@ std::string mutation_name(mutation_type mut, int level, bool colour)
 {
     const bool fully_active = mutation_is_fully_active(mut);
     const bool fully_inactive =
-        (!fully_active) && _mutation_is_fully_inactive(mut);
+        (!fully_active && _mutation_is_fully_inactive(mut));
 
     // level == -1 means default action of current level
     if (level == -1)
@@ -2677,7 +2676,7 @@ std::string mutation_name(mutation_type mut, int level, bool colour)
     else if (result.empty() && level > 0)
         result = mdef.have[level - 1];
 
-    if (fully_inactive)
+    if (fully_inactive || player_mutation_level(mut) < you.mutation[mut])
     {
         result = "(" + result;
         result += ")";
@@ -2686,7 +2685,7 @@ std::string mutation_name(mutation_type mut, int level, bool colour)
     if (colour)
     {
         const char* colourname = "lightgrey"; // the default
-        const bool permanent = (you.demon_pow[mut] > 0);
+        const bool permanent   = (you.demon_pow[mut] > 0);
         if (innate)
             colourname = (level > 0 ? "cyan" : "lightblue");
         else if (permanent)
@@ -2703,6 +2702,8 @@ std::string mutation_name(mutation_type mut, int level, bool colour)
             else
                 colourname = demonspawn ? "red"      : "lightblue";
         }
+        else if (fully_inactive)
+            colourname = "darkgrey";
 
         // Build the result
         std::ostringstream ostr;
@@ -2851,6 +2852,7 @@ try_again:
     int slow_dig = 0;
     int regen = 0;
     int slots_lost = 0;
+    int breath_weapons = 0;
 
     std::set<const facet_def *> facets_used;
 
@@ -2885,6 +2887,10 @@ try_again:
                 if (m == MUT_REGENERATION)
                     regen = 1;
 
+                if (m == MUT_SPIT_POISON || m == MUT_BREATHE_POISON
+                        || m == MUT_BREATHE_FLAMES)
+                    breath_weapons++;
+
                 if (m == MUT_CLAWS && i == 2 || m == MUT_HORNS && i == 0)
                     ++slots_lost;
             }
@@ -2900,6 +2906,9 @@ try_again:
         goto try_again;
 
     if (slow_dig && regen)
+        goto try_again;
+
+    if (breath_weapons > 1)
         goto try_again;
 
     return ret;
@@ -3041,10 +3050,7 @@ int how_mutated(bool all, bool levels)
         }
     }
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "how_mutated(): all = %u, levels = %u, j = %d",
-         all, levels, j);
-#endif
+    dprf("how_mutated(): all = %u, levels = %u, j = %d", all, levels, j);
 
     return (j);
 }

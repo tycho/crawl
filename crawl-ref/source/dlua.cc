@@ -10,14 +10,14 @@
 
 #include "dlua.h"
 #include "l_libs.h"
-
+#include "libutil.h"
 #include "tags.h"
 
 static int dlua_compiled_chunk_writer(lua_State *ls, const void *p,
                                       size_t sz, void *ud)
 {
     std::ostringstream &out = *static_cast<std::ostringstream*>(ud);
-    out.write((const char *) p, sz);
+    out.write(static_cast<const char *>(p), sz);
     return (0);
 }
 
@@ -273,17 +273,10 @@ void init_dungeon_lua()
     dluaopen_mapgrd(dlua);
     dluaopen_monsters(dlua);
     dluaopen_you(dlua);
+    dluaopen_dgn(dlua);
 
-    luaL_openlib(dlua, "dgn", dgn_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_build_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_event_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_grid_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_item_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_level_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_mons_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_subvault_dlib, 0);
-    luaL_openlib(dlua, "dgn", dgn_tile_dlib, 0);
     luaL_openlib(dlua, "feat", feat_dlib, 0);
+    luaL_openlib(dlua, "spells", spells_dlib, 0);
     luaL_openlib(dlua, "debug", debug_dlib, 0);
     luaL_openlib(dlua, "los", los_dlib, 0);
 

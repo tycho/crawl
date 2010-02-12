@@ -20,14 +20,17 @@
 #include "clua.h"
 #include "delay.h"
 #include "describe.h"
+#include "dgn-overview.h"
 #include "dgnevent.h"
 #include "directn.h"
 #include "map_knowledge.h"
 #include "exclude.h"
+#include "fight.h"
 #include "godabil.h"
 #include "itemname.h"
 #include "itemprop.h"
 #include "items.h"
+#include "libutil.h"
 #include "macro.h"
 #include "message.h"
 #include "misc.h"
@@ -37,7 +40,6 @@
 #ifdef USE_TILE
  #include "output.h"
 #endif
-#include "overmap.h"
 #include "place.h"
 #include "player.h"
 #include "stash.h"
@@ -203,6 +205,35 @@ inline bool is_trap(const coord_def& c)
     return feat_is_trap(env.map_knowledge(c).feat());
 }
 
+inline bool _is_safe_trap (const coord_def& c)
+{
+#ifdef CLUA_BINDINGS
+    if (clua.callbooleanfn(false, "ch_cross_trap", "s", trap_name(c)))
+    {
+        return  (true);
+    }
+#endif
+
+    const trap_type trap = get_trap_type(c);
+
+    // Teleport traps are safe to travel through with -TELE
+    if (trap == TRAP_TELEPORT && (player_equip(EQ_AMULET, AMU_STASIS, true)
+        || scan_artefacts(ARTP_PREVENT_TELEPORTATION, false)))
+    {
+        return (true);
+    }
+
+    // Known shafts can be side-stepped and thus are safe for auto-travel.
+    if (trap == TRAP_SHAFT)
+    {
+        trap_def* shaft = find_trap(c);
+        return (shaft->is_known());
+    }
+
+    return (false);
+}
+
+
 // Returns an estimate for the time needed to cross this feature.
 // This is done, so traps etc. will usually be circumvented where possible.
 inline int feature_traverse_cost(dungeon_feature_type feature)
@@ -285,12 +316,12 @@ unsigned char is_waypoint(const coord_def &p)
     return curr_waypoints[p.x][p.y];
 }
 
-inline bool is_stash(const LevelStashes *ls, int x, int y)
+inline bool is_stash(const LevelStashes *ls, const coord_def& p)
 {
     if (!ls)
         return (false);
 
-    const Stash *s = ls->find_stash(x, y);
+    const Stash *s = ls->find_stash(p);
     return s && s->enabled;
 }
 
@@ -360,14 +391,18 @@ bool is_travelsafe_square(const coord_def& c, bool ignore_hostile)
         return (true);
     }
 
-    return (feat_is_traversable(static_cast<dungeon_feature_type>(grid))
-#ifdef CLUA_BINDINGS
-                || (is_trap(c)
-                    && clua.callbooleanfn(false, "ch_cross_trap",
-                                          "s", trap_name(c)))
-#endif
-            )
-            && !is_excluded(c);
+    // Excluded squares are never safe.
+    if (is_excluded(c))
+    {
+        return (false);
+    }
+
+    if (is_trap(c) && _is_safe_trap(c))
+    {
+        return (true);
+    }
+
+    return (feat_is_traversable(grid));
 }
 
 // Returns true if the location at (x,y) is monster-free and contains no clouds.
@@ -390,15 +425,8 @@ static bool _is_safe_move(const coord_def& c)
         //    should have been aborted already by the checks in view.cc.
     }
 
-    if (is_trap(c)
-#ifdef CLUA_BINDINGS
-        && !clua.callbooleanfn(false, "ch_cross_trap",
-                               "s", trap_name(c))
-#endif
-        )
-    {
-        return (false);
-    }
+    if (is_trap(c))
+        return (_is_safe_trap(c));
 
     const int cloud = env.cgrid(c);
     if (cloud == EMPTY_CLOUD)
@@ -535,26 +563,20 @@ bool prompt_stop_explore(int es_why)
 #define ES_altar  (Options.explore_stop & ES_ALTAR)
 #define ES_portal (Options.explore_stop & ES_PORTAL)
 
-// Adds interesting stuff on (x, y) to explore_discoveries.
-inline static void _check_interesting_square(int x, int y,
+// Adds interesting stuff on the point p to explore_discoveries.
+inline static void _check_interesting_square(const coord_def pos,
                                              explore_discoveries &ed)
 {
-    const coord_def pos(x, y);
-
     if (ES_item || ES_greedy || ES_glow || ES_art || ES_rune)
     {
         if (const monsters *mons = monster_at(pos))
         {
             if (mons_is_unknown_mimic(mons))
-            {
-                item_def item;
-                get_mimic_item(mons, item);
-                ed.found_item(pos, item);
-            }
+                ed.found_item(pos, get_mimic_item(mons));
         }
 
-        if (igrd(pos) != NON_ITEM)
-            ed.found_item( pos, mitm[ igrd(pos) ] );
+        if (you.visible_igrd(pos) != NON_ITEM)
+            ed.found_item( pos, mitm[ you.visible_igrd(pos) ] );
     }
 
     ed.found_feature( pos, grd(pos) );
@@ -851,12 +873,12 @@ command_type travel()
         // feature, stop exploring.
 
         explore_discoveries discoveries;
-        for (int y = 0; y < GYM; ++y)
-            for (int x = 0; x < GXM; ++x)
-            {
-                if (!mapshadow[x][y].seen() && is_terrain_seen(x, y))
-                    _check_interesting_square(x, y, discoveries);
-            }
+        for (rectangle_iterator ri(1); ri; ++ri)
+        {
+            const coord_def p(*ri);
+            if (!mapshadow(p).seen() && is_terrain_seen(p))
+                _check_interesting_square(p, discoveries);
+        }
 
         if (discoveries.prompt_stop())
             stop_running();
@@ -1078,18 +1100,14 @@ travel_pathfind::~travel_pathfind()
 static bool _is_greed_inducing_square(const LevelStashes *ls,
                                       const coord_def &c)
 {
-    if (ls && ls->needs_visit(c.x, c.y))
+    if (ls && ls->needs_visit(c))
         return (true);
 
     if (const monsters *mons = monster_at(c))
     {
         if (mons_is_unknown_mimic(mons) && mons_was_seen(mons))
-        {
-            item_def mimic_item;
-            get_mimic_item(mons, mimic_item);
-            if (item_needs_autopickup(mimic_item))
+            if (item_needs_autopickup(get_mimic_item(mons)))
                 return (true);
-        }
     }
     return (false);
 }
@@ -1333,17 +1351,17 @@ void travel_pathfind::get_features()
 
     memset(point_distance, 0, sizeof(travel_distance_grid_t));
 
-    for (int x = X_BOUND_1; x <= X_BOUND_2; ++x)
-        for (int y = Y_BOUND_1; y <= Y_BOUND_2; ++y)
+    coord_def dc;
+    for (dc.x = X_BOUND_1; dc.x <= X_BOUND_2; ++dc.x)
+        for (dc.y = Y_BOUND_1; dc.y <= Y_BOUND_2; ++dc.y)
         {
-            coord_def dc(x,y);
-            dungeon_feature_type feature = env.map_knowledge(dc).feat();
+            const dungeon_feature_type feature = env.map_knowledge(dc).feat();
 
             if ((feature != DNGN_FLOOR
                     && !feat_is_water(feature)
                     && feature != DNGN_LAVA)
                 || is_waypoint(dc)
-                || is_stash(ls, dc.x, dc.y)
+                || is_stash(ls, dc)
                 || is_trap(dc))
             {
                 features->push_back(dc);
@@ -1515,7 +1533,7 @@ bool travel_pathfind::path_flood(const coord_def &c, const coord_def &dc)
                        && !feat_is_water(feature)
                        && feature != DNGN_LAVA
                     || is_waypoint(dc)
-                    || is_stash(ls, dc.x, dc.y)))
+                    || is_stash(ls, dc)))
             {
                 features->push_back(dc);
             }
@@ -1577,9 +1595,6 @@ bool travel_pathfind::path_examine_point(const coord_def &c)
 
 // Try to avoid to let travel (including autoexplore) move the player right
 // next to a lurking (previously unseen) monster.
-// NOTE: This define should either be replaced with a proper option, or
-//       removed entirely.
-#define SAFE_EXPLORE
 void find_travel_pos(const coord_def& youpos,
                      char *move_x, char *move_y,
                      std::vector<coord_def>* features)
@@ -1599,7 +1614,6 @@ void find_travel_pos(const coord_def& youpos,
     const coord_def dest = tp.pathfind( rmode );
     coord_def new_dest = dest;
 
-#ifdef SAFE_EXPLORE
     // Check whether this step puts us adjacent to any grid we haven't ever
     // seen or any non-wall grid we cannot currently see.
     //
@@ -1647,7 +1661,7 @@ void find_travel_pos(const coord_def& youpos,
 #endif
         }
     }
-#endif
+
     if (new_dest.origin())
     {
         if (move_x && move_y)
@@ -1869,9 +1883,9 @@ static bool _is_known_branch_id(int branch)
     // The Vestibule is special: there are no stairs to it, just a
     // portal.
     if (branch == BRANCH_VESTIBULE_OF_HELL)
-        return overmap_knows_portal(DNGN_ENTER_HELL);
+        return overview_knows_portal(DNGN_ENTER_HELL);
 
-    // If the overmap knows the stairs to this branch, we know the branch.
+    // If the overview knows the stairs to this branch, we know the branch.
     return (stair_level.find(static_cast<branch_type>(branch))
             != stair_level.end());
 }
@@ -1882,7 +1896,7 @@ static bool _is_known_branch(const Branch &br)
 }
 
 // Returns a list of the branches that the player knows the location of the
-// stairs to, in the same order as overmap.cc lists them.
+// stairs to, in the same order as dgn-overview.cc lists them.
 static std::vector<branch_type> _get_branches(bool (*selector)(const Branch &))
 {
     std::vector<branch_type> result;
@@ -1922,7 +1936,7 @@ static int _prompt_travel_branch(int prompt_flags, bool* to_entrance)
     level_id curr = level_id::current();
     while (true)
     {
-        mesclr(true);
+        mesclr();
 
         if (waypoint_list)
             travel_cache.list_waypoints();
@@ -2015,7 +2029,9 @@ static int _prompt_travel_branch(int prompt_flags, bool* to_entrance)
                     std::string msg;
 
                     if (target.startdepth == -1
-                        && (i == BRANCH_SWAMP || i == BRANCH_SHOALS ))
+                        && (i == BRANCH_SWAMP
+                            || i == BRANCH_SHOALS
+                            || i == BRANCH_SNAKE_PIT))
                     {
                         msg += "Branch not generated this game.  ";
                     }
@@ -2193,7 +2209,7 @@ static travel_target _prompt_travel_depth(const level_id &id,
     target.p.id.depth = _get_nearest_level_depth(target.p.id.branch);
     while (true)
     {
-        mesclr(true);
+        mesclr();
         mprf(MSGCH_PROMPT, "What level of %s? "
              "(default %s, ? - help) ",
              branches[target.p.id.branch].longname,
@@ -2201,8 +2217,7 @@ static travel_target _prompt_travel_depth(const level_id &id,
 
         char buf[100];
         const int response =
-            cancelable_get_line( buf, sizeof buf, get_number_of_cols(),
-                                 NULL, _travel_depth_keyfilter );
+            cancelable_get_line(buf, sizeof buf, NULL, _travel_depth_keyfilter);
 
         if (!response)
             return _parse_travel_target(buf, target);
@@ -2216,6 +2231,13 @@ static travel_target _prompt_travel_depth(const level_id &id,
 
 bool travel_kill_monster(const monsters * monster)
 {
+    if (!wielded_weapon_check(you.weapon(), true))
+        return (false);
+
+    // Don't auto-kill things with berserkitis or *rage.
+    if (player_mutation_level(MUT_BERSERK) || scan_artefacts(ARTP_ANGRY))
+        return (false);
+
     return (monster->type == MONS_TOADSTOOL);
 }
 
@@ -2824,7 +2846,7 @@ void arrange_features(std::vector<coord_def> &features)
 level_id level_id::current()
 {
     const level_id id(you.where_are_you,
-                      subdungeon_depth(you.where_are_you, you.your_level),
+                      subdungeon_depth(you.where_are_you, you.absdepth0),
                       you.level_type);
     return id;
 }
@@ -2847,7 +2869,7 @@ int level_id::absdepth() const
         return 51;
     default:
         // No true notion of depth here.
-        return you.your_level;
+        return you.absdepth0;
     }
 }
 
@@ -4101,4 +4123,33 @@ bool explore_discoveries::prompt_stop() const
     return ((Options.explore_stop_prompt & es_flags) != es_flags
             || marker_stop
             || prompt_stop_explore(es_flags));
+}
+
+void do_interlevel_travel()
+{
+    if (Tutorial.tut_travel)
+        Tutorial.tut_travel = 0;
+
+    if (!can_travel_interlevel())
+    {
+        if (you.running.pos == you.pos())
+        {
+            mpr("You're already here.");
+            return;
+        }
+        else if (!you.running.pos.x || !you.running.pos.y)
+        {
+            mpr("Sorry, you can't auto-travel out of here.");
+            return;
+        }
+
+        // Don't ask for a destination if you can only travel
+        // within level anyway.
+        start_travel(you.running.pos);
+    }
+    else
+        start_translevel_travel_prompt();
+
+    if (you.running)
+        mesclr();
 }

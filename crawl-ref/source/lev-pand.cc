@@ -15,7 +15,6 @@
 #include "env.h"
 #include "mon-place.h"
 #include "mgen_data.h"
-#include "coord.h"
 #include "mon-pick.h"
 #include "random.h"
 
@@ -122,6 +121,9 @@ void init_pandemonium(void)
 
         if (one_chance_in(30))
             env.mons_alloc[pc] = MONS_IMP;
+
+        if (one_chance_in(30))
+            env.mons_alloc[pc] = MONS_SIXFIRHY;
 
         if (one_chance_in(20))
         {

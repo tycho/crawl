@@ -4,6 +4,7 @@
 #include "cluautil.h"
 #include "dlua.h"
 #include "l_libs.h"
+#include "libutil.h"
 #include "files.h"
 
 #include "tags.h"
@@ -149,6 +150,27 @@ static int file_unmarshall_meta(lua_State *ls)
 // Returns a Lua table of filenames in the named directory. The file names
 // returned are unqualified. The directory must be a relative path, and will
 // be resolved to an absolute path if necessary using datafile_path.
+LUAFN(_file_datadir_files_recursive)
+{
+    const std::string rawdir(luaL_checkstring(ls, 1));
+    // A filename suffix to match (such as ".des"). If empty, files
+    // will be unfiltered.
+    const std::string ext_filter(lua_isnoneornil(ls, 2) ? "" :
+                                 luaL_checkstring(ls, 2));
+    const std::string datadir(
+        datafile_path(rawdir, false, false, dir_exists));
+
+    if (datadir.empty())
+        luaL_error(ls, "Cannot find data directory: '%s'", rawdir.c_str());
+
+    const std::vector<std::string> files =
+        get_dir_files_recursive(datadir, ext_filter);
+    return clua_stringtable(ls, files);
+}
+
+// Returns a Lua table of filenames in the named directory. The file names
+// returned are unqualified. The directory must be a relative path, and will
+// be resolved to an absolute path if necessary using datafile_path.
 LUAFN(_file_datadir_files)
 {
     const std::string rawdir(luaL_checkstring(ls, 1));
@@ -168,6 +190,23 @@ LUAFN(_file_datadir_files)
     return clua_stringtable(ls, files);
 }
 
+LUAFN(_file_writefile)
+{
+    const std::string fname(luaL_checkstring(ls, 1));
+    FILE *f = fopen(fname.c_str(), "w");
+    if (f)
+    {
+        fprintf(f, "%s", luaL_checkstring(ls, 2));
+        fclose(f);
+        lua_pushboolean(ls, true);
+    }
+    else
+    {
+        lua_pushboolean(ls, false);
+    }
+    return (1);
+}
+
 static const struct luaL_reg file_dlib[] =
 {
     { "marshall",   file_marshall },
@@ -176,8 +215,9 @@ static const struct luaL_reg file_dlib[] =
     { "unmarshall_number", file_unmarshall_number },
     { "unmarshall_string", file_unmarshall_string },
     { "unmarshall_fn", file_unmarshall_fn },
-
+    { "writefile", _file_writefile },
     { "datadir_files", _file_datadir_files },
+    { "datadir_files_recursive", _file_datadir_files_recursive },
     { NULL, NULL }
 };
 

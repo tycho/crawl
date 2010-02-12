@@ -13,6 +13,7 @@
 #include "coord.h"
 #include "dungeon.h"
 #include "env.h"
+#include "libutil.h"
 #include "mon-stuff.h"
 #include "mon-util.h"
 #include "religion.h"
@@ -129,12 +130,15 @@ void debug_dump_levgen()
     else
     {
         const CrawlHashTable &vaults = props[TEMP_VAULTS_KEY].get_table();
-        CrawlHashTable::const_iterator i = vaults.begin();
-
-        for (; i != vaults.end(); ++i)
+        if (!vaults.empty())
         {
-            mprf("    %s: %s", i->first.c_str(),
-                 i->second.get_string().c_str());
+            CrawlHashTable::const_iterator i = vaults.begin();
+
+            for (; i != vaults.end(); ++i)
+            {
+                mprf("    %s: %s", i->first.c_str(),
+                     i->second.get_string().c_str());
+            }
         }
     }
     mpr("");
@@ -252,7 +256,7 @@ void debug_dump_mon(const monsters* mon, bool recurse)
         fprintf(stderr, EOL "Travelling:" EOL);
         fprintf(stderr, "    travel_target      = %d" EOL, mon->travel_target);
         fprintf(stderr, "    travel_path.size() = %lu" EOL,
-                (long unsigned int) mon->travel_path.size());
+                (unsigned long) mon->travel_path.size());
 
         if (mon->travel_path.size() > 0)
         {
@@ -413,5 +417,3 @@ int debug_cap_stat(int stat)
             stat > 127 ? 127
                        : stat);
 }
-
-

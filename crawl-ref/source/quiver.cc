@@ -142,6 +142,14 @@ void player_quiver::empty_quiver(ammo_t ammo_type)
     you.redraw_quiver = true;
 }
 
+static bool _wielded_slot_no_quiver(int slot)
+{
+    return (slot == you.equip[EQ_WEAPON]
+            && you.inv[slot].base_type == OBJ_WEAPONS
+            && (get_weapon_brand(you.inv[slot]) != SPWPN_RETURNING
+                || you.skills[SK_THROWING] == 0));
+}
+
 void choose_item_for_quiver()
 {
     int slot = prompt_invent_item("Quiver which item? (- for none, * to show all)",
@@ -162,14 +170,10 @@ void choose_item_for_quiver()
              t == AMMO_BLOWGUN  ? "blowgun" :
              t == AMMO_SLING    ? "sling" :
              t == AMMO_BOW      ? "bow" :
-             t == AMMO_CROSSBOW ? "crossbow"
-                                : "hand crossbow");
+                                  "crossbow");
         return;
     }
-    else if (slot == you.equip[EQ_WEAPON]
-             && you.inv[slot].base_type == OBJ_WEAPONS
-             && (get_weapon_brand(you.inv[slot]) != SPWPN_RETURNING
-                 || you.skills[SK_THROWING] == 0))
+    else if (_wielded_slot_no_quiver(slot))
     {
         // Don't quiver a wielded weapon unless it's a weapon of returning
         // and we've got some throwing skill.
@@ -178,7 +182,7 @@ void choose_item_for_quiver()
     }
     else
     {
-        for (int i = EQ_CLOAK; i < NUM_EQUIP; i++)
+        for (int i = EQ_MIN_ARMOUR; i <= EQ_MAX_WORN; i++)
         {
             if (you.equip[i] == slot)
             {
@@ -202,8 +206,7 @@ void choose_item_for_quiver()
          t == AMMO_BLOWGUN  ? "blowguns" :
          t == AMMO_SLING    ? "slings" :
          t == AMMO_BOW      ? "bows" :
-         t == AMMO_CROSSBOW ? "crossbows"
-                            : "hand crossbows");
+                              "crossbows");
 }
 
 // Notification that item was fired with 'f'.
@@ -564,23 +567,29 @@ static bool _item_matches(const item_def &item, fire_type types,
 // or -1 if not in inv.
 static int _get_pack_slot(const item_def& item)
 {
-    if (! item.is_valid())
+    if (!item.is_valid())
         return -1;
 
     // First try to find the exact same item.
     for (int i = 0; i < ENDOFPACK; i++)
     {
         const item_def& inv_item = you.inv[i];
-        if (inv_item.quantity && _items_similar(item, you.inv[i], false))
+        if (inv_item.quantity && _items_similar(item, you.inv[i], false)
+            && !_wielded_slot_no_quiver(i))
+        {
             return i;
+        }
     }
 
     // If that fails, try to find an item sufficiently similar.
     for (int i = 0; i < ENDOFPACK; i++)
     {
         const item_def& inv_item = you.inv[i];
-        if (inv_item.quantity && _items_similar(item, you.inv[i], true))
+        if (inv_item.quantity && _items_similar(item, you.inv[i], true)
+            && !_wielded_slot_no_quiver(i))
+        {
             return i;
+        }
     }
 
     return -1;
@@ -606,8 +615,6 @@ static ammo_t _get_weapon_ammo_type(const item_def* weapon)
             return AMMO_BOW;
         case WPN_CROSSBOW:
             return AMMO_CROSSBOW;
-        case WPN_HAND_CROSSBOW:
-            return AMMO_HAND_CROSSBOW;
         default:
             return AMMO_THROW;
     }

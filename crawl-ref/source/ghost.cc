@@ -16,6 +16,7 @@
 #include "externs.h"
 #include "itemname.h"
 #include "itemprop.h"
+#include "libutil.h"
 #include "mon-iter.h"
 #include "ng-input.h"
 #include "random.h"
@@ -39,7 +40,6 @@ std::vector<ghost_demon> ghosts;
 // Order for looking for conjurations for the 1st & 2nd spell slots,
 // when finding spells to be remembered by a player's ghost.
 static spell_type search_order_conj[] = {
-// 0
     SPELL_LEHUDIBS_CRYSTAL_SPEAR,
     SPELL_FIRE_STORM,
     SPELL_ICE_STORM,
@@ -50,8 +50,8 @@ static spell_type search_order_conj[] = {
     SPELL_LIGHTNING_BOLT,
     SPELL_AIRSTRIKE,
     SPELL_STICKY_FLAME,
-// 10
     SPELL_ISKENDERUNS_MYSTIC_BLAST,
+    SPELL_IOOD,
     SPELL_BOLT_OF_MAGMA,
     SPELL_THROW_ICICLE,
     SPELL_BOLT_OF_FIRE,
@@ -61,7 +61,6 @@ static spell_type search_order_conj[] = {
     SPELL_VENOM_BOLT,
     SPELL_IRON_SHOT,
     SPELL_STONE_ARROW,
-// 20
     SPELL_THROW_FLAME,
     SPELL_THROW_FROST,
     SPELL_PAIN,
@@ -285,6 +284,8 @@ void ghost_demon::init_random_demon()
             spells[1] = SPELL_ISKENDERUNS_MYSTIC_BLAST;
         if (one_chance_in(25))
             spells[1] = SPELL_HELLFIRE;
+        if (one_chance_in(25))
+            spells[1] = SPELL_IOOD;
 
         if (one_chance_in(25))
             spells[2] = SPELL_SMITING;
@@ -487,8 +488,8 @@ static mon_attack_flavour _very_ugly_thing_flavour_upgrade(mon_attack_flavour u_
 void ghost_demon::init_ugly_thing(bool very_ugly, bool only_mutate,
                                   unsigned char force_colour)
 {
-    // Midpoint: 10, as in mon-data.h.
-    speed = 9 + random2(3);
+    // Movement speed: 11, the same as in mon-data.h.
+    speed = 11;
 
     // Midpoint: 10, as in mon-data.h.
     ev = 9 + random2(3);
@@ -512,8 +513,8 @@ void ghost_demon::init_ugly_thing(bool very_ugly, bool only_mutate,
 
     const mon_attack_type att_types[] =
     {
-        AT_BITE, AT_STING, AT_CLAW, AT_PECK, AT_HEADBUTT, AT_PUNCH, AT_KICK,
-        AT_TENTACLE_SLAP, AT_TAIL_SLAP, AT_GORE
+        AT_BITE, AT_STING, AT_ENGULF, AT_CLAW, AT_PECK, AT_HEADBUTT, AT_PUNCH,
+        AT_KICK, AT_TENTACLE_SLAP, AT_TAIL_SLAP, AT_GORE, AT_CONSTRICT
     };
 
     att_type = RANDOM_ELEMENT(att_types);
@@ -850,7 +851,7 @@ void ghost_demon::announce_ghost(const ghost_demon &g)
 
 void ghost_demon::find_extra_ghosts( std::vector<ghost_demon> &gs, int n )
 {
-    for (monster_iterator mi; mi; ++mi)
+    for (monster_iterator mi; mi && n > 0; ++mi)
     {
         if (mi->type == MONS_PLAYER_GHOST && mi->ghost.get())
         {
@@ -868,8 +869,8 @@ void ghost_demon::find_extra_ghosts( std::vector<ghost_demon> &gs, int n )
 // Returns the number of extra ghosts allowed on the level.
 int ghost_demon::n_extra_ghosts()
 {
-    const int lev = you.your_level + 1;
-    const int subdepth = subdungeon_depth(you.where_are_you, you.your_level);
+    const int lev = you.absdepth0 + 1;
+    const int subdepth = subdungeon_depth(you.where_are_you, you.absdepth0);
 
     if (you.level_type == LEVEL_PANDEMONIUM
         || you.level_type == LEVEL_ABYSS

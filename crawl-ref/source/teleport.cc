@@ -19,6 +19,7 @@
 #include "random.h"
 #include "random-weight.h"
 #include "state.h"
+#include "stuff.h"
 #include "terrain.h"
 
 bool player::blink_to(const coord_def& dest, bool quiet)
@@ -29,7 +30,7 @@ bool player::blink_to(const coord_def& dest, bool quiet)
     if (dest == pos())
         return (false);
     if (!quiet)
-        mpr("You blink.");
+        canned_msg(MSG_YOU_BLINK);
     const coord_def origin = pos();
     if (!move_player_to_grid(dest, false, true, true))
         return (false);
@@ -269,9 +270,11 @@ bool random_near_space(const coord_def& origin, coord_def& target,
 
         int walls_between = 0;
         if (!crawl_state.arena)
+        {
             walls_between = num_feats_between(target, you.pos(),
                                               DNGN_CLEAR_ROCK_WALL,
                                               DNGN_CLEAR_PERMAROCK_WALL);
+        }
 
         if (walls_between >= min_walls_between)
             return (true);
@@ -279,5 +282,3 @@ bool random_near_space(const coord_def& origin, coord_def& target,
 
     return (false);
 }
-
-

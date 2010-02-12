@@ -21,8 +21,8 @@
 #include "defines.h"
 #include "enum.h"
 #include "fixedarray.h"
-#include "libutil.h"
 #include "mpr.h"
+#include "pattern.h"
 #include "store.h"
 
 #ifdef USE_TILE
@@ -34,6 +34,8 @@ struct tile_flavour
     unsigned short wall;
     // Used as a random value or for special cases e.g. (bazaars, gates).
     unsigned short special;
+    // Used (primarily) by the vault 'TILE' overlay.
+    unsigned short feat;
 };
 
 // A glorified unsigned int that assists with ref-counting the mcache.
@@ -78,7 +80,6 @@ const int kPathLen = 256;
 typedef FixedArray<dungeon_feature_type, GXM, GYM> feature_grid;
 
 struct item_def;
-class melee_attack;
 struct coord_def;
 class level_id;
 class player_quiver;
@@ -89,6 +90,11 @@ class monster;
 class KillMaster;
 class ghost_demon;
 struct glyph;
+
+template <typename Z> inline Z sgn(Z x)
+{
+    return (x < 0 ? -1 : (x > 0 ? 1 : 0));
+}
 
 struct coord_def
 {
@@ -213,6 +219,11 @@ struct coord_def
         return (copy *= mul);
     }
 
+    coord_def sgn() const
+    {
+        return coord_def(::sgn(x), ::sgn(y));
+    }
+
     int abs() const
     {
         return (x * x + y * y);
@@ -255,9 +266,13 @@ struct cloud_struct
     unsigned char spread_rate;
     kill_category whose;
     killer_type   killer;
+    int           colour;
+    std::string   name;
+    std::string   tile;
 
     cloud_struct() : pos(), type(CLOUD_NONE), decay(0), spread_rate(0),
-                     whose(KC_OTHER), killer(KILL_NONE)
+                     whose(KC_OTHER), killer(KILL_NONE), colour(-1),
+                     name(""), tile("")
     {
     }
 
@@ -342,12 +357,12 @@ public:
     // Returns the absolute depth in the dungeon for the level_id;
     // non-dungeon branches (specifically Abyss and Pan) will return
     // depths suitable for use in monster and item generation. If
-    // you're looking for a depth to set you.your_level to, use
+    // you're looking for a depth to set you.absdepth0 to, use
     // dungeon_absdepth().
     int absdepth() const;
 
     // Returns the absolute depth in the dungeon for the level_id, corresponding
-    // to you.your_level.
+    // to you.absdepth0.
     int dungeon_absdepth() const;
 
     bool is_valid() const
@@ -527,6 +542,12 @@ public:
 
     bool is_valid() const;
 
+    // Returns true if this item should be preserved as far as possible.
+    bool is_critical() const;
+
+    // Returns true if this item should not normally be enchanted.
+    bool is_mundane() const;
+
 private:
     std::string name_aux(description_level_type desc,
                          bool terse, bool ident,
@@ -596,12 +617,12 @@ public:
     long turns_resting;
     long turns_other;
 
-    double elapsed_total;
-    double elapsed_explore;
-    double elapsed_travel;
-    double elapsed_interlevel;
-    double elapsed_resting;
-    double elapsed_other;
+    long elapsed_total;
+    long elapsed_explore;
+    long elapsed_travel;
+    long elapsed_interlevel;
+    long elapsed_resting;
+    long elapsed_other;
 
 public:
     PlaceInfo();
@@ -707,7 +728,7 @@ struct colour_mapping
 struct message_colour_mapping
 {
     message_filter message;
-    int colour;
+    msg_colour_type colour;
 };
 
 class InvEntry;
@@ -759,7 +780,5 @@ struct mon_display
                 monster_type d = MONS_NO_MONSTER)
        : type(m), glyph(gly), colour(col), detected(d) { }
 };
-
-#include "msvc.h"
 
 #endif // EXTERNS_H

@@ -22,6 +22,7 @@
 #include "branch.h"
 #include "cloud.h"
 #include "coordit.h"
+#include "database.h"
 #include "directn.h"
 #include "debug.h"
 #include "delay.h"
@@ -33,6 +34,7 @@
 #include "itemname.h"
 #include "itemprop.h"
 #include "items.h"
+#include "item_use.h"
 #include "message.h"
 #include "misc.h"
 #include "mon-behv.h"
@@ -43,8 +45,10 @@
 #include "coord.h"
 #include "mon-stuff.h"
 #include "mon-util.h"
+#include "options.h"
 #include "player.h"
 #include "religion.h"
+#include "godconduct.h"
 #include "spells1.h"
 #include "spells4.h"
 #include "spl-cast.h"
@@ -56,7 +60,6 @@
 #include "travel.h"
 #include "view.h"
 #include "shout.h"
-#include "viewgeom.h"
 #include "xom.h"
 
 bool cast_selective_amnesia(bool force)
@@ -85,7 +88,7 @@ bool cast_selective_amnesia(bool force)
         }
 
         if (!isalpha(keyin))
-            mesclr(true);
+            mesclr();
         else
             break;
     }
@@ -122,6 +125,18 @@ bool cast_selective_amnesia(bool force)
     return (true);
 }
 
+static void _maybe_mark_was_cursed(item_def &item)
+{
+    if (Options.autoinscribe_cursed
+        && item.inscription.find("was cursed") == std::string::npos
+        && !item_ident(item, ISFLAG_SEEN_CURSED)
+        && !item_ident(item, ISFLAG_IDENT_MASK))
+    {
+        add_inscription(item, "was cursed");
+    }
+    do_uncurse_item(item);
+}
+
 bool remove_curse(bool suppress_msg)
 {
     bool success = false;
@@ -129,10 +144,10 @@ bool remove_curse(bool suppress_msg)
     // Only cursed *weapons* in hand count as cursed. - bwr
     if (you.weapon()
         && you.weapon()->base_type == OBJ_WEAPONS
-        && item_cursed(*you.weapon()))
+        && you.weapon()->cursed())
     {
         // Also sets wield_change.
-        do_uncurse_item(*you.weapon());
+        _maybe_mark_was_cursed(*you.weapon());
         success = true;
     }
 
@@ -141,9 +156,9 @@ bool remove_curse(bool suppress_msg)
     for (int i = EQ_WEAPON + 1; i < NUM_EQUIP; i++)
     {
         // Melded equipment can also get uncursed this way.
-        if (you.equip[i] != -1 && item_cursed(you.inv[you.equip[i]]))
+        if (you.equip[i] != -1 && you.inv[you.equip[i]].cursed())
         {
-            do_uncurse_item(you.inv[you.equip[i]]);
+            _maybe_mark_was_cursed(you.inv[you.equip[i]]);
             success = true;
         }
     }
@@ -588,11 +603,12 @@ bool cast_shadow_creatures(god_type god)
 
 bool cast_summon_horrible_things(int pow, god_type god)
 {
-    if (one_chance_in(3)
-        && !lose_stat(STAT_INTELLIGENCE, 1, true, "summoning horrible things"))
+    if (one_chance_in(3))
     {
-        canned_msg(MSG_NOTHING_HAPPENS);
-        return (false);
+        // if someone deletes the db, no message is ok
+        mpr(getMiscString("SHT_int_loss").c_str());
+        lose_stat(STAT_INTELLIGENCE, 1, true, "summoning horrible things");
+        // Since sustAbil no longer helps here, this can't fail anymore -- 1KB
     }
 
     int how_many_small =
@@ -653,10 +669,8 @@ bool cast_summon_horrible_things(int pow, god_type god)
 
 bool receive_corpses(int pow, coord_def where)
 {
-#if DEBUG_DIAGNOSTICS
     // pow = invocations * 4, ranges from 0 to 108
-    mprf(MSGCH_DIAGNOSTICS, "receive_corpses() power: %d", pow);
-#endif
+    dprf("receive_corpses() power: %d", pow);
 
     // Kiku gives branch-appropriate corpses (like shadow creatures).
     int expected_extra_corpses = 3 + pow / 18; // 3 at 0 Inv, 9 at 27 Inv.
@@ -1120,7 +1134,7 @@ int animate_dead(actor *caster, int pow, beh_type beha, unsigned short hitting,
 //
 // Hides and other "animal part" items are intentionally left out, it's
 // unrequired complexity, and fresh flesh makes more "sense" for a spell
-// reforming the original monster out of ice anyways.
+// reforming the original monster out of ice anyway.
 bool cast_simulacrum(int pow, god_type god)
 {
     int count = 0;
@@ -1198,9 +1212,7 @@ bool cast_twisted_resurrection(int pow, god_type god)
         return (false);
     }
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Mass for abomination: %d", total_mass);
-#endif
+    dprf("Mass for abomination: %d", total_mass);
 
     // This is what the old statement pretty much boils down to,
     // the average will be approximately 10 * pow (or about 1000
@@ -1209,9 +1221,7 @@ bool cast_twisted_resurrection(int pow, god_type god)
     // material components are far more important to this spell. - bwr
     total_mass += roll_dice(20, pow);
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Mass including power bonus: %d", total_mass);
-#endif
+    dprf("Mass including power bonus: %d", total_mass);
 
     if (total_mass < 400 + roll_dice(2, 500)
         || how_many_corpses < (coinflip() ? 3 : 2))
@@ -1387,8 +1397,8 @@ bool allow_control_teleport(bool quiet)
 
 void you_teleport(void)
 {
-    if (scan_artefacts(ARTP_PREVENT_TELEPORTATION))
-        mpr("You feel a weird sense of stasis.");
+    if (item_blocks_teleport(true, true))
+        canned_msg(MSG_WEIRD_STASIS);
     else if (you.duration[DUR_TELEPORT])
     {
         mpr("You feel strangely stable.");
@@ -1411,10 +1421,10 @@ void you_teleport(void)
 }
 
 // Should return true if we don't want anyone to teleport here.
-bool _cell_vetoes_teleport (const coord_def cell)
+bool _cell_vetoes_teleport (const coord_def cell, bool  check_monsters = true)
 {
     // Monsters always veto teleport.
-    if (monster_at(cell))
+    if (monster_at(cell) && check_monsters)
         return (true);
 
     // As do all clouds; this may change.
@@ -1431,10 +1441,60 @@ bool _cell_vetoes_teleport (const coord_def cell)
     case DNGN_DEEP_WATER:
         if (you.species == SP_MERFOLK)
             return (false);
+        else
+            return (true);
+
+    case DNGN_LAVA:
+        return (true);
 
     default:
-        return (true);
+        // Lava is really the only non-solid glyph above DNGN_MAXSOLID that is
+        // not a safe teleport location, and that's handled above.
+        if (cell_is_solid(cell))
+            return (true);
+
+        return (false);
     }
+}
+
+void _handle_teleport_update (bool large_change, bool check_ring_TC,
+                            const coord_def old_pos)
+{
+    if (large_change)
+    {
+        viewwindow(false, true);
+        for (monster_iterator mi; mi; ++mi)
+        {
+            const bool see_cell = you.see_cell(mi->pos());
+
+            if (mi->foe == MHITYOU && !see_cell)
+            {
+                mi->foe_memory = 0;
+                behaviour_event(*mi, ME_EVAL);
+            }
+            else if (see_cell)
+                behaviour_event(*mi, ME_EVAL);
+        }
+
+        handle_interrupted_swap(true);
+    }
+
+    // Might identify unknown ring of teleport control.
+    if (check_ring_TC)
+        maybe_id_ring_TC();
+
+#ifdef USE_TILE
+    if (you.species == SP_MERFOLK)
+    {
+        const dungeon_feature_type new_grid = grd(you.pos());
+        const dungeon_feature_type old_grid = grd(old_pos);
+        if (feat_is_water(old_grid) && !feat_is_water(new_grid)
+            || !feat_is_water(old_grid) && feat_is_water(new_grid))
+        {
+            init_player_doll();
+        }
+    }
+#endif
 }
 
 static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizard_tele)
@@ -1447,9 +1507,9 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
     if (wizard_tele)
         is_controlled = true;
 
-    if (scan_artefacts(ARTP_PREVENT_TELEPORTATION) && !wizard_tele)
+    if (item_blocks_teleport(true, true) && !wizard_tele)
     {
-        mpr("You feel a strange sense of stasis.");
+        canned_msg(MSG_WEIRD_STASIS);
         return (false);
     }
 
@@ -1461,7 +1521,7 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
     // in case something happened in the exact turn that we teleported
     // (like picking up/dropping an item).
     viewwindow(false, true);
-    StashTrack.update_stash();
+    StashTrack.update_stash(you.pos());
 
     if (you.duration[DUR_CONDENSATION_SHIELD] > 0)
         remove_condensation_shield();
@@ -1476,21 +1536,21 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
     }
 
     coord_def pos(1, 0);
+    const coord_def old_pos = you.pos();
     bool      large_change  = false;
     bool      check_ring_TC = false;
-#ifdef USE_TILE
-    const dungeon_feature_type old_grid = grd(you.pos());
-#endif
 
     if (is_controlled)
     {
-        mpr("You may choose your destination (press '.' or delete to select).");
-        mpr("Expect minor deviation.");
         check_ring_TC = true;
 
-        // Only have the more prompt for non-wizard.
+        // Only have the messages and the more prompt for non-wizard.
         if (!wizard_tele)
+        {
+            mpr("You may choose your destination (press '.' or delete to select).");
+            mpr("Expect minor deviation.");
             more();
+        }
 
         while (true)
         {
@@ -1511,16 +1571,18 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
             }
 #endif
 
-#if DEBUG_DIAGNOSTICS
-            mprf(MSGCH_DIAGNOSTICS, "Target square (%d,%d)", pos.x, pos.y );
-#endif
+            dprf("Target square (%d,%d)", pos.x, pos.y );
 
             if (pos == you.pos() || pos == coord_def(-1,-1))
             {
                 if (!wizard_tele)
+                {
                     if (!yesno("Are you sure you want to cancel this teleport?",
                                true, 'n'))
+                    {
                         continue;
+                    }
+                }
                 you.turn_is_over = false;
                 return (false);
             }
@@ -1534,7 +1596,6 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
                 more();
                 continue;
             }
-
             break;
         }
 
@@ -1549,10 +1610,7 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
                 pos.x += random2(3) - 1;
                 pos.y += random2(3) - 1;
             }
-#if DEBUG_DIAGNOSTICS
-        mprf(MSGCH_DIAGNOSTICS,
-             "Scattered target square (%d, %d)", pos.x, pos.y);
-#endif
+            dprf("Scattered target square (%d, %d)", pos.x, pos.y);
         }
 
         if (!in_bounds(pos))
@@ -1569,10 +1627,7 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
             // Merfolk should be able to control-tele into deep water.
             if (_cell_vetoes_teleport(pos))
             {
-#if DEBUG_DIAGNOSTICS
-                mprf(MSGCH_DIAGNOSTICS,
-                    "Target square (%d, %d) vetoed, now random teleport.", pos.x, pos.y);
-#endif
+                dprf("Target square (%d, %d) vetoed, now random teleport.", pos.x, pos.y);
                 is_controlled = false;
                 large_change  = false;
             }
@@ -1585,7 +1640,7 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
             else
             {
                 // Leave a purple cloud.
-                place_cloud(CLOUD_TLOC_ENERGY, you.pos(), 1 + random2(3), KC_YOU);
+                place_cloud(CLOUD_TLOC_ENERGY, old_pos, 1 + random2(3), KC_YOU);
 
                 // Controlling teleport contaminates the player. - bwr
                 move_player_to_grid(pos, false, true, true);
@@ -1628,16 +1683,11 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
 
         do
             newpos = random_in_bounds();
-        while (grd(newpos) != DNGN_FLOOR
-                   && grd(newpos) != DNGN_SHALLOW_WATER
-                   && (you.species != SP_MERFOLK
-                       || grd(newpos) != DNGN_DEEP_WATER)
-               || monster_at(newpos)
-               || env.cgrid(newpos) != EMPTY_CLOUD
+        while (_cell_vetoes_teleport(newpos)
                || need_distance_check && (newpos - centre).abs() < 34*34
                || testbits(env.pgrid(newpos), FPROP_NO_RTELE_INTO));
 
-        if (newpos == you.pos())
+        if (newpos == old_pos)
             mpr("Your surroundings flicker for a moment.");
         else if (you.see_cell(newpos))
             mpr("Your surroundings seem slightly different.");
@@ -1648,52 +1698,86 @@ static bool _teleport_player(bool allow_control, bool new_abyss_area, bool wizar
         }
 
         // Leave a purple cloud.
-        place_cloud(CLOUD_TLOC_ENERGY, you.pos(), 1 + random2(3), KC_YOU);
+        place_cloud(CLOUD_TLOC_ENERGY, old_pos, 1 + random2(3), KC_YOU);
 
         move_player_to_grid(newpos, false, true, true);
     }
 
-    if (large_change)
-    {
-        viewwindow(false, true);
-        for (monster_iterator mi; mi; ++mi)
-        {
-            const bool see_cell = you.see_cell(mi->pos());
-
-            if (mi->foe == MHITYOU && !see_cell)
-            {
-                mi->foe_memory = 0;
-                behaviour_event(*mi, ME_EVAL);
-            }
-            else if (see_cell)
-                behaviour_event(*mi, ME_EVAL);
-        }
-
-        handle_interrupted_swap(true);
-    }
-
-    // Might identify unknown ring of teleport control.
-    if (check_ring_TC)
-        maybe_id_ring_TC();
-
-#ifdef USE_TILE
-    if (you.species == SP_MERFOLK)
-    {
-        const dungeon_feature_type new_grid = grd(you.pos());
-        if (feat_is_water(old_grid) && !feat_is_water(new_grid)
-            || !feat_is_water(old_grid) && feat_is_water(new_grid))
-        {
-            init_player_doll();
-        }
-    }
-#endif
-
+    _handle_teleport_update(large_change, check_ring_TC, old_pos);
     return (!is_controlled);
+}
+
+bool you_teleport_to (const coord_def where_to, bool move_monsters)
+{
+    // Attempts to teleport the player from their current location to 'where'.
+    // Follows this line of reasoning:
+    //   1. Check the location (against _cell_vetoes_teleport), if valid,
+    //      teleport the player there.
+    //   2. If not because of a monster, and move_monster, teleport that
+    //      monster out of the way, then teleport the player there.
+    //   3. Otherwise, iterate over adjacent squares. If a sutiable position is
+    //      found (or a monster can be moved out of the way, with move_monster)
+    //      then teleport the player there.
+    //   4. If not, give up and return false.
+
+    bool check_ring_TC = false;
+    const coord_def old_pos = you.pos();
+    coord_def where = where_to;
+    coord_def old_where = where_to;
+
+    // Don't bother to calculate a possible new position if it's out of bounds.
+    if (!in_bounds(where))
+        return (false);
+
+    if (_cell_vetoes_teleport(where))
+    {
+        if (monster_at(where) && move_monsters && !_cell_vetoes_teleport(where, false))
+        {
+            monsters *mons = monster_at(where);
+            mons->teleport(true);
+        }
+        else
+        {
+            for (adjacent_iterator ai(where); ai; ++ai)
+            {
+                if (!_cell_vetoes_teleport(*ai))
+                {
+                    where = *ai;
+                    break;
+                }
+                else
+                {
+                    if (monster_at(*ai) && move_monsters
+                            && !_cell_vetoes_teleport(*ai, false))
+                    {
+                        monsters *mons = monster_at(*ai);
+                        mons->teleport(true);
+                        where = *ai;
+                        break;
+                    }
+                }
+            }
+            // Give up, we can't find a suitable spot.
+            if (where == old_where)
+                return (false);
+        }
+    }
+
+    // If we got this far, we're teleporting the player.
+    // Leave a purple cloud.
+    place_cloud(CLOUD_TLOC_ENERGY, old_pos, 1 + random2(3), KC_YOU);
+
+    bool large_change = you.see_cell(where);
+
+    move_player_to_grid(where, false, true, true);
+
+    _handle_teleport_update(large_change, check_ring_TC, old_pos);
+    return (true);
 }
 
 void you_teleport_now(bool allow_control, bool new_abyss_area, bool wizard_tele)
 {
-    const bool randtele = _teleport_player(allow_control, new_abyss_area, 
+    const bool randtele = _teleport_player(allow_control, new_abyss_area,
                                            wizard_tele);
 
     // Xom is amused by uncontrolled teleports that land you in a
@@ -1828,9 +1912,7 @@ bool project_noise(void)
 
     redraw_screen();
 
-#if DEBUG_DIAGNOSTICS
-    mprf(MSGCH_DIAGNOSTICS, "Target square (%d,%d)", pos.x, pos.y );
-#endif
+    dprf("Target square (%d,%d)", pos.x, pos.y );
 
     if (!silenced( pos ))
     {
@@ -1955,14 +2037,14 @@ int portal()
         switch ( keyin )
         {
         case '<':
-            if (you.your_level == 0)
+            if (you.absdepth0 == 0)
                 mpr("You can't go any further upwards with this spell.");
             else
                 dir_sign = -1;
             break;
 
         case '>':
-            if (you.your_level + 1 == your_branch().depth)
+            if (you.absdepth0 + 1 == your_branch().depth)
                 mpr("You can't go any further downwards with this spell.");
             else
                 dir_sign = 1;
@@ -1996,8 +2078,8 @@ int portal()
         "foot of a staircase.");
     more();
 
-    const int old_level = you.your_level;
-    you.your_level = std::max(0, std::min(26, you.your_level + amount)) - 1;
+    const int old_level = you.absdepth0;
+    you.absdepth0 = std::max(0, std::min(26, you.absdepth0 + amount)) - 1;
     down_stairs(old_level, DNGN_STONE_STAIRS_DOWN_I);
 
     return (1);

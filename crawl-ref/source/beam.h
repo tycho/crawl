@@ -15,14 +15,6 @@
 
 class monsters;
 
-enum demon_beam_type
-{
-    DMNBM_HELLFIRE,
-    DMNBM_SMITING,
-    DMNBM_BRAIN_FEED,
-    DMNBM_MUTATION
-};
-
 enum mon_resist_type
 {
     MON_RESIST,                 // monster resisted
@@ -31,7 +23,7 @@ enum mon_resist_type
     MON_OTHER                   // monster unaffected, but for other reasons
 };
 
-struct dist;
+class dist;
 
 typedef FixedArray<int, 19, 19> explosion_map;
 
@@ -62,8 +54,10 @@ typedef bool (*explosion_aoe_func)(bolt& beam, const coord_def& target);
 struct bolt
 {
     // INPUT parameters set by caller
+    spell_type  origin_spell;          // may be SPELL_NO_SPELL for non-spell
+                                       // beams.
     int         range;
-    unsigned    type;                  // missile gfx
+    unsigned    glyph;                 // missile gfx
     int         colour;
     beam_type   flavour;
     beam_type   real_flavour;          // for random and chaos beams this
@@ -192,6 +186,9 @@ public:
 
     // Return whether any affected cell was seen.
     bool explode(bool show_more = true, bool hole_in_the_middle = false);
+    bool knockback_actor(actor *actor);
+
+    bool visible() const;
 
 private:
     void do_fire();
@@ -201,11 +198,10 @@ private:
     bool is_blockable() const;
     bool is_superhot() const;
     bool is_fiery() const;
-    bool affects_wall(dungeon_feature_type wall) const;
+    maybe_bool affects_wall(dungeon_feature_type wall) const;
     bool is_bouncy(dungeon_feature_type feat) const;
     bool can_affect_wall_monster(const monsters* mon) const;
     bool stop_at_target() const;
-    bool invisible() const;
     bool has_saving_throw() const;
     bool is_harmless(const monsters *mon) const;
     bool harmless_to_player() const;
@@ -213,6 +209,7 @@ private:
     bool nasty_to(const monsters* mon) const;
     bool nice_to(const monsters* mon) const;
     bool found_player() const;
+    bool need_regress() const;
 
     int beam_source_as_target() const;
     int range_used_on_hit(const actor* victim) const;
@@ -232,7 +229,7 @@ private:
     // operate on the beam's current position (i.e., whatever pos()
     // returns.)
 public:
-    void affect_cell(bool avoid_self = false);
+    void affect_cell();
     void affect_wall();
     void affect_monster( monsters* m );
     void affect_player();
@@ -240,6 +237,8 @@ public:
     void affect_place_clouds();
     void affect_place_explosion_clouds();
     void affect_endpoint();
+
+    void water_hits_actor(actor *act);
 
     // Stuff when a monster or player is hit.
     void affect_player_enchantment();
@@ -269,6 +268,7 @@ public:
     void fake_flavour();
     void digging_wall_effect();
     void fire_wall_effect();
+    void elec_wall_effect();
     void nuke_wall_effect();
     void drop_object();
     void finish_beam();
