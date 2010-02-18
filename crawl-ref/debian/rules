@@ -57,6 +57,11 @@ install: build
 	rm -rf debian/crawl-tiles/var
 	cd debian/crawl-tiles/usr/share/crawl/ && rm -rf docs settings
 	cd debian/crawl-tiles/usr/share/crawl/dat && rm -rf *.des clua database descript lua
+
+	cd debian/crawl-tiles/usr/share/crawl/dat \
+	  && rm -rf *.ttf \
+	  && ln -s /usr/share/fonts/truetype/ttf-dejavu/DejaVuSans.ttf Vera.txt \
+	  && ln -s /usr/share/fonts/truetype/ttf-dejavu/DejaVuSansMono.ttf VeraMono.txt
 	
 	mkdir -p debian/crawl/usr/share/man/man6
 	cp docs/crawl.6 debian/crawl/usr/share/man/man6/
