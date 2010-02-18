@@ -10,7 +10,7 @@ Homepage: http://crawl-ref.sourceforge.net/
 
 Package: crawl-common
 Architecture: all
-Depends: ${shlibs:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Recommends: crawl | crawl-tiles
 Description: Dungeon Crawl, a text-based roguelike game (data files)
  Crawl is a fun game in the grand tradition of games like Rogue, Hack, and
@@ -24,7 +24,7 @@ Description: Dungeon Crawl, a text-based roguelike game (data files)
 
 Package: crawl
 Architecture: any
-Depends: ${shlibs:Depends}, crawl-common
+Depends: ${shlibs:Depends}, ${misc:Depends}, crawl-common
 Description: Dungeon Crawl, a text-based roguelike game
  Crawl is a fun game in the grand tradition of games like Rogue, Hack, and
  Moria. Your objective is to travel deep into a subterranean cave complex and
@@ -37,7 +37,7 @@ Description: Dungeon Crawl, a text-based roguelike game
 
 Package: crawl-tiles
 Architecture: any
-Depends: ${shlibs:Depends}, crawl-common
+Depends: ${shlibs:Depends}, ${misc:Depends}, crawl-common
 Description: Dungeon Crawl, a roguelike game, tiles version
  Crawl is a fun game in the grand tradition of games like Rogue, Hack, and
  Moria. Your objective is to travel deep into a subterranean cave complex and
