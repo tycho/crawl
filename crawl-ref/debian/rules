@@ -8,8 +8,9 @@ endif
 tree-stamp:
 	dh_testdir
 	rm -rf build-console
-	mkdir -p build-console
+	mkdir -p build-console/source/rltiles
 	tar cf - docs settings source --exclude contrib --exclude rltiles|tar xf - -C build-console
+	cp -p source/rltiles/dc-player.txt build-console/source/rltiles/
 	rm -rf build-tiles
 	mkdir -p build-tiles
 	tar cf - docs settings source --exclude contrib|tar xf - -C build-tiles
