@@ -2,8 +2,9 @@ crawl (2:0.6.0~a2-1) unstable; urgency=low
 
   * New upstream git release.
   * Use fonts from ttf-dejavu instead of shipping a redundant copy.
+  * Convert to 3.0 (quilt) ugliness.
 
- -- Adam Borowski <kilobyte@angband.pl>  Thu, 18 Feb 2010 17:49:32 +0100
+ -- Adam Borowski <kilobyte@angband.pl>  Sun, 28 Feb 2010 23:08:52 +0100
 
 crawl (2:0.6.0~a1-1286-g1c5c56c-1) unstable; urgency=low
 

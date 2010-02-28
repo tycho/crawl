@@ -109,6 +109,8 @@ makefile.dep
 /source/debian/crawl-tiles
 /source/debian/crawl
 /source/debian/files
+.pc
+debian/patches
 
 # Windows thumbnail files
 Thumbs.db
