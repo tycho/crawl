@@ -51,8 +51,7 @@ install: build
 	cd build-console/source && $(MAKE) $(ARGS_CONSOLE) install DESTDIR=../../debian/crawl-common
 	cd debian/crawl-common/usr/share && mkdir -p doc/crawl-common && \
 		mv crawl/docs/* doc/crawl-common && rmdir crawl/docs
-	cd debian/crawl-common/usr/share/doc/crawl-common/license && \
-		rm -f lgpl.txt libpng-LICENSE.txt lualicense.txt pcre_license.txt
+	rm -rf debian/crawl-common/usr/share/doc/crawl-common/license
 	mkdir -p debian/crawl/usr/
 	mv debian/crawl-common/usr/games debian/crawl/usr/games
 	cd build-tiles/source && $(MAKE) $(ARGS_TILES) install DESTDIR=../../debian/crawl-tiles
