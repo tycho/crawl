@@ -3,6 +3,7 @@ crawl (2:0.6.0~a2-1) unstable; urgency=low
   * New upstream git release.
   * Use fonts from ttf-dejavu instead of shipping a redundant copy.
   * Convert to 3.0 (quilt) ugliness.
+  * Add a FreeDesktop menu entry.
 
  -- Adam Borowski <kilobyte@angband.pl>  Sun, 28 Feb 2010 23:08:52 +0100
 
