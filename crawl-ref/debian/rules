@@ -18,7 +18,9 @@ tree-stamp:
 
 # The makefile is unorthodox, requiring all options to be specified on every invocation.
 ARGS_CONSOLE = prefix=/usr
-ARGS_TILES   = prefix=/usr TILES=y GAME=crawl-tiles
+ARGS_TILES   = prefix=/usr TILES=y GAME=crawl-tiles \
+	PROPORTIONAL_FONT=/usr/share/fonts/truetype/ttf-dejavu/DejaVuSans.ttf \
+	MONOSPACED_FONT=/usr/share/fonts/truetype/ttf-dejavu/DejaVuSansMono.ttf
 
 build: build-stamp
 build-stamp: tree-stamp
@@ -57,11 +59,6 @@ install: build
 	rm -rf debian/crawl-tiles/var
 	cd debian/crawl-tiles/usr/share/crawl/ && rm -rf docs settings
 	cd debian/crawl-tiles/usr/share/crawl/dat && rm -rf *.des clua database descript lua
-
-	cd debian/crawl-tiles/usr/share/crawl/dat \
-	  && rm -rf *.ttf \
-	  && ln -s /usr/share/fonts/truetype/ttf-dejavu/DejaVuSans.ttf Vera.txt \
-	  && ln -s /usr/share/fonts/truetype/ttf-dejavu/DejaVuSansMono.ttf VeraMono.txt
 	
 	mkdir -p debian/crawl/usr/share/man/man6
 	cp docs/crawl.6 debian/crawl/usr/share/man/man6/
