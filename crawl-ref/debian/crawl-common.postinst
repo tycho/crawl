@@ -1,0 +1,8 @@
+#!/bin/sh
+
+DIR=/var/games/crawl/saves
+
+for x in $DIR/logfile $DIR/saves;do [ -e $x ] || touch $x;done
+chown games:games $DIR/logfile $DIR/saves
+
+#DEBHELPER#
