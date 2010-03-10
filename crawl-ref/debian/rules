@@ -50,7 +50,8 @@ install: build
 
 	cd build-console/source && $(MAKE) $(ARGS_CONSOLE) install DESTDIR=../../debian/crawl-common
 	cd debian/crawl-common/usr/share && mkdir -p doc/crawl-common && \
-		mv crawl/docs/* doc/crawl-common && rmdir crawl/docs
+		mv crawl/docs/* doc/crawl-common && \
+		mv doc/crawl-common/crawl_manual.txt crawl/docs
 	rm -rf debian/crawl-common/usr/share/doc/crawl-common/license
 	mkdir -p debian/crawl/usr/
 	mv debian/crawl-common/usr/games debian/crawl/usr/games
@@ -67,7 +68,7 @@ install: build
 	cp debian/crawl-common.overrides debian/crawl-common/usr/share/lintian/overrides/crawl-common
 	mkdir -p debian/crawl-common/usr/share/doc/crawl-common/examples
 	cp settings/init.txt debian/crawl-common/usr/share/doc/crawl-common/examples/crawlrc
-	ln -sf /usr/share/games/crawl-common/docs/crawl_manual.txt debian/crawl-common/usr/share/doc/crawl-common/
+	ln -sf /usr/share/crawl-common/docs/crawl_manual.txt debian/crawl-common/usr/share/doc/crawl-common/
 
 	mkdir -p debian/crawl/usr/share/doc
 	ln -sf crawl-common debian/crawl/usr/share/doc/crawl
