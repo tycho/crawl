@@ -3,6 +3,12 @@ set -e
 
 DIR=/var/games/crawl/saves
 
+if [ -f $DIR/scores ] && grep ^: $DIR/scores
+  then
+    echo Dropping incompatible 4.0 scores.
+    rm $DIR/scores
+fi
+
 for x in $DIR/logfile $DIR/saves;do [ -e $x ] || touch $x;done
 chown games:games $DIR/logfile $DIR/saves
 

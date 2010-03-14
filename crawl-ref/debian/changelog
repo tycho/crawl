@@ -3,6 +3,7 @@ crawl (2:0.6.0~a2-2) unstable; urgency=low
   * Make the scores and logfile owned by games:games instead of the first
     player who plays a game.
   * Delete all saves and logfiles when Crawl is purged.
+  * Delete 4.0 score files on upgrade.  Closes: #451597
 
  -- Adam Borowski <kilobyte@angband.pl>  Thu, 04 Mar 2010 13:33:52 +0100
 
