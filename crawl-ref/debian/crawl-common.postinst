@@ -9,7 +9,7 @@ if [ -f $DIR/scores ] && grep ^: $DIR/scores
     rm $DIR/scores
 fi
 
-for x in $DIR/logfile $DIR/saves;do [ -e $x ] || touch $x;done
-chown games:games $DIR/logfile $DIR/saves
+for x in $DIR/logfile $DIR/scores;do [ -e $x ] || touch $x;done
+chown games:games $DIR/logfile $DIR/scores
 
 #DEBHELPER#
