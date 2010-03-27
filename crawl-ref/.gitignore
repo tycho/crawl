@@ -96,6 +96,7 @@ makefile.dep
 
 # Packaging
 /source/util/release_ver
+/source/contrib
 
 # Debian packaging
 /build-console
