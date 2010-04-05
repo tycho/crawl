@@ -964,6 +964,20 @@ static void _update_place_info()
     curr_PlaceInfo.assert_validity();
 }
 
+static void _zero_int_message()
+{
+    mpr(random_choose_string(
+            "You stare at a wall blankly.",
+            "You pause for a moment, so as not to slip on that banana peel.",
+            "Where's your head at right now?",
+            "You feel the situation is grave. Trying to count to ten only makes your fear worse.",
+            "You try to think but fail.",
+            "You fall into stupor for a moment.",
+            you.is_undead ? "You struggle to remember to exist."
+                          : "You struggle to remember to breathe.",
+            NULL));
+}
+
 //
 //  This function handles the player's input. It's called from main(),
 //  from inside an endless loop.
@@ -1011,6 +1025,13 @@ static void _input()
             crawl_state.cancel_cmd_repeat("Cannot move, cancelling command "
                                           "repetition.");
         }
+        world_reacts();
+        return;
+    }
+
+    if (you.stat_zero[STAT_INT] && coinflip())
+    {
+        _zero_int_message();
         world_reacts();
         return;
     }
